@@ -3,5 +3,8 @@
 </template>
 
 <script setup lang="ts">
-const message = 'Bake Mall';
+const message = window.location.pathname;
+
+document.title = 'Bake Mall';
+console.info(message);
 </script>
