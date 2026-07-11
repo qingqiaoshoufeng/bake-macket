@@ -4,7 +4,7 @@ Bake Mall is a pnpm workspace for the customer H5 storefront, merchant admin, mi
 
 ## Prerequisites
 
-- Node.js 22 or newer
+- Node.js 22.13 or newer
 - pnpm 9.15 or newer
 - Docker Desktop with Docker Compose v2
 
@@ -42,8 +42,10 @@ Shared packages should extend `tsconfig.base.json`, which permits build output a
 Start MySQL and MinIO for local development:
 
 ```bash
-docker compose -f infra/docker-compose.dev.yml up -d
+pnpm services:up
 ```
+
+These service commands derive an isolated Docker Compose project name from the current Git branch, preventing local service state collisions between worktrees.
 
 | Service       | Address                 | Notes                                                     |
 | ------------- | ----------------------- | --------------------------------------------------------- |
@@ -54,15 +56,15 @@ docker compose -f infra/docker-compose.dev.yml up -d
 Check container status with:
 
 ```bash
-docker compose -f infra/docker-compose.dev.yml ps
+pnpm services:ps
 ```
 
-The credentials in `infra/docker-compose.dev.yml` are deliberately local development defaults only. Copy `.env.example` to `.env` to authenticate to the local MySQL and MinIO services; do not reuse these values outside local development or commit real credentials. MySQL and MinIO data are stored in named Docker volumes so they persist across `docker compose ... down`.
+The credentials in `infra/docker-compose.dev.yml` are deliberately local development defaults only. Copy `.env.example` to `.env` to authenticate to the local MySQL and MinIO services; do not reuse these values outside local development or commit real credentials. MySQL and MinIO data are stored in named Docker volumes so they persist across `pnpm services:down`.
 
 Stop the local services with:
 
 ```bash
-docker compose -f infra/docker-compose.dev.yml down
+pnpm services:down
 ```
 
 ## Repository layout
