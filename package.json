@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "pnpm -r --parallel dev",
     "build": "pnpm -r build",
-    "lint": "eslint . && pnpm -r lint",
+    "lint": "eslint '*.mjs' scripts && pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "format:check": "prettier --check .",

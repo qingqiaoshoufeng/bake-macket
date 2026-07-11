@@ -39,19 +39,19 @@ Shared packages should extend `tsconfig.base.json`, which permits build output a
 
 ## Local services
 
-Start MySQL and MinIO for local development:
+Start MySQL and MinIO for local development. This command also initializes the `bake-mall` S3 bucket:
 
 ```bash
 pnpm services:up
 ```
 
-These service commands derive an isolated Docker Compose project name from the current Git branch, preventing local service state collisions between worktrees.
+These service commands derive an isolated Docker Compose project name from the current Git branch, preventing local service state collisions between worktrees. All published service ports bind to `127.0.0.1` and are local-only.
 
 | Service       | Address                 | Notes                                                     |
 | ------------- | ----------------------- | --------------------------------------------------------- |
-| MySQL 8.4     | `localhost:3306`        | Database: `bake_mall`; local application user: `bake_app` |
-| MinIO S3 API  | `http://localhost:9000` | Local-only object-storage endpoint                        |
-| MinIO Console | `http://localhost:9001` | Local-only administrative console                         |
+| MySQL 8.4     | `127.0.0.1:3306`        | Database: `bake_mall`; local application user: `bake_app` |
+| MinIO S3 API  | `http://127.0.0.1:9000` | Local-only object-storage endpoint                        |
+| MinIO Console | `http://127.0.0.1:9001` | Local-only administrative console                         |
 
 Check container status with:
 
