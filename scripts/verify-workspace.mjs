@@ -1,11 +1,93 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 
-for (const file of [
+const require = createRequire(import.meta.url);
+
+const requiredFiles = [
   'pnpm-workspace.yaml',
   'tsconfig.base.json',
+  'eslint.config.mjs',
+  '.env.example',
   'infra/docker-compose.dev.yml',
-]) {
+];
+
+for (const file of requiredFiles) {
   if (!existsSync(file)) throw new Error(`Missing workspace file: ${file}`);
+}
+
+const tsconfig = JSON.parse(readFileSync('tsconfig.base.json', 'utf8'));
+const compilerOptions = tsconfig.compilerOptions ?? {};
+
+if (compilerOptions.noEmit === true) {
+  throw new Error(
+    'tsconfig.base.json must allow packages to emit build output',
+  );
+}
+
+if (compilerOptions.lib?.includes('DOM')) {
+  throw new Error(
+    'tsconfig.base.json must not impose browser DOM types universally',
+  );
+}
+
+const browserTsconfig = JSON.parse(
+  readFileSync('tsconfig.browser.json', 'utf8'),
+);
+if (!browserTsconfig.compilerOptions?.lib?.includes('DOM')) {
+  throw new Error(
+    'tsconfig.browser.json must provide DOM types for browser applications',
+  );
+}
+
+const packageJson = JSON.parse(readFileSync('package.json', 'utf8'));
+for (const dependency of ['eslint-plugin-vue', 'vue-eslint-parser']) {
+  if (!packageJson.devDependencies?.[dependency]) {
+    throw new Error(`Missing Vue ESLint dependency: ${dependency}`);
+  }
+  require.resolve(dependency);
+}
+
+if (!packageJson.scripts?.lint?.startsWith('eslint ')) {
+  throw new Error('pnpm lint must run root ESLint so Vue SFCs are linted');
+}
+
+const eslintConfig = readFileSync('eslint.config.mjs', 'utf8');
+for (const requiredSnippet of [
+  'eslint-plugin-vue',
+  'vue-eslint-parser',
+  '**/*.vue',
+]) {
+  if (!eslintConfig.includes(requiredSnippet)) {
+    throw new Error(`ESLint config must support Vue SFCs: ${requiredSnippet}`);
+  }
+}
+
+const environment = Object.fromEntries(
+  readFileSync('.env.example', 'utf8')
+    .split('\n')
+    .filter((line) => line && !line.startsWith('#'))
+    .map((line) => line.split('=', 2)),
+);
+
+const compose = readFileSync('infra/docker-compose.dev.yml', 'utf8');
+for (const [variable, expected] of Object.entries({
+  MYSQL_PASSWORD: 'bake_app_password',
+  S3_ACCESS_KEY: 'minioadmin',
+  S3_SECRET_KEY: 'minioadmin',
+})) {
+  if (environment[variable] !== expected) {
+    throw new Error(
+      `.env.example ${variable} must match local Docker Compose credentials`,
+    );
+  }
+}
+
+for (const volume of ['mysql_data', 'minio_data']) {
+  if (!compose.includes(`${volume}:`)) {
+    throw new Error(
+      `Docker Compose must declare the ${volume} persistent volume`,
+    );
+  }
 }
 
 console.log('workspace configuration is complete');

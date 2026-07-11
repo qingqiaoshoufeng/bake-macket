@@ -33,6 +33,10 @@ pnpm dev
 pnpm build
 ```
 
+## TypeScript configuration
+
+Shared packages should extend `tsconfig.base.json`, which permits build output and does not impose browser globals. Vite browser applications should extend `tsconfig.browser.json`, which supplies DOM types and uses Vite-compatible module resolution.
+
 ## Local services
 
 Start MySQL and MinIO for local development:
@@ -53,7 +57,7 @@ Check container status with:
 docker compose -f infra/docker-compose.dev.yml ps
 ```
 
-The credentials in `infra/docker-compose.dev.yml` are deliberately local development defaults only. Do not reuse them outside local development or commit real credentials. Copy `.env.example` to `.env` and supply environment-specific secrets outside Git.
+The credentials in `infra/docker-compose.dev.yml` are deliberately local development defaults only. Copy `.env.example` to `.env` to authenticate to the local MySQL and MinIO services; do not reuse these values outside local development or commit real credentials. MySQL and MinIO data are stored in named Docker volumes so they persist across `docker compose ... down`.
 
 Stop the local services with:
 
