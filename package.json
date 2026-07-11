@@ -1,0 +1,26 @@
+{
+  "name": "bake-mall",
+  "private": true,
+  "packageManager": "pnpm@9.15.4",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=9.15.0"
+  },
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "format:check": "prettier --check .",
+    "format": "prettier --write .",
+    "verify:workspace": "node scripts/verify-workspace.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.21.0",
+    "eslint": "^9.21.0",
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.2",
+    "typescript-eslint": "^8.24.0"
+  }
+}
