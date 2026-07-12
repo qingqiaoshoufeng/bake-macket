@@ -1,3 +1,5 @@
+import type { UserProfileView } from '@bake-mall/contracts';
+
 import { apiClient } from './http.js';
 
 /**
@@ -36,6 +38,49 @@ export type UpsertCartItemRequest = {
   quantity: number;
 };
 
+/**
+ * Wire-shape returned by every `/me/addresses` endpoint. The backend's
+ * `Address` entity serialises directly with `id`, `recipient` (NOT
+ * `receiverName`), `phone`, `province`, `city`, `district`, `detail`,
+ * `isDefault`, plus timestamps. Phone is returned in clear text on
+ * addresses (the mask only applies to `GET /me`).
+ */
+export type AddressView = {
+  id: string;
+  recipient: string;
+  phone: string;
+  province: string;
+  city: string;
+  district: string;
+  detail: string;
+  isDefault: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type CreateAddressRequest = {
+  receiverName: string;
+  phone: string;
+  province: string;
+  city: string;
+  district: string;
+  detail: string;
+  isDefault?: boolean;
+};
+
+export type UpdateAddressRequest = Partial<CreateAddressRequest>;
+
+/**
+ * `GET /api/v1/me` returns the masked profile. The shared
+ * `UserProfileView.phone` is always a masked string (or `null` when the
+ * user hasn't bound a phone); `phoneVerified` is NOT part of the response
+ * (only the dev login shape exposes it).
+ */
+export type MeView = Pick<
+  UserProfileView,
+  'id' | 'avatarUrl' | 'nickname' | 'phone'
+>;
+
 export const customerApi = {
   /**
    * `GET /api/v1/me/cart/items` — fetch every cart row belonging to the
@@ -61,5 +106,61 @@ export const customerApi = {
    */
   removeCartItem(id: string): Promise<void> {
     return apiClient.delete<void>(`/me/cart/items/${id}`);
+  },
+
+  /**
+   * `GET /api/v1/me` — fetch the current user profile. The backend masks
+   * the phone server-side (3+4+4 format) and intentionally omits the
+   * `phoneVerified` flag so the storefront has to check the local
+   * `useAuthStore.hasVerifiedPhone` state for guarded routes.
+   */
+  getMe(): Promise<MeView> {
+    return apiClient.get<MeView>('/me');
+  },
+
+  /**
+   * `GET /api/v1/me/addresses` — every address owned by the current user,
+   * ordered by `isDefault DESC, createdAt DESC` so the default row is
+   * always at the top.
+   */
+  listAddresses(): Promise<AddressView[]> {
+    return apiClient.get<AddressView[]>('/me/addresses');
+  },
+
+  /**
+   * `POST /api/v1/me/addresses` — create a new address. The DTO uses
+   * `receiverName`; the response uses the entity field name `recipient`.
+   * Setting `isDefault: true` is honored by the server within a
+   * transaction that clears every other default for the user.
+   */
+  createAddress(body: CreateAddressRequest): Promise<AddressView> {
+    return apiClient.post<AddressView>('/me/addresses', body);
+  },
+
+  /**
+   * `PATCH /api/v1/me/addresses/:id` — partial update. Any field left
+   * `undefined` is preserved. Sending `isDefault: true` will trigger the
+   * same default-clearing transaction as create.
+   */
+  updateAddress(id: string, body: UpdateAddressRequest): Promise<AddressView> {
+    return apiClient.patch<AddressView>(`/me/addresses/${id}`, body);
+  },
+
+  /**
+   * `PATCH /api/v1/me/addresses/:id/default` — dedicated endpoint that
+   * atomically clears every other default and marks this one. Takes no
+   * body; the dedicated route exists so the toggle UI doesn't have to
+   * PATCH the full record with `isDefault: true`.
+   */
+  setDefaultAddress(id: string): Promise<AddressView> {
+    return apiClient.patch<AddressView>(`/me/addresses/${id}/default`, {});
+  },
+
+  /**
+   * `DELETE /api/v1/me/addresses/:id` — drop an address by primary key.
+   * The backend returns `204 No Content`.
+   */
+  removeAddress(id: string): Promise<void> {
+    return apiClient.delete<void>(`/me/addresses/${id}`);
   },
 };

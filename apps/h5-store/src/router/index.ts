@@ -39,31 +39,31 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/checkout',
     name: 'checkout',
-    component: () => import('../views/PlaceholderView.vue'),
+    component: () => import('../views/CheckoutView.vue'),
     meta: { requiresVerifiedPhone: true },
   },
   {
     path: '/orders',
     name: 'orders',
-    component: () => import('../views/PlaceholderView.vue'),
+    component: () => import('../views/OrdersView.vue'),
     meta: { requiresAuth: true },
   },
   {
     path: '/orders/:id',
     name: 'order-detail',
-    component: () => import('../views/PlaceholderView.vue'),
+    component: () => import('../views/OrderDetailView.vue'),
     meta: { requiresAuth: true },
   },
   {
     path: '/profile',
     name: 'profile',
-    component: () => import('../views/PlaceholderView.vue'),
+    component: () => import('../views/ProfileView.vue'),
     meta: { requiresAuth: true },
   },
   {
     path: '/addresses',
     name: 'addresses',
-    component: () => import('../views/PlaceholderView.vue'),
+    component: () => import('../views/AddressesView.vue'),
     meta: { requiresAuth: true },
   },
   {
