@@ -1,0 +1,44 @@
+/**
+ * Element Plus "light 二次元" theme tokens for the merchant admin SPA.
+ *
+ * Per the design spec (§5.2) the palette uses purple/violet accents with a
+ * pink accent, rounded cards, and a touch of brand illustration. Tokens
+ * override Element Plus' CSS variables so every EP component inherits the
+ * look without per-component overrides — data tables, filters, confirm
+ * dialogs and toasts all stay on the standard EP interaction model.
+ *
+ * The colour set is intentionally narrow: two accent hues (lilac primary,
+ * pink highlight) plus neutrals for surfaces and text. Dark mode is out of
+ * scope for this MVP.
+ */
+:root {
+  --el-color-primary: #7b61c8;
+  --el-color-success: #66a786;
+  --admin-pink: #ff8bb2;
+  --admin-lilac: #f4efff;
+  --el-border-radius-base: 10px;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: #f6f4fb;
+  color: #2f2a3d;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial,
+    'PingFang SC', 'Microsoft YaHei', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+* {
+  box-sizing: border-box;
+}
