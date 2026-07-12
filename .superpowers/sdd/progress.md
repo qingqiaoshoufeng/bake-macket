@@ -1,0 +1,12 @@
+# Bake Mall SDD Progress
+
+Task 1: complete (commits 50de5ab..a96a547, review clean after bootstrap hardening and Vue global fix)
+Task 1: complete (commits 50de5ab..e4bce28, reviewed; blockers fixed and validation passed)
+Task 2: complete (commit a4ac9d27 feat: add shared mall API contracts; vitest + type expectations + root checks pass)
+Task 3: complete (commit cb5f83e feat: add API database schema and health endpoint; main.ts uses typed ConfigService wrapper + infer:true, no casts; health e2e + InitialSchema migration + root format/lint/typecheck/test all pass; MySQL brought up via pnpm services:up; shared-contracts exports auto-fixed for CJS consumer)
+Task 3: complete (commit cb5f83e feat: add API database schema and health endpoint)
+Task 4: complete (commit b7fe5b5 feat: add isolated user and admin authentication; user/admin JWTs use distinct secrets and audiences `mall-user` / `mall-admin`; JwtUserGuard + JwtAdminGuard reject cross-audience tokens with 401; auth-isolation e2e + auth.service.spec.ts + root format/lint/typecheck/test all pass; vitest switched to unplugin-swc for decorator metadata; apps/api/.gitignore + root *.tsbuildignore added to keep nest-build artefacts out of source control)Task 4: complete (commit b7fe5b5 feat: add isolated user and admin authentication)
+Task 5: complete (commit b2b8ec0 feat: add catalog SKU uploads and sanitized product content)
+Task 6: complete (commit 70c6845 feat: add banners carts addresses and customer profile APIs)
+Task 7: complete (commit feat: add transactional idempotent order creation)
+Task 8: complete (commit 173c11c feat: add mobile storefront application shell; apps/h5-store Vue 3 + Vite + Vant 4 SPA scaffold; Pinia auth/cart stubs pending; Vue Router with locked paths; miniapp bridge shim with WECHAT_CODE/PHONE_CREDENTIAL; Vant "fresh" theme tokens; auth.spec.ts covers requireVerifiedPhone + dev login; apps/h5-store brings its own lint config, root pnpm lint no longer recurses; pnpm --filter @bake-mall/h5-store typecheck/test/lint/build + root format/typecheck/build pass; pnpm test fails on apps/api because Vite 7's ESM-only index.js cannot be require()d from CommonJS — pre-existing Node 18 vs Vitest 3.x / Vite 7 mismatch, reproducible on HEAD~1, recommended fix is renaming apps/api/vitest.config.ts to .mts in a follow-up)
