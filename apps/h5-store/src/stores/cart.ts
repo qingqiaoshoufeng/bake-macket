@@ -86,8 +86,7 @@ export const useCartStore = defineStore('cart', {
     async setQuantity(id: string, quantity: number): Promise<CartItemView> {
       const target = this.clampQuantity(quantity);
       const current = this.items.find((item) => item.id === id);
-      const delta =
-        current === undefined ? target : target - current.quantity;
+      const delta = current === undefined ? target : target - current.quantity;
       if (delta === 0 && current) {
         return current;
       }

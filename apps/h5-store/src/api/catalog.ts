@@ -58,9 +58,9 @@ export const catalogApi = {
    * and `q` are optional: with neither, the response is the global hot
    * product feed; with one, the storefront filters down server-side.
    */
-  listProducts(params: { categoryId?: string; q?: string } = {}): Promise<
-    ProductListItem[]
-  > {
+  listProducts(
+    params: { categoryId?: string; q?: string } = {},
+  ): Promise<ProductListItem[]> {
     const search = new URLSearchParams();
     if (params.categoryId) search.set('categoryId', params.categoryId);
     if (params.q) search.set('q', params.q);

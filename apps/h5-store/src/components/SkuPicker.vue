@@ -90,7 +90,9 @@ function onAdd(): void {
           @click="selectSku(sku)"
         >
           <span class="sku-picker__name">{{ sku.name }}</span>
-          <span class="sku-picker__price">¥{{ (sku.priceCents / 100).toFixed(2) }}</span>
+          <span class="sku-picker__price"
+            >¥{{ (sku.priceCents / 100).toFixed(2) }}</span
+          >
           <span class="sku-picker__stock">
             <template v-if="!sku.isAvailable">已下架</template>
             <template v-else-if="sku.stock <= 0">暂时缺货</template>
@@ -111,7 +113,9 @@ function onAdd(): void {
           step="1"
           data-testid="qty"
           :value="quantity"
-          @input="onQuantityInput(Number(($event.target as HTMLInputElement).value))"
+          @input="
+            onQuantityInput(Number(($event.target as HTMLInputElement).value))
+          "
           @blur="onQuantityBlur"
         />
       </label>

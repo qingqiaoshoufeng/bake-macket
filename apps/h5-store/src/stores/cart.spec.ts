@@ -66,8 +66,7 @@ const cartPayload = [
 describe('useCartStore', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
-  
-});
+  });
 
   afterEach(() => {
     vi.restoreAllMocks();
@@ -94,19 +93,25 @@ describe('useCartStore', () => {
 
   it('clamps setQuantity to 1-99 and posts the delta against the cached row', async () => {
     const seenRefresh = vi.fn();
-    const fetchMock = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
-      if (init?.method === 'GET' && url.endsWith('/me/cart/items') && seenRefresh.mock.calls.length === 0) {
-        seenRefresh();
-        return new Response(JSON.stringify(cartPayload), {
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(async (url: string, init?: RequestInit) => {
+        if (
+          init?.method === 'GET' &&
+          url.endsWith('/me/cart/items') &&
+          seenRefresh.mock.calls.length === 0
+        ) {
+          seenRefresh();
+          return new Response(JSON.stringify(cartPayload), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+        return new Response(JSON.stringify(cartPayload[0]), {
           status: 200,
           headers: { 'content-type': 'application/json' },
         });
-      }
-      return new Response(JSON.stringify(cartPayload[0]), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
       });
-    });
     vi.stubGlobal('fetch', fetchMock);
 
     const cart = useCartStore();
@@ -115,9 +120,9 @@ describe('useCartStore', () => {
     fetchMock.mockClear();
     seenRefresh.mockClear();
     await cart.setQuantity('cart-1', 250);
-    expect(
-      (fetchMock.mock.calls[0] as [string, RequestInit])[0],
-    ).toContain('/api/v1/me/cart/items');
+    expect((fetchMock.mock.calls[0] as [string, RequestInit])[0]).toContain(
+      '/api/v1/me/cart/items',
+    );
     expect(
       JSON.parse(
         (fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string,
@@ -143,19 +148,25 @@ describe('useCartStore', () => {
 
   it('skips the network call when the target equals the cached quantity', async () => {
     const seenRefresh2 = vi.fn();
-    const fetchMock = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
-      if (init?.method === 'GET' && url.endsWith('/me/cart/items') && seenRefresh2.mock.calls.length === 0) {
-        seenRefresh2();
-        return new Response(JSON.stringify(cartPayload), {
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(async (url: string, init?: RequestInit) => {
+        if (
+          init?.method === 'GET' &&
+          url.endsWith('/me/cart/items') &&
+          seenRefresh2.mock.calls.length === 0
+        ) {
+          seenRefresh2();
+          return new Response(JSON.stringify(cartPayload), {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+        return new Response(JSON.stringify(cartPayload[0]), {
           status: 200,
           headers: { 'content-type': 'application/json' },
         });
-      }
-      return new Response(JSON.stringify(cartPayload[0]), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
       });
-    });
     vi.stubGlobal('fetch', fetchMock);
 
     const cart = useCartStore();
