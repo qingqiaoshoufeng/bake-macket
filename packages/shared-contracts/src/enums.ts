@@ -1,0 +1,24 @@
+export enum OrderStatus {
+  NEW = 'NEW',
+  PROCESSING = 'PROCESSING',
+  COMPLETED = 'COMPLETED',
+  CANCELLED = 'CANCELLED',
+}
+
+export enum FulfillmentType {
+  PICKUP = 'PICKUP',
+  DELIVERY = 'DELIVERY',
+}
+
+export enum BannerTargetType {
+  NONE = 'NONE',
+  PRODUCT = 'PRODUCT',
+  CATEGORY = 'CATEGORY',
+}
+
+export enum ApiErrorCode {
+  PHONE_REQUIRED = 'PHONE_REQUIRED',
+  SKU_UNAVAILABLE = 'SKU_UNAVAILABLE',
+  STOCK_INSUFFICIENT = 'STOCK_INSUFFICIENT',
+  INVALID_ORDER_TRANSITION = 'INVALID_ORDER_TRANSITION',
+}
