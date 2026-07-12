@@ -2,7 +2,9 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 
 import { AuthModule } from './auth/auth.module.js';
+import { BannerModule } from './banner/banner.module.js';
 import { CatalogModule } from './catalog/catalog.module.js';
+import { CustomerModule } from './customer/customer.module.js';
 import { UploadModule } from './upload/upload.module.js';
 import { envSchema } from './config/env.schema.js';
 import { DatabaseModule } from './database/database.module.js';
@@ -42,6 +44,8 @@ import { HealthController } from './health/health.controller.js';
     DatabaseModule,
     AuthModule,
     CatalogModule,
+    BannerModule,
+    CustomerModule,
     UploadModule,
   ],
   controllers: [HealthController],

@@ -17,14 +17,14 @@ export class Address {
   @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
   id!: string;
 
-  @Column({ type: 'bigint', unsigned: true })
+  @Column({ name: 'user_id', type: 'bigint', unsigned: true })
   userId!: string;
 
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'user_id' })
   user!: User;
 
-  @Column({ type: 'varchar', length: 64 })
+  @Column({ name: 'recipient', type: 'varchar', length: 64 })
   recipient!: string;
 
   @Column({ type: 'varchar', length: 32 })
@@ -42,12 +42,12 @@ export class Address {
   @Column({ type: 'varchar', length: 256 })
   detail!: string;
 
-  @Column({ type: 'boolean', default: false })
+  @Column({ name: 'is_default', type: 'boolean', default: false })
   isDefault!: boolean;
 
-  @CreateDateColumn({ type: 'datetime', precision: 0 })
+  @CreateDateColumn({ name: 'created_at', type: 'datetime', precision: 0 })
   createdAt!: Date;
 
-  @UpdateDateColumn({ type: 'datetime', precision: 0 })
+  @UpdateDateColumn({ name: 'updated_at', type: 'datetime', precision: 0 })
   updatedAt!: Date;
 }

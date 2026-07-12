@@ -26,14 +26,14 @@ export class CartItem {
   @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
   id!: string;
 
-  @Column({ type: 'bigint', unsigned: true })
+  @Column({ name: 'user_id', type: 'bigint', unsigned: true })
   userId!: string;
 
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'user_id' })
   user!: User;
 
-  @Column({ type: 'bigint', unsigned: true })
+  @Column({ name: 'sku_id', type: 'bigint', unsigned: true })
   skuId!: string;
 
   @ManyToOne(() => Sku, { onDelete: 'CASCADE' })
@@ -43,9 +43,9 @@ export class CartItem {
   @Column({ type: 'int', unsigned: true })
   quantity!: number;
 
-  @CreateDateColumn({ type: 'datetime', precision: 0 })
+  @CreateDateColumn({ name: 'created_at', type: 'datetime', precision: 0 })
   createdAt!: Date;
 
-  @UpdateDateColumn({ type: 'datetime', precision: 0 })
+  @UpdateDateColumn({ name: 'updated_at', type: 'datetime', precision: 0 })
   updatedAt!: Date;
 }

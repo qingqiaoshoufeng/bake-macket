@@ -19,31 +19,32 @@ export class Banner {
   @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
   id!: string;
 
-  @Column({ type: 'varchar', length: 512 })
+  @Column({ name: 'image_url', type: 'varchar', length: 512 })
   imageUrl!: string;
 
   @Column({ type: 'varchar', length: 128, nullable: true })
   title!: string | null;
 
   @Column({
+    name: 'target_type',
     type: 'enum',
     enum: BannerTargetType,
     default: BannerTargetType.NONE,
   })
   targetType!: BannerTargetType;
 
-  @Column({ type: 'bigint', unsigned: true, nullable: true })
+  @Column({ name: 'target_id', type: 'bigint', unsigned: true, nullable: true })
   targetId!: string | null;
 
-  @Column({ type: 'int', default: 0 })
+  @Column({ name: 'sort_order', type: 'int', default: 0 })
   sortOrder!: number;
 
-  @Column({ type: 'boolean', default: true })
+  @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive!: boolean;
 
-  @CreateDateColumn({ type: 'datetime', precision: 0 })
+  @CreateDateColumn({ name: 'created_at', type: 'datetime', precision: 0 })
   createdAt!: Date;
 
-  @UpdateDateColumn({ type: 'datetime', precision: 0 })
+  @UpdateDateColumn({ name: 'updated_at', type: 'datetime', precision: 0 })
   updatedAt!: Date;
 }

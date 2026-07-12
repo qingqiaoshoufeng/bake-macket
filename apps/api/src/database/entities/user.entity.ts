@@ -20,27 +20,37 @@ export class User {
   @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
   id!: string;
 
-  @Column({ type: 'varchar', length: 64, nullable: true })
+  @Column({
+    name: 'wechat_openid',
+    type: 'varchar',
+    length: 64,
+    nullable: true,
+  })
   wechatOpenid!: string | null;
 
-  @Column({ type: 'varchar', length: 64, nullable: true })
+  @Column({
+    name: 'wechat_unionid',
+    type: 'varchar',
+    length: 64,
+    nullable: true,
+  })
   wechatUnionid!: string | null;
 
   @Column({ type: 'varchar', length: 64, nullable: true })
   nickname!: string | null;
 
-  @Column({ type: 'varchar', length: 512, nullable: true })
+  @Column({ name: 'avatar_url', type: 'varchar', length: 512, nullable: true })
   avatarUrl!: string | null;
 
   @Column({ type: 'varchar', length: 32, nullable: true })
   phone!: string | null;
 
-  @Column({ type: 'boolean', default: false })
+  @Column({ name: 'phone_verified', type: 'boolean', default: false })
   phoneVerified!: boolean;
 
-  @CreateDateColumn({ type: 'datetime', precision: 0 })
+  @CreateDateColumn({ name: 'created_at', type: 'datetime', precision: 0 })
   createdAt!: Date;
 
-  @UpdateDateColumn({ type: 'datetime', precision: 0 })
+  @UpdateDateColumn({ name: 'updated_at', type: 'datetime', precision: 0 })
   updatedAt!: Date;
 }
