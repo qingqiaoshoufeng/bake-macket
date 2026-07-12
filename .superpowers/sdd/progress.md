@@ -11,3 +11,6 @@ Task 6: complete (commit 70c6845 feat: add banners carts addresses and customer 
 Task 7: complete (commit feat: add transactional idempotent order creation)
 Task 8: complete (commit 173c11c feat: add mobile storefront application shell; apps/h5-store Vue 3 + Vite + Vant 4 SPA scaffold; Pinia auth/cart stubs pending; Vue Router with locked paths; miniapp bridge shim with WECHAT_CODE/PHONE_CREDENTIAL; Vant "fresh" theme tokens; auth.spec.ts covers requireVerifiedPhone + dev login; apps/h5-store brings its own lint config, root pnpm lint no longer recurses; pnpm --filter @bake-mall/h5-store typecheck/test/lint/build + root format/typecheck/build pass; pnpm test fails on apps/api because Vite 7's ESM-only index.js cannot be require()d from CommonJS — pre-existing Node 18 vs Vitest 3.x / Vite 7 mismatch, reproducible on HEAD~1, recommended fix is renaming apps/api/vitest.config.ts to .mts in a follow-up)
 Task 8: complete (commit 173c11c feat: add mobile storefront application shell)
+Task 9: complete (commit 00dac1b feat: add storefront catalog SKU selection and cart)
+Task 10: complete (commit 396140e feat: add checkout orders addresses and profile)
+Task 11: complete (commit 65b5657 feat: add merchant admin application shell)
