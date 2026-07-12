@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 
+import { AuthModule } from './auth/auth.module.js';
 import { envSchema } from './config/env.schema.js';
 import { DatabaseModule } from './database/database.module.js';
 import { HealthController } from './health/health.controller.js';
@@ -8,7 +9,8 @@ import { HealthController } from './health/health.controller.js';
 /**
  * Application root module. Loads and validates environment variables once at
  * boot, exposes them under the {@link ConfigService} key `appEnv`, wires the
- * TypeORM data source and registers the health endpoint.
+ * TypeORM data source, registers the health endpoint, and mounts the
+ * authentication module that issues isolated user/admin JWTs.
  */
 @Module({
   imports: [
@@ -25,7 +27,10 @@ import { HealthController } from './health/health.controller.js';
             `Invalid environment configuration: ${error.message}`,
           );
         }
-        return value;
+        // Nest stores the validator return value under the `appEnv` key so
+        // `config.get('appEnv', { infer: true })` resolves to the typed
+        // AppEnv object.
+        return { appEnv: value };
       },
       validationOptions: {
         abortEarly: false,
@@ -33,6 +38,7 @@ import { HealthController } from './health/health.controller.js';
       },
     }),
     DatabaseModule,
+    AuthModule,
   ],
   controllers: [HealthController],
 })

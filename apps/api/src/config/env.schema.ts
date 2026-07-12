@@ -18,6 +18,26 @@ export interface AppEnv {
   MYSQL_DATABASE?: string;
   MYSQL_USER?: string;
   MYSQL_PASSWORD?: string;
+
+  /**
+   * Secret used to sign customer JWTs (audience `mall-user`). Required because
+   * the user session key is never reused for admin sessions.
+   */
+  JWT_USER_SECRET: string;
+  /** Secret used to sign merchant back-office JWTs (audience `mall-admin`). */
+  JWT_ADMIN_SECRET: string;
+  /**
+   * Lifetime for issued JWTs in seconds. Defaults to 24h. Both user and admin
+   * sessions share the same lifetime for simplicity.
+   */
+  JWT_EXPIRES_IN_SECONDS: number;
+
+  /**
+   * Optional initial administrator provisioned from environment variables on
+   * module bootstrap. Never committed to the repository; deploy-time only.
+   */
+  ADMIN_EMAIL?: string;
+  ADMIN_PASSWORD?: string;
 }
 
 /**
@@ -29,6 +49,17 @@ export interface AppEnv {
 export interface AppConfig {
   appEnv: AppEnv;
 }
+
+/**
+ * Default JWT secrets for local development and tests only. Production must
+ * always provide real, distinct secrets via environment variables — these
+ * constants exist to make the development key path predictable for the unit
+ * suite while remaining explicitly documented as insecure.
+ */
+export const FALLBACK_USER_SECRET =
+  'dev-only-user-jwt-secret-do-not-use-in-prod';
+export const FALLBACK_ADMIN_SECRET =
+  'dev-only-admin-jwt-secret-do-not-use-in-prod';
 
 export const envSchema = Joi.object<AppEnv, true>({
   NODE_ENV: Joi.string()
@@ -45,6 +76,16 @@ export const envSchema = Joi.object<AppEnv, true>({
   MYSQL_DATABASE: Joi.string().optional(),
   MYSQL_USER: Joi.string().optional(),
   MYSQL_PASSWORD: Joi.string().allow('').optional(),
+
+  JWT_USER_SECRET: Joi.string().min(16).default(FALLBACK_USER_SECRET),
+  JWT_ADMIN_SECRET: Joi.string().min(16).default(FALLBACK_ADMIN_SECRET),
+  JWT_EXPIRES_IN_SECONDS: Joi.number()
+    .integer()
+    .positive()
+    .default(60 * 60 * 24),
+
+  ADMIN_EMAIL: Joi.string().email().optional(),
+  ADMIN_PASSWORD: Joi.string().min(8).optional(),
 })
   .or('DATABASE_URL', 'MYSQL_HOST')
   .messages({

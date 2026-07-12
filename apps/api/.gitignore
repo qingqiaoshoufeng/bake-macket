@@ -1,0 +1,6 @@
+# nest build emits compiled artefacts alongside source files when no outDir
+# is configured in tsconfig.build.json. Keep them out of source control so
+# vitest always loads the .ts source for tests.
+src/**/*.js
+src/**/*.js.map
+src/**/*.d.ts
