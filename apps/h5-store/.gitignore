@@ -1,0 +1,9 @@
+# Vite build artefacts.
+dist/
+coverage/
+
+# Generated declaration files from vue-tsc.
+src/**/*.d.ts
+src/**/*.d.ts.map
+src/**/*.js
+src/**/*.js.map

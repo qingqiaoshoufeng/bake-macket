@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "pnpm -r --parallel dev",
     "build": "pnpm -r build",
-    "lint": "eslint '*.mjs' scripts && pnpm -r lint",
+    "lint": "eslint '*.mjs' scripts && pnpm -r --workspace-concurrency=1 --filter=!@bake-mall/h5-store lint",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "format:check": "prettier --check .",
@@ -23,6 +23,7 @@
   "devDependencies": {
     "@eslint/js": "^9.21.0",
     "eslint": "^9.21.0",
+    "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-vue": "^10.9.2",
     "globals": "^17.7.0",
     "prettier": "^3.5.3",

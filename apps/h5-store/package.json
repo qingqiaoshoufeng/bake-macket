@@ -1,0 +1,34 @@
+{
+  "name": "@bake-mall/h5-store",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc -p tsconfig.json --noEmit && vite build",
+    "preview": "vite preview",
+    "lint": "eslint src",
+    "typecheck": "vue-tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@bake-mall/contracts": "workspace:*",
+    "pinia": "^2.2.6",
+    "vant": "^4.9.6",
+    "vue": "^3.5.13",
+    "vue-router": "^4.4.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.1",
+    "@vue/test-utils": "^2.4.6",
+    "@vue/tsconfig": "^0.7.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-vue": "^10.9.2",
+    "jsdom": "^25.0.1",
+    "typescript": "^5.8.2",
+    "vite": "^5.4.11",
+    "vitest": "^3.2.4",
+    "vue-eslint-parser": "^10.4.1",
+    "vue-tsc": "^2.1.10"
+  }
+}
