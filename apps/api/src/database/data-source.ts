@@ -6,6 +6,7 @@ import { DataSource } from 'typeorm';
 import { buildDataSourceOptions, envSchema } from '../config/env.schema.js';
 import * as entities from './entities/index.js';
 import { InitialSchema1718000000000 } from './migrations/0001-initial-schema.js';
+import { ProductSortOrder1718000000001 } from './migrations/0002-product-sort-order.js';
 
 loadDotenv();
 
@@ -31,7 +32,7 @@ if (error) {
 export const AppDataSource = new DataSource({
   ...buildDataSourceOptions(value),
   entities: Object.values(entities),
-  migrations: [InitialSchema1718000000000],
+  migrations: [InitialSchema1718000000000, ProductSortOrder1718000000001],
   migrationsTableName: 'migrations',
   // The CLI runs migrations; runtime uses migrationsRun: false to keep startup
   // deterministic and surface migration errors during deploy steps instead.

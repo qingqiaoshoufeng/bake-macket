@@ -3,6 +3,8 @@
   "compilerOptions": {
     "module": "commonjs",
     "moduleResolution": "node",
+    "rootDir": ".",
+    "outDir": "./dist",
     "target": "ES2023",
     "lib": ["ES2023"],
     "experimentalDecorators": true,

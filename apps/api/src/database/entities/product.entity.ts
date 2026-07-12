@@ -27,25 +27,33 @@ export class Product {
   @Column({ type: 'varchar', length: 512, nullable: true })
   summary!: string | null;
 
-  @Column({ type: 'bigint', unsigned: true })
+  @Column({ name: 'category_id', type: 'bigint', unsigned: true })
   categoryId!: string;
 
   @ManyToOne(() => Category, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'category_id' })
   category!: Category;
 
-  @Column({ type: 'varchar', length: 512, nullable: true })
+  @Column({
+    name: 'cover_image_url',
+    type: 'varchar',
+    length: 512,
+    nullable: true,
+  })
   coverImageUrl!: string | null;
 
-  @Column({ type: 'mediumtext' })
+  @Column({ name: 'detail_html', type: 'mediumtext' })
   detailHtml!: string;
 
-  @Column({ type: 'boolean', default: true })
+  @Column({ name: 'sort_order', type: 'int', default: 0 })
+  sortOrder!: number;
+
+  @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive!: boolean;
 
-  @CreateDateColumn({ type: 'datetime', precision: 0 })
+  @CreateDateColumn({ name: 'created_at', type: 'datetime', precision: 0 })
   createdAt!: Date;
 
-  @UpdateDateColumn({ type: 'datetime', precision: 0 })
+  @UpdateDateColumn({ name: 'updated_at', type: 'datetime', precision: 0 })
   updatedAt!: Date;
 }

@@ -18,18 +18,18 @@ export class Category {
   @Column({ type: 'varchar', length: 64 })
   name!: string;
 
-  @Column({ type: 'varchar', length: 512, nullable: true })
+  @Column({ name: 'image_url', type: 'varchar', length: 512, nullable: true })
   imageUrl!: string | null;
 
-  @Column({ type: 'int', default: 0 })
+  @Column({ name: 'sort_order', type: 'int', default: 0 })
   sortOrder!: number;
 
-  @Column({ type: 'boolean', default: true })
+  @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive!: boolean;
 
-  @CreateDateColumn({ type: 'datetime', precision: 0 })
+  @CreateDateColumn({ name: 'created_at', type: 'datetime', precision: 0 })
   createdAt!: Date;
 
-  @UpdateDateColumn({ type: 'datetime', precision: 0 })
+  @UpdateDateColumn({ name: 'updated_at', type: 'datetime', precision: 0 })
   updatedAt!: Date;
 }

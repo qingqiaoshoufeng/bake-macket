@@ -24,7 +24,7 @@ export class Sku {
   @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
   id!: string;
 
-  @Column({ type: 'bigint', unsigned: true })
+  @Column({ name: 'product_id', type: 'bigint', unsigned: true })
   productId!: string;
 
   @ManyToOne(() => Product, { onDelete: 'CASCADE' })
@@ -39,21 +39,21 @@ export class Sku {
   attributes!: Record<string, string>;
 
   /** Selling price in integer cents. */
-  @Column({ type: 'int', unsigned: true })
+  @Column({ name: 'price_cents', type: 'int', unsigned: true })
   priceCents!: number;
 
   @Column({ type: 'int', unsigned: true, default: 0 })
   stock!: number;
 
-  @Column({ type: 'varchar', length: 512, nullable: true })
+  @Column({ name: 'image_url', type: 'varchar', length: 512, nullable: true })
   imageUrl!: string | null;
 
-  @Column({ type: 'boolean', default: true })
+  @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive!: boolean;
 
-  @CreateDateColumn({ type: 'datetime', precision: 0 })
+  @CreateDateColumn({ name: 'created_at', type: 'datetime', precision: 0 })
   createdAt!: Date;
 
-  @UpdateDateColumn({ type: 'datetime', precision: 0 })
+  @UpdateDateColumn({ name: 'updated_at', type: 'datetime', precision: 0 })
   updatedAt!: Date;
 }

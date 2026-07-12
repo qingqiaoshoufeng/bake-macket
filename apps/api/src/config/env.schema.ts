@@ -38,6 +38,14 @@ export interface AppEnv {
    */
   ADMIN_EMAIL?: string;
   ADMIN_PASSWORD?: string;
+
+  /** S3-compatible MinIO (development) or COS (production) credentials. */
+  OBJECT_STORAGE_ENDPOINT: string;
+  OBJECT_STORAGE_REGION: string;
+  OBJECT_STORAGE_BUCKET: string;
+  OBJECT_STORAGE_ACCESS_KEY: string;
+  OBJECT_STORAGE_SECRET_KEY: string;
+  OBJECT_STORAGE_FORCE_PATH_STYLE: boolean;
 }
 
 /**
@@ -86,6 +94,18 @@ export const envSchema = Joi.object<AppEnv, true>({
 
   ADMIN_EMAIL: Joi.string().email().optional(),
   ADMIN_PASSWORD: Joi.string().min(8).optional(),
+
+  OBJECT_STORAGE_ENDPOINT: Joi.string()
+    .uri({ scheme: ['http', 'https'] })
+    .default('http://127.0.0.1:9000'),
+  OBJECT_STORAGE_REGION: Joi.string().default('us-east-1'),
+  OBJECT_STORAGE_BUCKET: Joi.string().default('bake-mall'),
+  OBJECT_STORAGE_ACCESS_KEY: Joi.string().default('minioadmin'),
+  OBJECT_STORAGE_SECRET_KEY: Joi.string().default('minioadmin'),
+  OBJECT_STORAGE_FORCE_PATH_STYLE: Joi.boolean()
+    .truthy('true')
+    .falsy('false')
+    .default(true),
 })
   .or('DATABASE_URL', 'MYSQL_HOST')
   .messages({

@@ -1,0 +1,24 @@
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+
+import { HtmlSanitizerService } from '../content/html-sanitizer.service.js';
+import { Category } from '../database/entities/category.entity.js';
+import { ProductImage } from '../database/entities/product-image.entity.js';
+import { Product } from '../database/entities/product.entity.js';
+import { Sku } from '../database/entities/sku.entity.js';
+import { AdminCategoriesController } from './admin-categories.controller.js';
+import { AdminProductsController } from './admin-products.controller.js';
+import { CatalogService } from './catalog.service.js';
+import { PublicCatalogController } from './public-catalog.controller.js';
+
+@Module({
+  imports: [TypeOrmModule.forFeature([Category, Product, ProductImage, Sku])],
+  controllers: [
+    AdminCategoriesController,
+    AdminProductsController,
+    PublicCatalogController,
+  ],
+  providers: [CatalogService, HtmlSanitizerService],
+  exports: [CatalogService],
+})
+export class CatalogModule {}

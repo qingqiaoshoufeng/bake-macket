@@ -8,6 +8,7 @@ import {
 } from '../config/env.schema.js';
 import * as entities from './entities/index.js';
 import { InitialSchema1718000000000 } from './migrations/0001-initial-schema.js';
+import { ProductSortOrder1718000000001 } from './migrations/0002-product-sort-order.js';
 
 /**
  * Wires the validated environment into TypeORM. `synchronize` is hard-coded to
@@ -24,7 +25,10 @@ import { InitialSchema1718000000000 } from './migrations/0001-initial-schema.js'
         return {
           ...buildDataSourceOptions(env),
           entities: Object.values(entities),
-          migrations: [InitialSchema1718000000000],
+          migrations: [
+            InitialSchema1718000000000,
+            ProductSortOrder1718000000001,
+          ],
           migrationsTableName: 'migrations',
           migrationsRun: false,
           autoLoadEntities: false,

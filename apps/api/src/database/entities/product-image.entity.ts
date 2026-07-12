@@ -16,7 +16,7 @@ export class ProductImage {
   @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
   id!: string;
 
-  @Column({ type: 'bigint', unsigned: true })
+  @Column({ name: 'product_id', type: 'bigint', unsigned: true })
   productId!: string;
 
   @ManyToOne(() => Product, { onDelete: 'CASCADE' })
@@ -26,9 +26,9 @@ export class ProductImage {
   @Column({ type: 'varchar', length: 512 })
   url!: string;
 
-  @Column({ type: 'int', default: 0 })
+  @Column({ name: 'sort_order', type: 'int', default: 0 })
   sortOrder!: number;
 
-  @CreateDateColumn({ type: 'datetime', precision: 0 })
+  @CreateDateColumn({ name: 'created_at', type: 'datetime', precision: 0 })
   createdAt!: Date;
 }
