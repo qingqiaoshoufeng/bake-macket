@@ -1,0 +1,55 @@
+import {
+  Check,
+  Column,
+  CreateDateColumn,
+  Entity,
+  Index,
+  JoinColumn,
+  ManyToOne,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
+
+import { Order } from './order.entity.js';
+
+/**
+ * Immutable snapshot of one SKU at the moment the order was created. Order
+ * details must render from these columns even after the underlying product
+ * or SKU changes.
+ */
+@Entity({ name: 'order_items' })
+@Index('idx_order_items_order', ['orderId'])
+@Check('chk_order_items_unit_price_nonneg', '`unit_price_cents` >= 0')
+@Check('chk_order_items_qty_positive', '`quantity` > 0')
+export class OrderItem {
+  @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
+  id!: string;
+
+  @Column({ type: 'bigint', unsigned: true })
+  orderId!: string;
+
+  @ManyToOne(() => Order, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'order_id' })
+  order!: Order;
+
+  @Column({ type: 'varchar', length: 128 })
+  productName!: string;
+
+  @Column({ type: 'varchar', length: 128 })
+  skuName!: string;
+
+  /** Spec attributes snapshotted from the SKU at order creation. */
+  @Column({ type: 'json' })
+  skuAttributes!: Record<string, string>;
+
+  @Column({ type: 'varchar', length: 512, nullable: true })
+  imageUrl!: string | null;
+
+  @Column({ type: 'int', unsigned: true })
+  unitPriceCents!: number;
+
+  @Column({ type: 'int', unsigned: true })
+  quantity!: number;
+
+  @CreateDateColumn({ type: 'datetime', precision: 0 })
+  createdAt!: Date;
+}
