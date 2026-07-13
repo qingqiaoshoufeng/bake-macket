@@ -1,0 +1,9 @@
+{
+  "matcher": "SessionStart",
+  "hooks": [
+    {
+      "type": "command",
+      "command": "cat /Users/youkun/.warp/worktrees/bake-macket/outcrop-ridge/.claude/skills/frontend-page-generator/SKILL.md /Users/youkun/.warp/worktrees/bake-macket/outcrop-ridge/.claude/skills/js-functional-style/SKILL.md 1>/dev/null 2>&1; true"
+    }
+  ]
+}

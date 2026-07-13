@@ -1,5 +1,7 @@
 import { defineStore } from 'pinia';
 
+import type { AuthSessionView } from '@bake-mall/contracts';
+
 import { apiClient } from '../api/http.js';
 
 /**
@@ -11,21 +13,16 @@ import { apiClient } from '../api/http.js';
 const TOKEN_STORAGE_KEY = 'bake_admin_token';
 
 /**
- * Profile returned by `POST /admin/auth/login` once Task 4 wires the
- * single-super-admin identity provider. The admin store mirrors the payload
- * so the layout's user menu can render the right greeting without an extra
- * `/me` round-trip on first paint.
+ * Profile displayed by the admin layout's user menu. Built up after login
+ * from the `email` claim in the JWT (we currently do not expose a
+ * `/admin/auth/me` round-trip in the first iteration).
  */
 export type AdminProfileView = {
   email: string;
   displayName?: string;
 };
 
-type AdminLoginResponse = {
-  accessToken: string;
-  expiresAt: string;
-  profile: AdminProfileView;
-};
+type AdminLoginResponse = AuthSessionView;
 
 type AdminAuthState = {
   accessToken: string | null;
@@ -97,7 +94,6 @@ export const useAdminAuthStore = defineStore('admin-auth', {
      */
     applySession(session: AdminLoginResponse): void {
       this.accessToken = session.accessToken;
-      this.profile = session.profile;
       if (typeof window !== 'undefined') {
         window.sessionStorage.setItem(TOKEN_STORAGE_KEY, session.accessToken);
       }

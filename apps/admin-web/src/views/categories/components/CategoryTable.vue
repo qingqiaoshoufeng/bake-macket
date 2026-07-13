@@ -1,0 +1,170 @@
+<script setup lang="ts">
+/**
+ * Category management table (purely presentational).
+ *
+ * Renders the editable rows + inline edit draft hook binding. It owns
+ * no business state — every action delegates to the parent through
+ * emitted events. Sub-component props stay here and are NOT lifted into
+ * `type/`.
+ */
+
+import {
+  ElButton,
+  ElInput,
+  ElInputNumber,
+  ElSwitch,
+  ElTable,
+  ElTableColumn,
+  ElTag,
+} from 'element-plus';
+
+import { ACTIVE_LABEL, INACTIVE_LABEL } from '../config/defaults.js';
+import type { AdminCategoryView } from '../../../api/catalog.js';
+import type { CategoryInlineEdit } from '../type/form.js';
+
+const props = defineProps<{
+  categories: readonly AdminCategoryView[];
+  loading: boolean;
+  editingId: string | null;
+  draft: CategoryInlineEdit;
+}>();
+
+const emit = defineEmits<{
+  'update:draft': [patch: Partial<CategoryInlineEdit>];
+  'start-edit': [category: AdminCategoryView];
+  'cancel-edit': [];
+  'save-edit': [category: AdminCategoryView];
+  'toggle-active': [category: AdminCategoryView];
+  'remove': [category: AdminCategoryView];
+}>();
+
+void props;
+
+function asCategory(row: unknown): AdminCategoryView {
+  return row as AdminCategoryView;
+}
+</script>
+
+<template>
+  <ElTable
+    v-loading="loading"
+    :data="categories"
+    :empty-text="'暂无分类'"
+    :data-testid="'categories-table'"
+    @row-click="(row) => { void asCategory(row); }"
+  >
+    <ElTableColumn :label="'名称'" min-width="200">
+      <template #default="{ row }">
+        <template v-if="editingId === row.id">
+          <ElInput
+            :model-value="draft.name"
+            size="small"
+            :data-testid="`edit-name-${row.id}`"
+            @update:model-value="(v) => emit('update:draft', { name: String(v) })"
+          />
+        </template>
+        <template v-else>
+          {{ row.name }}
+        </template>
+      </template>
+    </ElTableColumn>
+
+    <ElTableColumn :label="'图标/图片'" min-width="220">
+      <template #default="{ row }">
+        <template v-if="editingId === row.id">
+          <ElInput
+            :model-value="draft.imageUrl"
+            size="small"
+            placeholder="https://..."
+            :data-testid="`edit-image-${row.id}`"
+            @update:model-value="(v) => emit('update:draft', { imageUrl: String(v) })"
+          />
+        </template>
+        <template v-else>
+          <a
+            v-if="row.imageUrl"
+            :href="row.imageUrl"
+            target="_blank"
+            rel="noopener"
+            :data-testid="`category-image-${row.id}`"
+          >
+            {{ row.imageUrl }}
+          </a>
+          <ElTag v-else type="info" :data-testid="`category-no-image-${row.id}`">无图</ElTag>
+        </template>
+      </template>
+    </ElTableColumn>
+
+    <ElTableColumn :label="'排序'" min-width="120">
+      <template #default="{ row }">
+        <template v-if="editingId === row.id">
+          <ElInputNumber
+            :model-value="draft.sortOrder"
+            size="small"
+            :min="0"
+            :data-testid="`edit-sort-${row.id}`"
+            @update:model-value="(v) => emit('update:draft', { sortOrder: Number(v ?? 0) })"
+          />
+        </template>
+        <template v-else>
+          {{ row.sortOrder }}
+        </template>
+      </template>
+    </ElTableColumn>
+
+    <ElTableColumn :label="'启用'" min-width="100">
+      <template #default="{ row }">
+        <ElSwitch
+          :model-value="row.isActive"
+          :data-testid="`category-active-${row.id}`"
+          @change="() => emit('toggle-active', asCategory(row))"
+        />
+      </template>
+    </ElTableColumn>
+
+    <ElTableColumn :label="'操作'" min-width="200" align="right">
+      <template #default="{ row }">
+        <template v-if="editingId === row.id">
+          <ElButton
+            size="small"
+            type="primary"
+            :data-testid="`save-${row.id}`"
+            @click="emit('save-edit', asCategory(row))"
+          >
+            保存
+          </ElButton>
+          <ElButton
+            size="small"
+            :data-testid="`cancel-${row.id}`"
+            @click="emit('cancel-edit')"
+          >
+            取消
+          </ElButton>
+        </template>
+        <template v-else>
+          <ElButton
+            size="small"
+            :data-testid="`edit-${row.id}`"
+            @click="emit('start-edit', asCategory(row))"
+          >
+            编辑
+          </ElButton>
+          <ElButton
+            size="small"
+            type="danger"
+            :data-testid="`delete-${row.id}`"
+            @click="emit('remove', asCategory(row))"
+          >
+            删除
+          </ElButton>
+        </template>
+      </template>
+    </ElTableColumn>
+  </ElTable>
+</template>
+
+<style scoped>
+:deep(.admin-row) td {
+  vertical-align: middle;
+}
+</style>
