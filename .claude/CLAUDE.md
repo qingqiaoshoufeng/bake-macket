@@ -50,3 +50,4 @@
 - 订单状态机:`NEW → PROCESSING → {COMPLETED | CANCELLED}`;`canTransitionOrder` 是共享谓词。取消订单不会回补库存。
 - 身份令牌分两种:`mall-user` 用于顾客,`mall-admin` 用于商家员工;不允许任一 audience 访问另一方的接口。
 - 按计划遵循 TDD:先写失败的测试,跑一遍,然后实现,最后提交。
+- 前端硬约束:任何对 `apps/h5-store/` 与 `apps/admin-web/` 的改动都必须先读 `.claude/skills/frontend-page-generator/SKILL.md` 与 `.claude/skills/js-functional-style/SKILL.md`。五模块拆分(`components/` `hooks/` `mock/` `config/` `type/` `api/`)与不可变/ES6 编码规则是强制要求,不是建议。
