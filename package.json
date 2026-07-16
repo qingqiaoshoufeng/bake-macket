@@ -19,9 +19,7 @@
     "services:ps": "node scripts/compose.mjs ps",
     "services:down": "node scripts/compose.mjs down",
     "test:compose-project-name": "node scripts/compose-project-name.test.mjs",
-    "test:dev-config": "node scripts/dev-config.test.mjs",
-    "test:claude-superpowers-kit": "node tools/claude-superpowers-kit/install.test.mjs",
-    "verify:claude-superpowers-kit": "node tools/claude-superpowers-kit/verify.mjs ."
+    "test:dev-config": "node scripts/dev-config.test.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.21.0",
