@@ -42,6 +42,14 @@ export class Product {
   })
   coverImageUrl!: string | null;
 
+  @Column({
+    name: 'cover_image_object_key',
+    type: 'varchar',
+    length: 512,
+    nullable: true,
+  })
+  coverImageObjectKey!: string | null;
+
   @Column({ name: 'detail_html', type: 'mediumtext' })
   detailHtml!: string;
 

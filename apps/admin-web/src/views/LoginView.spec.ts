@@ -6,6 +6,13 @@ import { createMemoryHistory, createRouter } from 'vue-router';
 import { useAdminAuthStore } from '../stores/admin-auth.js';
 import LoginView from './LoginView.vue';
 
+vi.mock('./login/config/default-admin-login.js', () => ({
+  getDefaultAdminLogin: () => ({
+    email: 'admin@example.com',
+    password: 'admin-password',
+  }),
+}));
+
 vi.mock('element-plus', async (importOriginal) => {
   const actual = await importOriginal<typeof import('element-plus')>();
 
@@ -54,8 +61,10 @@ describe('LoginView', () => {
         .value,
     ).toBe('admin@example.com');
     expect(
-      (wrapper.get('[data-testid="admin-login-password"]').element as HTMLInputElement)
-        .value,
+      (
+        wrapper.get('[data-testid="admin-login-password"]')
+          .element as HTMLInputElement
+      ).value,
     ).toBe('admin-password');
   });
 

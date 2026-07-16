@@ -13,7 +13,7 @@ export type PresignUploadRequest = {
   scope: PresignUploadScope;
   fileName: string;
   contentType: PresignUploadContentType;
-  size: number;
+  sizeBytes: number;
 };
 
 export type PresignUploadResponse = MediaAsset & {

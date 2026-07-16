@@ -7,6 +7,8 @@ import {
   ElTag,
 } from 'element-plus';
 
+import type { MediaAsset } from '@bake-mall/contracts';
+
 import {
   MAX_UPLOAD_BYTES,
   performUpload,
@@ -21,9 +23,8 @@ import {
  *   failure the surrounding form data is preserved (no reset).
  * - Calls `POST /api/v1/upload/presign` then performs a multipart POST to
  *   the returned S3-compatible URL.
- * - Emits `uploaded` with `{ objectKey, url }` so the parent can write
- *   the values into `coverImageUrl` (or banner image URL) without
- *   rebuilding the upload state.
+ * - Emits `uploaded` with `{ objectKey, publicUrl }`; the upload destination
+ *   never enters business form state or persisted image fields.
  *
  * The component never throws on user-cancellation. Real network errors
  * surface through `ElMessage.error` so the merchant gets feedback
@@ -39,7 +40,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  uploaded: [value: { objectKey: string; url: string }];
+  uploaded: [value: MediaAsset];
   'update:modelValue': [value: string];
 }>();
 
@@ -80,9 +81,12 @@ async function onFileChange(event: Event): Promise<void> {
   try {
     const result = await performUpload(file, props.scope);
     objectKey.value = result.objectKey;
-    previewUrl.value = result.url;
-    emit('uploaded', { objectKey: result.objectKey, url: result.url });
-    emit('update:modelValue', result.url);
+    previewUrl.value = result.publicUrl;
+    emit('uploaded', {
+      objectKey: result.objectKey,
+      publicUrl: result.publicUrl,
+    });
+    emit('update:modelValue', result.publicUrl);
   } catch (error) {
     const message =
       error instanceof Error ? error.message : '上传失败,请稍后重试';

@@ -48,6 +48,14 @@ export class Sku {
   @Column({ name: 'image_url', type: 'varchar', length: 512, nullable: true })
   imageUrl!: string | null;
 
+  @Column({
+    name: 'image_object_key',
+    type: 'varchar',
+    length: 512,
+    nullable: true,
+  })
+  imageObjectKey!: string | null;
+
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive!: boolean;
 

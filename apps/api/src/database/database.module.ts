@@ -9,6 +9,7 @@ import {
 import * as entities from './entities/index.js';
 import { InitialSchema1718000000000 } from './migrations/0001-initial-schema.js';
 import { ProductSortOrder1718000000001 } from './migrations/0002-product-sort-order.js';
+import { Task12AdminMediaAndOrderIndexes1718000000002 } from './migrations/0003-task12-admin-media-and-order-indexes.js';
 
 /**
  * Wires the validated environment into TypeORM. `synchronize` is hard-coded to
@@ -28,6 +29,7 @@ import { ProductSortOrder1718000000001 } from './migrations/0002-product-sort-or
           migrations: [
             InitialSchema1718000000000,
             ProductSortOrder1718000000001,
+            Task12AdminMediaAndOrderIndexes1718000000002,
           ],
           migrationsTableName: 'migrations',
           migrationsRun: false,

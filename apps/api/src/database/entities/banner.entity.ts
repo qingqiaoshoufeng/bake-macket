@@ -22,6 +22,14 @@ export class Banner {
   @Column({ name: 'image_url', type: 'varchar', length: 512 })
   imageUrl!: string;
 
+  @Column({
+    name: 'image_object_key',
+    type: 'varchar',
+    length: 512,
+    nullable: true,
+  })
+  imageObjectKey!: string | null;
+
   @Column({ type: 'varchar', length: 128, nullable: true })
   title!: string | null;
 

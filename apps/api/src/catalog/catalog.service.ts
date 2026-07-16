@@ -5,9 +5,15 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { validateOrReject } from 'class-validator';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
+
+import type {
+  AdminProductDetailView,
+  SaveProductRequest,
+} from '@bake-mall/contracts';
 
 import { HtmlSanitizerService } from '../content/html-sanitizer.service.js';
+import { AuditLog } from '../database/entities/audit-log.entity.js';
 import { Category } from '../database/entities/category.entity.js';
 import { ProductImage } from '../database/entities/product-image.entity.js';
 import { Product } from '../database/entities/product.entity.js';
@@ -27,6 +33,7 @@ export class CatalogService {
     @InjectRepository(ProductImage)
     private readonly images: Repository<ProductImage>,
     private readonly sanitizer: HtmlSanitizerService,
+    private readonly dataSource?: DataSource,
   ) {}
 
   listCategories(): Promise<Category[]> {
@@ -103,6 +110,119 @@ export class CatalogService {
   }
   async deleteProduct(id: string): Promise<void> {
     await this.products.delete(id);
+  }
+
+  async saveProductAggregate(
+    id: string | null,
+    dto: SaveProductRequest,
+    adminUserId: string,
+  ): Promise<AdminProductDetailView> {
+    if (dto.isActive && !dto.skus.some((sku) => sku.isActive)) {
+      throw new BadRequestException('上架商品至少需要一个启用 SKU');
+    }
+    if (!this.dataSource) {
+      throw new Error('DataSource is required for aggregate product saves');
+    }
+
+    return this.dataSource.transaction(async (manager) => {
+      const categoryRepository = manager.getRepository(Category);
+      const productRepository = manager.getRepository(Product);
+      const skuRepository = manager.getRepository(Sku);
+      const imageRepository = manager.getRepository(ProductImage);
+      const auditRepository = manager.getRepository(AuditLog);
+      const category = await categoryRepository.findOneBy({
+        id: dto.categoryId,
+      });
+      if (!category) throw new NotFoundException('Category not found');
+
+      const existing = id ? await productRepository.findOneBy({ id }) : null;
+      if (id && !existing) throw new NotFoundException('Product not found');
+      const product = productRepository.create({
+        ...(existing ?? {}),
+        ...(id ? { id } : {}),
+        name: dto.name,
+        summary: dto.summary ?? null,
+        categoryId: dto.categoryId,
+        coverImageUrl: dto.coverImage?.publicUrl ?? null,
+        coverImageObjectKey: dto.coverImage?.objectKey ?? null,
+        detailHtml: this.sanitizer.sanitize(dto.detailHtml),
+        sortOrder: dto.sortOrder,
+        isActive: dto.isActive,
+      });
+      const savedProduct = await productRepository.save(product);
+
+      await imageRepository.delete({ productId: savedProduct.id });
+      const savedImages = await imageRepository.save(
+        dto.images.map((image) =>
+          imageRepository.create({
+            ...(image.id ? { id: image.id } : {}),
+            productId: savedProduct.id,
+            url: image.publicUrl,
+            objectKey: image.objectKey,
+            sortOrder: image.sortOrder,
+          }),
+        ),
+      );
+
+      if (dto.deletedSkuIds.length) {
+        await skuRepository.delete(
+          dto.deletedSkuIds.map((skuId) => ({
+            id: skuId,
+            productId: savedProduct.id,
+          })),
+        );
+      }
+      const savedSkus = await skuRepository.save(
+        dto.skus.map((sku) =>
+          skuRepository.create({
+            ...(sku.id ? { id: sku.id } : {}),
+            productId: savedProduct.id,
+            name: sku.name,
+            attributes: { ...sku.attributes },
+            priceCents: sku.priceCents,
+            stock: sku.stock,
+            imageUrl: sku.image?.publicUrl ?? null,
+            imageObjectKey: sku.image?.objectKey ?? null,
+            isActive: sku.isActive,
+          }),
+        ),
+      );
+
+      await auditRepository.save(
+        auditRepository.create({
+          adminUserId,
+          targetEntity: 'product',
+          targetId: savedProduct.id,
+          action: id ? 'PRODUCT_UPDATED' : 'PRODUCT_CREATED',
+          changeSummary: {
+            skuCount: savedSkus.length,
+            imageCount: savedImages.length,
+            isActive: savedProduct.isActive,
+          },
+        }),
+      );
+
+      return toAdminProductDetail(savedProduct, category, savedImages, savedSkus);
+    });
+  }
+
+  async getAdminProduct(id: string): Promise<AdminProductDetailView> {
+    const product = await this.products.findOne({
+      where: { id },
+      relations: { category: true },
+    });
+    if (!product) throw new NotFoundException('Product not found');
+    const [images, skus] = await Promise.all([
+      this.images.find({
+        where: { productId: id },
+        order: { sortOrder: 'ASC', createdAt: 'DESC' },
+      }),
+      this.skus.find({
+        where: { productId: id },
+        order: { createdAt: 'DESC' },
+      }),
+    ]);
+    return toAdminProductDetail(product, product.category, images, skus);
   }
 
   async createSku(productId: string, dto: CreateSkuDto): Promise<Sku> {
@@ -213,4 +333,51 @@ export class CatalogService {
     if (!product) throw new NotFoundException('Product not found');
     return product;
   }
+}
+
+function toAdminProductDetail(
+  product: Product,
+  category: Category,
+  images: ProductImage[],
+  skus: Sku[],
+): AdminProductDetailView {
+  return {
+    id: product.id,
+    name: product.name,
+    categoryId: product.categoryId,
+    categoryName: category.name,
+    ...(product.summary ? { summary: product.summary } : {}),
+    detailHtml: product.detailHtml,
+    coverImage:
+      product.coverImageUrl && product.coverImageObjectKey
+        ? {
+            objectKey: product.coverImageObjectKey,
+            publicUrl: product.coverImageUrl,
+          }
+        : null,
+    images: images
+      .filter((image) => Boolean(image.objectKey))
+      .map((image) => ({
+        id: image.id,
+        objectKey: image.objectKey as string,
+        publicUrl: image.url,
+        sortOrder: image.sortOrder,
+      })),
+    skus: skus.map((sku) => ({
+      id: sku.id,
+      name: sku.name,
+      attributes: { ...sku.attributes },
+      priceCents: sku.priceCents,
+      stock: sku.stock,
+      isActive: sku.isActive,
+      image:
+        sku.imageUrl && sku.imageObjectKey
+          ? { objectKey: sku.imageObjectKey, publicUrl: sku.imageUrl }
+          : null,
+    })),
+    sortOrder: product.sortOrder,
+    isActive: product.isActive,
+    createdAt: product.createdAt.toISOString(),
+    updatedAt: product.updatedAt.toISOString(),
+  };
 }

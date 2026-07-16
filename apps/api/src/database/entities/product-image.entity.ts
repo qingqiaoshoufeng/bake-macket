@@ -26,6 +26,9 @@ export class ProductImage {
   @Column({ type: 'varchar', length: 512 })
   url!: string;
 
+  @Column({ name: 'object_key', type: 'varchar', length: 512, nullable: true })
+  objectKey!: string | null;
+
   @Column({ name: 'sort_order', type: 'int', default: 0 })
   sortOrder!: number;
 

@@ -6,12 +6,16 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   UseGuards,
 } from '@nestjs/common';
 
 import { JwtAdminGuard } from '../auth/admin-jwt.guard.js';
+import type { AuthenticatedAdmin } from '../auth/auth.types.js';
+import { CurrentAdmin } from '../auth/current-user.decorator.js';
 import { CatalogService } from './catalog.service.js';
-import { CreateProductDto, UpdateProductDto } from './dto/product.dto.js';
+import { UpdateProductDto } from './dto/product.dto.js';
+import { SaveProductDto } from './dto/save-product.dto.js';
 import { CreateSkuDto, UpdateSkuDto } from './dto/sku.dto.js';
 
 @Controller('admin/products')
@@ -22,8 +26,21 @@ export class AdminProductsController {
   @Get() list() {
     return this.catalog.listProducts();
   }
-  @Post() create(@Body() dto: CreateProductDto) {
-    return this.catalog.createProduct(dto);
+  @Post() create(
+    @Body() dto: SaveProductDto,
+    @CurrentAdmin() admin: AuthenticatedAdmin,
+  ) {
+    return this.catalog.saveProductAggregate(null, dto, admin.id);
+  }
+  @Get(':id') getOne(@Param('id') id: string) {
+    return this.catalog.getAdminProduct(id);
+  }
+  @Put(':id') replace(
+    @Param('id') id: string,
+    @Body() dto: SaveProductDto,
+    @CurrentAdmin() admin: AuthenticatedAdmin,
+  ) {
+    return this.catalog.saveProductAggregate(id, dto, admin.id);
   }
   @Patch(':id') update(@Param('id') id: string, @Body() dto: UpdateProductDto) {
     return this.catalog.updateProduct(id, dto);

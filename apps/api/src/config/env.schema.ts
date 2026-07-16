@@ -43,6 +43,7 @@ export interface AppEnv {
   OBJECT_STORAGE_ENDPOINT: string;
   OBJECT_STORAGE_REGION: string;
   OBJECT_STORAGE_BUCKET: string;
+  OBJECT_STORAGE_PUBLIC_BASE_URL: string;
   OBJECT_STORAGE_ACCESS_KEY: string;
   OBJECT_STORAGE_SECRET_KEY: string;
   OBJECT_STORAGE_FORCE_PATH_STYLE: boolean;
@@ -100,6 +101,9 @@ export const envSchema = Joi.object<AppEnv, true>({
     .default('http://127.0.0.1:9000'),
   OBJECT_STORAGE_REGION: Joi.string().default('us-east-1'),
   OBJECT_STORAGE_BUCKET: Joi.string().default('bake-mall'),
+  OBJECT_STORAGE_PUBLIC_BASE_URL: Joi.string()
+    .uri({ scheme: ['http', 'https'] })
+    .default('http://127.0.0.1:9000/bake-mall'),
   OBJECT_STORAGE_ACCESS_KEY: Joi.string().default('minioadmin'),
   OBJECT_STORAGE_SECRET_KEY: Joi.string().default('minioadmin'),
   OBJECT_STORAGE_FORCE_PATH_STYLE: Joi.boolean()

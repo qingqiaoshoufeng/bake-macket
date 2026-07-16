@@ -1,3 +1,10 @@
+import type {
+  PresignUploadContentType,
+  PresignUploadRequest,
+  PresignUploadResponse,
+  PresignUploadScope,
+} from '@bake-mall/contracts';
+
 import { apiClient } from './http.js';
 
 /**
@@ -12,28 +19,8 @@ import { apiClient } from './http.js';
  * and the resulting upload.
  */
 
-export type PresignScope = 'products' | 'banners';
-
-export type PresignContentType = 'image/jpeg' | 'image/png' | 'image/webp';
-
-export type PresignUploadResponse = {
-  /**
-   * Server-assigned storage key. The admin UI persists this so it can
-   * later point a product cover or banner image at the same object.
-   */
-  objectKey: string;
-  /** Browser-side upload destination. */
-  url: string;
-  /** Form fields the browser must include in the multipart POST. */
-  fields: Record<string, string>;
-};
-
-export type PresignUploadRequest = {
-  scope: PresignScope;
-  fileName: string;
-  contentType: PresignContentType;
-  sizeBytes: number;
-};
+export type PresignScope = PresignUploadScope;
+export type PresignContentType = PresignUploadContentType;
 
 /** Hard ceiling mirrored from the backend's `PresignUploadDto`. */
 export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
@@ -41,7 +28,7 @@ export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 export const uploadApi = {
   /**
    * Ask the backend for a presigned upload. The browser then performs a
-   * multipart POST to the returned `url` with the returned `fields` plus
+   * multipart POST to `uploadUrl` with the returned `fields` plus
    * the file. {@link performUpload} wraps both legs for convenience.
    */
   presign(body: PresignUploadRequest): Promise<PresignUploadResponse> {
@@ -52,7 +39,7 @@ export const uploadApi = {
 /**
  * Drive the two-step upload flow: presign, then POST the multipart form.
  *
- * The second leg is intentionally raw `fetch` against the presigned URL so
+ * The second leg is intentionally raw `fetch` against `uploadUrl` so
  * we can keep `apiClient`'s `/api/v1` prefix and auth header from leaking
  * onto the storage endpoint. Any non-2xx is surfaced as an `Error` so the
  * caller's UI can show a Chinese failure message.
@@ -74,7 +61,7 @@ export async function performUpload(
   }
   form.append('file', file);
 
-  const response = await fetch(presigned.url, {
+  const response = await fetch(presigned.uploadUrl, {
     method: 'POST',
     body: form,
   });
