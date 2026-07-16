@@ -24,17 +24,17 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/category/:id',
     name: 'category',
-    component: () => import('../views/PlaceholderView.vue'),
+    component: () => import('../views/CategoryView.vue'),
   },
   {
     path: '/products/:id',
     name: 'product-detail',
-    component: () => import('../views/PlaceholderView.vue'),
+    component: () => import('../views/ProductDetailView.vue'),
   },
   {
     path: '/cart',
     name: 'cart',
-    component: () => import('../views/PlaceholderView.vue'),
+    component: () => import('../views/CartView.vue'),
   },
   {
     path: '/checkout',

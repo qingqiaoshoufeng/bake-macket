@@ -13,9 +13,9 @@ import { apiClient } from '../api/http.js';
 const TOKEN_STORAGE_KEY = 'bake_admin_token';
 
 /**
- * Profile displayed by the admin layout's user menu. Built up after login
- * from the `email` claim in the JWT (we currently do not expose a
- * `/admin/auth/me` round-trip in the first iteration).
+ * Profile displayed by the admin layout's user menu. Built from the email
+ * submitted during login because `AuthSessionView` intentionally contains
+ * only session data and there is no `/admin/auth/me` round-trip yet.
  */
 export type AdminProfileView = {
   email: string;
@@ -84,16 +84,17 @@ export const useAdminAuthStore = defineStore('admin-auth', {
         '/admin/auth/login',
         { email, password },
       );
-      this.applySession(response);
+      this.applySession(response, email);
       return response;
     },
 
     /**
-     * Persist the issued token and the admin profile snapshot, and forward
-     * the bearer token to the shared HTTP client.
+     * Persist the issued token, build the admin profile from the submitted
+     * email, and forward the bearer token to the shared HTTP client.
      */
-    applySession(session: AdminLoginResponse): void {
+    applySession(session: AdminLoginResponse, email: string): void {
       this.accessToken = session.accessToken;
+      this.profile = { email };
       if (typeof window !== 'undefined') {
         window.sessionStorage.setItem(TOKEN_STORAGE_KEY, session.accessToken);
       }

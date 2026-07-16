@@ -10,13 +10,15 @@ import {
   makeWechatCodeMessage,
   type MiniappMessage,
 } from '../bridge/miniapp.js';
+import { getDefaultDevelopmentLogin } from './login/config/default-development-login.js';
 
 const auth = useAuthStore();
 const router = useRouter();
 const route = useRoute();
 
-const phone = ref('');
-const code = ref('');
+const defaultLogin = getDefaultDevelopmentLogin(import.meta.env.DEV);
+const phone = ref(defaultLogin.phone);
+const code = ref(defaultLogin.code);
 const submitting = ref(false);
 
 const isProduction = import.meta.env.PROD;

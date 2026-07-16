@@ -22,6 +22,8 @@
 在 workspace 根目录运行:
 
 - `pnpm install` 然后 `pnpm verify:workspace` — 安装依赖并确认 workspace 文件齐全。
+- `pnpm dev` — 一键启动或复用 MySQL / MinIO,执行迁移,并前台并行运行 API `3015`、H5 `5173`、Admin `5174`;`Ctrl-C` 只停止三个应用,`pnpm services:down` 完全关闭基础设施。
+- 本地默认登录:H5 `13800000000 / 123456`;Admin `admin-local@example.com / admin-password`。凭据仅存于被忽略的应用级环境文件。
 - `pnpm lint` — 对根 `*.mjs`、`scripts/` 以及各子包执行 ESLint。
 - `pnpm typecheck`、`pnpm test`、`pnpm build` — 递归的 workspace 检查。
 - `pnpm format:check` / `pnpm format` — Prettier 校验 / 格式化。
@@ -44,6 +46,8 @@
 
 ## 工作约定
 
+- 与用户沟通及 `docs/superpowers/specs/`、`docs/superpowers/plans/`、`.superpowers/sdd/` 中的规格、计划、任务简报和报告默认使用中文；代码、命令、路径、API、标识符及必要技术术语保留英文。即使上游 skill 提供英文模板，也必须保留其结构并将自然语言内容本地化为中文。
+- 长任务使用 `TaskCreate` / `TaskUpdate` 维护少量用户可见的顶层任务,用户可用 `/tasks` 查看;子代理内部步骤不得创建为顶层任务。每完成一个顶层任务,主动播报 `进度 N/M`、结果和下一步;`.superpowers/sdd/progress.md` 仅用于会话恢复,不替代可见任务和里程碑播报。
 - 任何跨 API 或应用边界的 DTO 必须使用 `@bake-mall/contracts` 中的类型,不得重复定义。
 - 金额字段使用整数分(`priceCents`、`unitPriceCents`、`goodsTotalCents`);严禁对金额使用浮点数。
 - 订单快照不可变:`CreateOrderRequest` 按 `FulfillmentType` 构成可辨识联合;`OrderView` 同时保留可选的 `pickupTimeText` / `deliveryAddressText`,以便消费者按需读取。

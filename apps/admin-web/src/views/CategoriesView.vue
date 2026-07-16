@@ -10,7 +10,7 @@
  * authoritative.
  */
 
-import { onMounted, reactive, ref } from 'vue';
+import { onMounted, reactive, ref, watch } from 'vue';
 import { ElButton, ElMessage, ElMessageBox } from 'element-plus';
 
 import CategoryTable from './categories/components/CategoryTable.vue';
@@ -48,6 +48,14 @@ const dialogForm = reactive<CategoryFormShape>({
 });
 
 onMounted(refresh);
+
+function showLoadError(error: string | null): void {
+  if (error) {
+    ElMessage.error(error);
+  }
+}
+
+watch(lastError, showLoadError);
 
 function patchDraft(patch: Partial<CategoryInlineEdit>): void {
   Object.assign(editingDraft, patch);
@@ -126,8 +134,6 @@ async function onRemove(category: AdminCategoryView): Promise<void> {
     ElMessage.error(message);
   }
 }
-
-void lastError;
 </script>
 
 <template>

@@ -4,13 +4,22 @@ import { useRoute, useRouter } from 'vue-router';
 import { ElButton, ElForm, ElFormItem, ElInput, ElMessage } from 'element-plus';
 
 import { useAdminAuthStore } from '../stores/admin-auth.js';
+import { getDefaultAdminLogin } from './login/config/default-admin-login.js';
 
 const adminAuth = useAdminAuthStore();
 const router = useRouter();
 const route = useRoute();
 
-const email = ref('');
-const password = ref('');
+const defaultLogin =
+  import.meta.env.DEV && import.meta.env.MODE !== 'production'
+  ? getDefaultAdminLogin({
+      isDevelopment: true,
+      email: import.meta.env.VITE_ADMIN_EMAIL,
+      password: import.meta.env.VITE_ADMIN_PASSWORD,
+    })
+  : getDefaultAdminLogin({ isDevelopment: false });
+const email = ref(defaultLogin.email);
+const password = ref(defaultLogin.password);
 const submitting = ref(false);
 
 const isProduction = import.meta.env.PROD;
@@ -57,7 +66,7 @@ async function onSubmit(): Promise<void> {
             v-model="email"
             type="email"
             autocomplete="username"
-            placeholder="admin@example.com"
+            placeholder="请输入管理员邮箱"
             data-testid="admin-email"
           />
         </ElFormItem>
@@ -68,7 +77,7 @@ async function onSubmit(): Promise<void> {
             autocomplete="current-password"
             show-password
             placeholder="请输入登录密码"
-            data-testid="admin-password"
+            data-testid="admin-login-password"
           />
         </ElFormItem>
         <ElButton
@@ -89,10 +98,10 @@ async function onSubmit(): Promise<void> {
       >
         <strong>开发环境提示</strong>
         <p>
-          管理员登录由 <code>POST /api/v1/admin/auth/login</code> API 驱动,
-          没有前端预置的超级管理员账号 —— 请在 <code>.env</code> 中配置
-          <code>BOOTSTRAP_ADMIN_EMAIL</code> /
-          <code>BOOTSTRAP_ADMIN_PASSWORD</code> 后再启动 NestJS 后端。
+          管理员登录由 <code>POST /api/v1/admin/auth/login</code> API 驱动。
+          后端请配置 <code>ADMIN_EMAIL</code> / <code>ADMIN_PASSWORD</code>，
+          本地表单预填请配置 <code>VITE_ADMIN_EMAIL</code> /
+          <code>VITE_ADMIN_PASSWORD</code>。
         </p>
       </section>
     </section>

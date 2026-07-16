@@ -18,6 +18,7 @@ import {
   ElTag,
 } from 'element-plus';
 
+import { CATEGORY_COLUMNS } from '../config/columns.js';
 import { ACTIVE_LABEL, INACTIVE_LABEL } from '../config/defaults.js';
 import type { AdminCategoryView } from '../../../api/catalog.js';
 import type { CategoryInlineEdit } from '../type/form.js';
@@ -38,6 +39,15 @@ const emit = defineEmits<{
   'remove': [category: AdminCategoryView];
 }>();
 
+const [
+  nameColumn,
+  imageColumn,
+  sortOrderColumn,
+  activeColumn,
+  statusColumn,
+  actionsColumn,
+] = CATEGORY_COLUMNS;
+
 void props;
 
 function asCategory(row: unknown): AdminCategoryView {
@@ -48,12 +58,15 @@ function asCategory(row: unknown): AdminCategoryView {
 <template>
   <ElTable
     v-loading="loading"
-    :data="categories"
+    :data="[...categories]"
+    row-key="id"
     :empty-text="'暂无分类'"
     :data-testid="'categories-table'"
-    @row-click="(row) => { void asCategory(row); }"
   >
-    <ElTableColumn :label="'名称'" min-width="200">
+    <ElTableColumn
+      :label="nameColumn.label"
+      :min-width="nameColumn.minWidth"
+    >
       <template #default="{ row }">
         <template v-if="editingId === row.id">
           <ElInput
@@ -69,7 +82,10 @@ function asCategory(row: unknown): AdminCategoryView {
       </template>
     </ElTableColumn>
 
-    <ElTableColumn :label="'图标/图片'" min-width="220">
+    <ElTableColumn
+      :label="imageColumn.label"
+      :min-width="imageColumn.minWidth"
+    >
       <template #default="{ row }">
         <template v-if="editingId === row.id">
           <ElInput
@@ -95,7 +111,10 @@ function asCategory(row: unknown): AdminCategoryView {
       </template>
     </ElTableColumn>
 
-    <ElTableColumn :label="'排序'" min-width="120">
+    <ElTableColumn
+      :label="sortOrderColumn.label"
+      :width="sortOrderColumn.width"
+    >
       <template #default="{ row }">
         <template v-if="editingId === row.id">
           <ElInputNumber
@@ -112,7 +131,10 @@ function asCategory(row: unknown): AdminCategoryView {
       </template>
     </ElTableColumn>
 
-    <ElTableColumn :label="'启用'" min-width="100">
+    <ElTableColumn
+      :label="activeColumn.label"
+      :width="activeColumn.width"
+    >
       <template #default="{ row }">
         <ElSwitch
           :model-value="row.isActive"
@@ -122,7 +144,25 @@ function asCategory(row: unknown): AdminCategoryView {
       </template>
     </ElTableColumn>
 
-    <ElTableColumn :label="'操作'" min-width="200" align="right">
+    <ElTableColumn
+      :label="statusColumn.label"
+      :width="statusColumn.width"
+    >
+      <template #default="{ row }">
+        <ElTag
+          :type="row.isActive ? 'success' : 'info'"
+          :data-testid="`category-status-${row.id}`"
+        >
+          {{ row.isActive ? ACTIVE_LABEL : INACTIVE_LABEL }}
+        </ElTag>
+      </template>
+    </ElTableColumn>
+
+    <ElTableColumn
+      :label="actionsColumn.label"
+      :width="actionsColumn.width"
+      :align="actionsColumn.align"
+    >
       <template #default="{ row }">
         <template v-if="editingId === row.id">
           <ElButton

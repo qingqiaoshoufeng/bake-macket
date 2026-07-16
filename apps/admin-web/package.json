@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc -p tsconfig.json --noEmit && vite build",
+    "verify:production-login": "node scripts/verify-production-login.mjs",
     "preview": "vite preview",
     "lint": "eslint src",
     "typecheck": "vue-tsc -p tsconfig.json --noEmit",

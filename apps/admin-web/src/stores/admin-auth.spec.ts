@@ -10,8 +10,8 @@ import { useAdminAuthStore } from './admin-auth.js';
  *   target whenever the admin is unauthenticated; the consumer is a router
  *   navigation guard that must keep protected admin routes safe.
  * - `loginAsAdmin(email, password)` POSTs to `/admin/auth/login`, persists
- *   the issued token and clears the previous profile, and routes the
- *   request through the shared `ApiClient` so 401 handling stays uniform.
+ *   the issued token, derives the profile from the submitted email, and routes
+ *   the request through the shared `ApiClient` so 401 handling stays uniform.
  */
 
 describe('useAdminAuthStore', () => {
@@ -43,7 +43,6 @@ describe('useAdminAuthStore', () => {
         JSON.stringify({
           accessToken: 'admin-token-1',
           expiresAt: '2026-07-12T01:00:00.000Z',
-          profile: { email: 'admin@example.test', displayName: 'Admin' },
         }),
         { status: 200, headers: { 'content-type': 'application/json' } },
       ),
@@ -54,10 +53,7 @@ describe('useAdminAuthStore', () => {
     await store.loginAsAdmin('admin@example.test', 'admin-password');
 
     expect(store.accessToken).toBe('admin-token-1');
-    expect(store.profile).toEqual({
-      email: 'admin@example.test',
-      displayName: 'Admin',
-    });
+    expect(store.profile).toEqual({ email: 'admin@example.test' });
     expect(window.sessionStorage.getItem('bake_admin_token')).toBe(
       'admin-token-1',
     );

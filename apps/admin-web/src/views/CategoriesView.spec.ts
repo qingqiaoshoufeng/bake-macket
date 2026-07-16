@@ -1,0 +1,47 @@
+import { shallowMount } from '@vue/test-utils';
+import { ElMessage } from 'element-plus';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import { categoriesApi } from './categories/api/index.js';
+import CategoriesView from './CategoriesView.vue';
+
+vi.mock('./categories/api/index.js', () => ({
+  categoriesApi: {
+    list: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    remove: vi.fn(),
+  },
+}));
+
+const api = vi.mocked(categoriesApi);
+
+describe('CategoriesView', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.resetAllMocks();
+  });
+
+  it('shows the initial category loading error to the merchant', async () => {
+    api.list.mockRejectedValueOnce(new Error('分类接口不可用'));
+    const errorMessage = vi.spyOn(ElMessage, 'error');
+
+    shallowMount(CategoriesView);
+
+    await vi.waitFor(() => {
+      expect(errorMessage).toHaveBeenCalledWith('分类接口不可用');
+    });
+  });
+
+  it('does not show an error after a successful initial load', async () => {
+    api.list.mockResolvedValueOnce([]);
+    const errorMessage = vi.spyOn(ElMessage, 'error');
+
+    shallowMount(CategoriesView);
+
+    await vi.waitFor(() => {
+      expect(api.list).toHaveBeenCalledTimes(1);
+    });
+    expect(errorMessage).not.toHaveBeenCalled();
+  });
+});

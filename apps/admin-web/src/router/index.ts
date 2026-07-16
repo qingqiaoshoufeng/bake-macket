@@ -20,9 +20,9 @@ import { useAdminAuthStore } from '../stores/admin-auth.js';
  *
  * `/dashboard` / `/categories` / `/products` / `/banners` / `/orders` are
  * nested children of {@link AdminLayout} so the sidebar, topbar and mobile
- * narrow-screen hint wrap every authenticated view.
- * Categories/products/banners/orders children point at a shared
- * {@link PlaceholderView} until Task 12 replaces them with real feature views.
+ * narrow-screen hint wrap every authenticated view. Category management is
+ * implemented by Task 12; the remaining Task 12 children still use
+ * {@link PlaceholderView} until their own vertical slices are complete.
  */
 const routes: RouteRecordRaw[] = [
   {
@@ -47,7 +47,7 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'categories',
         name: 'admin-categories',
-        component: () => import('../views/PlaceholderView.vue'),
+        component: () => import('../views/CategoriesView.vue'),
       },
       {
         path: 'products',
