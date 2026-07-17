@@ -209,6 +209,10 @@ export class ApiClient {
     return this.request<T>(path, { ...init, method: 'POST', body });
   }
 
+  put<T>(path: string, body?: unknown, init?: ApiRequestInit): Promise<T> {
+    return this.request<T>(path, { ...init, method: 'PUT', body });
+  }
+
   patch<T>(path: string, body?: unknown, init?: ApiRequestInit): Promise<T> {
     return this.request<T>(path, { ...init, method: 'PATCH', body });
   }

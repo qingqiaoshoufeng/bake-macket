@@ -44,6 +44,7 @@ export interface AppEnv {
   OBJECT_STORAGE_REGION: string;
   OBJECT_STORAGE_BUCKET: string;
   OBJECT_STORAGE_PUBLIC_BASE_URL: string;
+  PRODUCT_MEDIA_ALLOWED_ORIGINS: string[];
   OBJECT_STORAGE_ACCESS_KEY: string;
   OBJECT_STORAGE_SECRET_KEY: string;
   OBJECT_STORAGE_FORCE_PATH_STYLE: boolean;
@@ -104,6 +105,24 @@ export const envSchema = Joi.object<AppEnv, true>({
   OBJECT_STORAGE_PUBLIC_BASE_URL: Joi.string()
     .uri({ scheme: ['http', 'https'] })
     .default('http://127.0.0.1:9000/bake-mall'),
+  PRODUCT_MEDIA_ALLOWED_ORIGINS: Joi.array()
+    .items(Joi.string())
+    .custom((rawValue: unknown[], helpers) => {
+      const origins = rawValue
+        .flatMap((value) => String(value).split(','))
+        .map((origin) => origin.trim())
+        .filter(Boolean);
+      const containsInvalidOrigin = origins.some((origin) => {
+        try {
+          return !['http:', 'https:'].includes(new URL(origin).protocol);
+        } catch {
+          return true;
+        }
+      });
+      return containsInvalidOrigin ? helpers.error('any.invalid') : origins;
+    })
+    .single()
+    .default(['http://127.0.0.1:9000']),
   OBJECT_STORAGE_ACCESS_KEY: Joi.string().default('minioadmin'),
   OBJECT_STORAGE_SECRET_KEY: Joi.string().default('minioadmin'),
   OBJECT_STORAGE_FORCE_PATH_STYLE: Joi.boolean()

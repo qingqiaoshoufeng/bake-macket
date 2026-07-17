@@ -1,4 +1,5 @@
 .superpowers/
+.claude/settings.local.json
 node_modules/
 dist/
 coverage/

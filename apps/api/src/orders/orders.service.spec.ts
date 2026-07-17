@@ -117,9 +117,13 @@ describe('OrdersService', () => {
         create: (value: Record<string, unknown>) => value,
         createQueryBuilder: () => {
           let lastParams: Record<string, unknown> = {};
+          let setValues: Record<string, unknown> = {};
           const builder: Record<string, unknown> = {
             update: () => builder,
-            set: () => builder,
+            set: (values: Record<string, unknown>) => {
+              setValues = values;
+              return builder;
+            },
             where: (_sql: string, params: Record<string, unknown>) => {
               lastParams = params;
               return builder;
@@ -133,6 +137,9 @@ describe('OrdersService', () => {
                 return { affected: 0 };
               }
               sku.stock = (sku.stock as number) - quantity;
+              if (typeof setValues.stockVersion === 'function') {
+                sku.stockVersion = Number(sku.stockVersion ?? 1) + 1;
+              }
               return { affected: 1 };
             },
           };
@@ -161,9 +168,13 @@ describe('OrdersService', () => {
           },
           createQueryBuilder: () => {
             let lastParams: Record<string, unknown> = {};
+            let setValues: Record<string, unknown> = {};
             const builder: Record<string, unknown> = {
               update: () => builder,
-              set: () => builder,
+              set: (values: Record<string, unknown>) => {
+                setValues = values;
+                return builder;
+              },
               where: (_sql: string, params: Record<string, unknown>) => {
                 lastParams = params;
                 return builder;
@@ -177,6 +188,9 @@ describe('OrdersService', () => {
                   return { affected: 0 };
                 }
                 sku.stock = (sku.stock as number) - quantity;
+                if (typeof setValues.stockVersion === 'function') {
+                  sku.stockVersion = Number(sku.stockVersion ?? 1) + 1;
+                }
                 return { affected: 1 };
               },
             };
@@ -211,6 +225,37 @@ describe('OrdersService', () => {
       idempotencyRecords: records.idempotency,
     };
   }
+
+  it('increments stockVersion exactly once with a successful stock decrement', async () => {
+    const records = buildService({
+      users: [{ id: 'user-1', phone: '13800000000', phoneVerified: true }],
+      products: [{ id: 'product-1', isActive: true }],
+      skus: [
+        {
+          id: 'sku-1',
+          productId: 'product-1',
+          name: '6寸',
+          priceCents: 6800,
+          stock: 3,
+          stockVersion: 7,
+          isActive: true,
+        },
+      ],
+      cartItems: [
+        { id: 'cart-1', userId: 'user-1', skuId: 'sku-1', quantity: 2 },
+      ],
+    });
+
+    await records.service.create('user-1', 'version-key', {
+      cartItemIds: ['cart-1'],
+      fulfillmentType: FulfillmentType.PICKUP,
+      contactName: '张三',
+      contactPhone: '13800000000',
+      pickupTimeText: '明天 10:00',
+    });
+
+    expect(records.skuRecords[0]).toMatchObject({ stock: 1, stockVersion: 8 });
+  });
 
   it('throws STOCK_INSUFFICIENT and rolls back any prior decrement when one SKU is short', async () => {
     const { service } = buildService({

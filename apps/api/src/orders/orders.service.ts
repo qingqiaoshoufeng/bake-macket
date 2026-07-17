@@ -231,7 +231,10 @@ export class OrdersService {
         const result = await manager
           .createQueryBuilder()
           .update(Sku)
-          .set({ stock: () => 'stock - :quantity' })
+          .set({
+            stock: () => 'stock - :quantity',
+            stockVersion: () => 'stock_version + 1',
+          })
           .where('id = :skuId AND stock >= :quantity AND is_active = true', {
             skuId: cartItem.skuId,
             quantity: cartItem.quantity,

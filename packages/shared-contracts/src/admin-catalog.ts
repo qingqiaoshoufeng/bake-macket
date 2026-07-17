@@ -26,6 +26,7 @@ export type AdminProductSummaryView = {
 
 export type AdminSkuView = {
   id: string;
+  stockVersion: number;
   name: string;
   attributes: Record<string, string>;
   priceCents: number;
@@ -53,8 +54,7 @@ export type SaveProductImageInput = MediaAsset & {
   sortOrder: number;
 };
 
-export type SaveProductSkuInput = {
-  id?: string;
+type SaveProductSkuFields = {
   name: string;
   attributes: Record<string, string>;
   priceCents: number;
@@ -62,6 +62,12 @@ export type SaveProductSkuInput = {
   isActive: boolean;
   image: MediaAsset | null;
 };
+
+export type SaveProductSkuInput = SaveProductSkuFields &
+  (
+    | { id?: never; stockVersion?: never }
+    | { id: string; stockVersion: number }
+  );
 
 export type SaveProductRequest = {
   name: string;

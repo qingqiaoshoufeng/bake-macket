@@ -1,12 +1,16 @@
 import {
+  ApiErrorCode,
   BannerTargetType,
   type AdminBannerView,
   type AdminOrderListQuery,
   type AdminProductDetailView,
   type MediaAsset,
   type PresignUploadResponse,
+  type PublicProductDetailView,
+  type PublicProductSummaryView,
   type SaveBannerRequest,
   type SaveProductRequest,
+  type SaveProductSkuInput,
 } from './index.js';
 
 const image: MediaAsset = {
@@ -41,4 +45,77 @@ const invalidBanner: SaveBannerRequest = {
   isActive: true,
 };
 
-void [upload, saveProduct, product, orderQuery, banner, bannerView, invalidBanner];
+const newSku: SaveProductSkuInput = {
+  name: '6寸',
+  attributes: { size: '6寸' },
+  priceCents: 6800,
+  stock: 0,
+  isActive: true,
+  image: null,
+};
+
+const existingSku: SaveProductSkuInput = {
+  id: 'sku-1',
+  stockVersion: 3,
+  name: '8寸',
+  attributes: { size: '8寸' },
+  priceCents: 8800,
+  stock: 2,
+  isActive: true,
+  image,
+};
+
+// @ts-expect-error 已有 SKU 必须携带 stockVersion。
+const existingSkuWithoutVersion: SaveProductSkuInput = {
+  id: 'sku-1',
+  name: '8寸',
+  attributes: {},
+  priceCents: 8800,
+  stock: 2,
+  isActive: true,
+  image: null,
+};
+
+// @ts-expect-error 新 SKU 不得单独携带 stockVersion。
+const newSkuWithVersion: SaveProductSkuInput = {
+  stockVersion: 1,
+  name: '新规格',
+  attributes: {},
+  priceCents: 1000,
+  stock: 0,
+  isActive: false,
+  image: null,
+};
+
+const publicSummary: PublicProductSummaryView = {
+  id: 'product-1',
+  categoryId: 'category-1',
+  name: '草莓蛋糕',
+  skus: [],
+};
+const publicDetail: PublicProductDetailView = {
+  ...publicSummary,
+  detailHtml: '<p>clean</p>',
+  images: [],
+};
+const conflictCode: ApiErrorCode = ApiErrorCode.PRODUCT_STOCK_CONFLICT;
+const ownershipCode: ApiErrorCode =
+  ApiErrorCode.PRODUCT_ASSET_OWNERSHIP_INVALID;
+
+void [
+  upload,
+  saveProduct,
+  product,
+  orderQuery,
+  banner,
+  bannerView,
+  invalidBanner,
+  newSku,
+  existingSku,
+  existingSkuWithoutVersion,
+  newSkuWithVersion,
+  publicSummary,
+  publicDetail,
+  conflictCode,
+  ownershipCode,
+];

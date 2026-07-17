@@ -9,7 +9,13 @@ import {
   IsUrl,
   MaxLength,
   Min,
+  MinLength,
+  Validate,
+  ValidateIf,
   ValidateNested,
+  ValidatorConstraint,
+  type ValidationArguments,
+  type ValidatorConstraintInterface,
 } from 'class-validator';
 
 class MediaAssetDto {
@@ -23,8 +29,9 @@ class MediaAssetDto {
 }
 
 class SaveProductImageDto extends MediaAssetDto {
-  @IsOptional()
+  @ValidateIf((_object, value) => value !== undefined)
   @IsString()
+  @MinLength(1)
   id?: string;
 
   @Type(() => Number)
@@ -33,10 +40,34 @@ class SaveProductImageDto extends MediaAssetDto {
   sortOrder!: number;
 }
 
+@ValidatorConstraint({ name: 'hasMatchingSkuIdentity', async: false })
+class HasMatchingSkuIdentityConstraint implements ValidatorConstraintInterface {
+  validate(_value: unknown, { object }: ValidationArguments): boolean {
+    const value = object as SaveProductSkuDto;
+    const hasId = typeof value.id === 'string' && value.id.length > 0;
+    const hasVersion = Number.isInteger(value.stockVersion);
+    return hasId === hasVersion;
+  }
+
+  defaultMessage(): string {
+    return 'id 与 stockVersion 必须同时提供或同时省略';
+  }
+}
+
 class SaveProductSkuDto {
-  @IsOptional()
+  @ValidateIf((_object, value) => value !== undefined)
   @IsString()
+  @MinLength(1)
   id?: string;
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  stockVersion?: number;
+
+  @Validate(HasMatchingSkuIdentityConstraint)
+  private readonly matchingIdentity?: true;
 
   @IsString()
   @MaxLength(80)

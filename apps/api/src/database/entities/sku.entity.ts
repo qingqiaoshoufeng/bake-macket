@@ -8,6 +8,7 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
+  VersionColumn,
 } from 'typeorm';
 
 import { Product } from './product.entity.js';
@@ -44,6 +45,14 @@ export class Sku {
 
   @Column({ type: 'int', unsigned: true, default: 0 })
   stock!: number;
+
+  @VersionColumn({
+    name: 'stock_version',
+    type: 'int',
+    unsigned: true,
+    default: 1,
+  })
+  stockVersion!: number;
 
   @Column({ name: 'image_url', type: 'varchar', length: 512, nullable: true })
   imageUrl!: string | null;

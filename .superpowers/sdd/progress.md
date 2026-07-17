@@ -20,3 +20,11 @@ Admin category Task 2: complete (uncommitted working-tree changes; configured ta
 Local default login Task 1: complete (uncommitted working-tree changes; focused vitest 3/3 pass; spec and quality approved)
 Local default login Task 2: complete (uncommitted; admin tests 22/22 pass; production bundle credential scan pass; spec and quality approved)
 Local default login Task 3: complete (uncommitted; focused vitest 2/2 pass; spec and quality approved)
+
+Admin product SKU Task 1: complete (uncommitted; contracts tests 5/5, typecheck/build pass on Node 22.23.1; spec and quality approved)
+Admin product SKU Task 2: complete (uncommitted; migration test 1/1 and diff check pass; spec compliant and quality approved; API typecheck blocked only by planned Task 4/5 consumers; Minor follow-up: assert each migration direction executes exactly one SQL statement)
+Admin product SKU Task 3: complete (uncommitted; RED observed 1 failed/5 passed; Node v22.23.1 fresh verification: GREEN 6/6, API typecheck and diff check pass; implementation spec compliant and quality approved)
+Admin product SKU Task 4: complete (uncommitted; Node v22.23.1 mapper/catalog tests 6/6, API typecheck, diff and Prettier pass; review found Admin image ordering gap, fix RED observed then GREEN; re-review spec compliant and quality approved)
+Admin product SKU Task 5: complete (uncommitted; reviewer fixes closed empty/null identity bypass and strengthened ownership/optimistic-lock tests; Node v22.23.1 service tests 11/11, e2e 14/14, API typecheck and diff checks pass; re-review spec compliant and quality approved; Task 13 must verify real MySQL rollback and legacy VersionColumn increment)
+Admin product SKU Task 6: complete (uncommitted; media origin policy, sanitizer reuse and pre-transaction aggregate validation; Node v22.23.1 focused tests 23/23, e2e 14/14, API typecheck, targeted lint/Prettier and scans pass; spec compliant and quality approved; Task 13 follow-ups: normalize explicit empty allowlist if required and fix product.mapper.ts unused variable before package lint)
+Admin product SKU Task 7: complete (uncommitted; global ApiClient.put and productsApi five-method shared-DTO boundary; RED observed for missing put/module, GREEN 2/2, admin typecheck/lint/Prettier/diff/type scans pass; spec compliant and quality approved with no issues)

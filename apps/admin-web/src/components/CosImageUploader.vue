@@ -1,11 +1,6 @@
 <script setup lang="ts">
-import { ref } from 'vue';
-import {
-  ElButton,
-  ElInput,
-  ElMessage,
-  ElTag,
-} from 'element-plus';
+import { computed, ref } from 'vue';
+import { ElButton, ElMessage } from 'element-plus';
 
 import type { MediaAsset } from '@bake-mall/contracts';
 
@@ -23,8 +18,8 @@ import {
  *   failure the surrounding form data is preserved (no reset).
  * - Calls `POST /api/v1/upload/presign` then performs a multipart POST to
  *   the returned S3-compatible URL.
- * - Emits `uploaded` with `{ objectKey, publicUrl }`; the upload destination
- *   never enters business form state or persisted image fields.
+ * - Emits the complete `MediaAsset` through `update:modelValue` and reports
+ *   upload activity so parent forms can prevent saving in-flight data.
  *
  * The component never throws on user-cancellation. Real network errors
  * surface through `ElMessage.error` so the merchant gets feedback
@@ -33,25 +28,19 @@ import {
 
 const props = defineProps<{
   scope: PresignScope;
-  initialUrl?: string;
-  /** Bound when the parent stores the canonical URL on a separate field. */
-  modelValue?: string;
+  modelValue: MediaAsset | null;
   label?: string;
 }>();
 
 const emit = defineEmits<{
-  uploaded: [value: MediaAsset];
-  'update:modelValue': [value: string];
+  'update:modelValue': [value: MediaAsset | null];
+  'uploading-change': [value: boolean];
 }>();
 
-const ACCEPTED_TYPES = [
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-] as const;
+const ACCEPTED_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
 
-const previewUrl = ref(props.initialUrl ?? props.modelValue ?? '');
-const objectKey = ref<string | null>(null);
+const previewUrl = computed(() => props.modelValue?.publicUrl ?? '');
+const objectKey = computed(() => props.modelValue?.objectKey ?? null);
 const uploading = ref(false);
 const lastError = ref<string | null>(null);
 
@@ -78,15 +67,13 @@ async function onFileChange(event: Event): Promise<void> {
   }
   lastError.value = null;
   uploading.value = true;
+  emit('uploading-change', true);
   try {
     const result = await performUpload(file, props.scope);
-    objectKey.value = result.objectKey;
-    previewUrl.value = result.publicUrl;
-    emit('uploaded', {
+    emit('update:modelValue', {
       objectKey: result.objectKey,
       publicUrl: result.publicUrl,
     });
-    emit('update:modelValue', result.publicUrl);
   } catch (error) {
     const message =
       error instanceof Error ? error.message : '上传失败,请稍后重试';
@@ -94,13 +81,13 @@ async function onFileChange(event: Event): Promise<void> {
     ElMessage.error(message);
   } finally {
     uploading.value = false;
+    emit('uploading-change', false);
     input.value = '';
   }
 }
 
-function onUrlInput(value: string): void {
-  previewUrl.value = value;
-  emit('update:modelValue', value);
+function clearImage(): void {
+  emit('update:modelValue', null);
 }
 </script>
 
@@ -113,18 +100,10 @@ function onUrlInput(value: string): void {
         alt="图片预览"
         class="cos-uploader__image"
       />
-      <div v-else class="cos-uploader__placeholder">
-        暂无图片
-      </div>
+      <div v-else class="cos-uploader__placeholder">暂无图片</div>
     </div>
 
     <div class="cos-uploader__form">
-      <ElInput
-        :model-value="previewUrl"
-        placeholder="可粘贴图片 URL 或选择本地文件上传"
-        clearable
-        @update:model-value="onUrlInput"
-      />
       <input
         type="file"
         accept="image/jpeg,image/png,image/webp"
@@ -136,17 +115,31 @@ function onUrlInput(value: string): void {
         type="primary"
         plain
         :loading="uploading"
-        @click="($event) => {
-          const input = ($event.currentTarget as HTMLElement)
-            .parentElement?.querySelector('input[type=file]') as HTMLInputElement | null;
-          input?.click();
-        }"
+        @click="
+          ($event) => {
+            const input = (
+              $event.currentTarget as HTMLElement
+            ).parentElement?.querySelector(
+              'input[type=file]',
+            ) as HTMLInputElement | null;
+            input?.click();
+          }
+        "
       >
-        {{ uploading ? '上传中…' : label ?? '选择文件并上传' }}
+        {{ uploading ? '上传中…' : (label ?? '选择文件并上传') }}
       </ElButton>
-      <ElTag v-if="objectKey" size="small" type="info">
+      <ElButton
+        v-if="modelValue"
+        data-testid="clear-image"
+        type="danger"
+        plain
+        @click="clearImage"
+      >
+        清空图片
+      </ElButton>
+      <span v-if="objectKey" class="cos-uploader__object-key">
         objectKey: {{ objectKey }}
-      </ElTag>
+      </span>
       <p v-if="lastError" class="cos-uploader__error">
         {{ lastError }}
       </p>
