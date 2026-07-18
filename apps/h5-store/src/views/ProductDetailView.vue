@@ -35,7 +35,10 @@ onMounted(async () => {
   }
 });
 
-async function addToCart(payload: { skuId: string; quantity: number }): Promise<void> {
+async function addToCart(payload: {
+  skuId: string;
+  quantity: number;
+}): Promise<void> {
   if (!auth.isAuthenticated) {
     await router.push(`/login?redirect=${encodeURIComponent(route.fullPath)}`);
     return;
@@ -68,8 +71,14 @@ async function addToCart(payload: { skuId: string; quantity: number }): Promise<
       <section class="summary">
         <small>BAKED TODAY</small>
         <h1>{{ catalog.product.value.name }}</h1>
-        <p>{{ catalog.product.value.summary ?? '今日制作，按约定时间交付。' }}</p>
-        <button type="button" data-testid="choose-sku" @click="skuSheetOpen = true">
+        <p>
+          {{ catalog.product.value.summary ?? '今日制作，按约定时间交付。' }}
+        </p>
+        <button
+          type="button"
+          data-testid="choose-sku"
+          @click="skuSheetOpen = true"
+        >
           选择规格与数量
         </button>
       </section>
@@ -82,7 +91,11 @@ async function addToCart(payload: { skuId: string; quantity: number }): Promise<
     </template>
     <p v-else class="loading">正在准备商品详情…</p>
 
-    <ActionSheet v-model:show="skuSheetOpen" title="选择规格" data-testid="sku-sheet">
+    <ActionSheet
+      v-model:show="skuSheetOpen"
+      title="选择规格"
+      data-testid="sku-sheet"
+    >
       <div class="sku-sheet-body">
         <SkuPicker
           v-if="catalog.product.value"
@@ -97,18 +110,93 @@ async function addToCart(payload: { skuId: string; quantity: number }): Promise<
 </template>
 
 <style scoped>
-.product-detail { width: min(100%, 560px); min-height: 100%; margin: 0 auto; padding-bottom: 92px; background: #fffaf3; }
-.back { position: fixed; z-index: 5; top: 14px; left: max(14px, calc(50% - 266px)); width: 40px; height: 40px; border: 0; border-radius: 50%; background: rgba(255,255,255,.9); color: #4e7055; font-size: 28px; box-shadow: 0 5px 18px rgba(60,53,44,.12); }
-.gallery { height: 360px; background: #eadfce; }
-.gallery img { width: 100%; height: 100%; object-fit: cover; }
-.gallery__placeholder { height: 100%; display: grid; place-items: center; color: #95795d; letter-spacing: .12em; }
-.summary { position: relative; margin: -42px 14px 0; padding: 22px; border-radius: 28px; background: rgba(255,255,255,.96); box-shadow: 0 16px 36px rgba(78,64,48,.12); }
-.summary small { color: #6f9775; letter-spacing: .18em; }
-h1 { margin: 7px 0; font: 700 28px/1.2 Georgia, 'Songti SC', serif; }
-.summary p { color: var(--mall-muted); line-height: 1.6; }
-.summary button { width: 100%; height: 48px; border: 0; border-radius: 16px; background: #739c78; color: #fff; font-size: 15px; font-weight: 600; }
-.detail-html { padding: 28px 20px; color: #575149; line-height: 1.75; }
-.detail-html h2 { font: 700 20px/1.3 Georgia, 'Songti SC', serif; }
-.sku-sheet-body { padding: 18px 20px calc(26px + env(safe-area-inset-bottom)); }
-.loading { padding: 120px 20px; text-align: center; color: var(--mall-muted); }
+.product-detail {
+  width: min(100%, 560px);
+  min-height: 100%;
+  margin: 0 auto;
+  padding-bottom: 92px;
+  background: #fffaf3;
+}
+.back {
+  position: fixed;
+  z-index: 5;
+  top: 14px;
+  left: max(14px, calc(50% - 266px));
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  color: #4e7055;
+  font-size: 28px;
+  box-shadow: 0 5px 18px rgba(60, 53, 44, 0.12);
+}
+.gallery {
+  height: 360px;
+  background: #eadfce;
+}
+.gallery img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.gallery__placeholder {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: #95795d;
+  letter-spacing: 0.12em;
+}
+.summary {
+  position: relative;
+  margin: -42px 14px 0;
+  padding: 22px;
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 16px 36px rgba(78, 64, 48, 0.12);
+}
+.summary small {
+  color: #6f9775;
+  letter-spacing: 0.18em;
+}
+h1 {
+  margin: 7px 0;
+  font:
+    700 28px/1.2 Georgia,
+    'Songti SC',
+    serif;
+}
+.summary p {
+  color: var(--mall-muted);
+  line-height: 1.6;
+}
+.summary button {
+  width: 100%;
+  height: 48px;
+  border: 0;
+  border-radius: 16px;
+  background: #739c78;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+}
+.detail-html {
+  padding: 28px 20px;
+  color: #575149;
+  line-height: 1.75;
+}
+.detail-html h2 {
+  font:
+    700 20px/1.3 Georgia,
+    'Songti SC',
+    serif;
+}
+.sku-sheet-body {
+  padding: 18px 20px calc(26px + env(safe-area-inset-bottom));
+}
+.loading {
+  padding: 120px 20px;
+  text-align: center;
+  color: var(--mall-muted);
+}
 </style>

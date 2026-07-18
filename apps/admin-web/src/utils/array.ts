@@ -28,10 +28,8 @@ export const sortBy = <T>(
     return (ka > kb ? 1 : -1) * (dir === 'asc' ? 1 : -1);
   });
 
-export const sumBy = <T>(
-  xs: readonly T[],
-  key: (x: T) => number,
-): number => xs.reduce((total, item) => total + key(item), 0);
+export const sumBy = <T>(xs: readonly T[], key: (x: T) => number): number =>
+  xs.reduce((total, item) => total + key(item), 0);
 
 export const partition = <T>(
   xs: readonly T[],

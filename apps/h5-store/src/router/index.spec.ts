@@ -10,7 +10,11 @@ type LazyViewModule = {
 type LazyViewLoader = () => Promise<LazyViewModule>;
 
 const expectedViews = [
-  { path: '/category/cake', routeName: 'category', componentName: 'CategoryView' },
+  {
+    path: '/category/cake',
+    routeName: 'category',
+    componentName: 'CategoryView',
+  },
   {
     path: '/products/product-1',
     routeName: 'product-detail',

@@ -35,10 +35,12 @@
 ### Task 1: Route `/categories` to the Real Category View
 
 **Files:**
+
 - Create: `apps/admin-web/src/router/index.spec.ts`
 - Modify: `apps/admin-web/src/router/index.ts:21-25,48-51`
 
 **Interfaces:**
+
 - Consumes: exported singleton `router` from `apps/admin-web/src/router/index.ts`; default SFC export from `apps/admin-web/src/views/CategoriesView.vue`.
 - Produces: the `admin-categories` route lazy loader resolves to `CategoriesView.vue` while the remaining Task 12 routes continue to resolve to `PlaceholderView.vue`.
 
@@ -130,11 +132,13 @@ Expected: no output. Confirm that product, Banner, and order route loaders still
 ### Task 2: Restore the Configured Category Table Contract
 
 **Files:**
+
 - Create: `apps/admin-web/src/views/categories/components/CategoryTable.spec.ts`
 - Modify: `apps/admin-web/src/views/categories/config/columns.ts:25-32`
 - Modify: `apps/admin-web/src/views/categories/components/CategoryTable.vue:11-164`
 
 **Interfaces:**
+
 - Consumes: `CATEGORY_COLUMNS`, `ACTIVE_LABEL`, `INACTIVE_LABEL`, `categoryListMock`, and local component props/events.
 - Produces: a table with stable row identity (`row-key="id"`), configured labels and widths, visible active/inactive tags, and the existing `toggle-active`, `start-edit`, `save-edit`, `cancel-edit`, and `remove` events.
 
@@ -298,10 +302,7 @@ Remove the no-op `@row-click` handler. Replace hard-coded column labels/sizing w
 Use `:width="sortOrderColumn.width"`, `:width="activeColumn.width"`, and `:width="actionsColumn.width"` for fixed-width columns. Add the status column between active and actions:
 
 ```vue
-    <ElTableColumn
-      :label="statusColumn.label"
-      :width="statusColumn.width"
-    >
+<ElTableColumn :label="statusColumn.label" :width="statusColumn.width">
       <template #default="{ row }">
         <ElTag
           :type="row.isActive ? 'success' : 'info'"
@@ -351,10 +352,12 @@ Expected: no output. Explicitly confirm the diff still contains `:data="[...cate
 ### Task 3: Lock `useCategories` Business Orchestration
 
 **Files:**
+
 - Create: `apps/admin-web/src/views/categories/hooks/useCategories.spec.ts`
 - Verify without changing unless a test reveals a defect: `apps/admin-web/src/views/categories/hooks/useCategories.ts`
 
 **Interfaces:**
+
 - Consumes: `categoriesApi`, `categoryListMock`, `CategoryFormShape`, and `AdminCategoryView`.
 - Produces: tested contracts for loading/error state, next sort order, trimmed create/update payloads, edit lifecycle, active toggling, deletion, and post-mutation refresh.
 
@@ -553,10 +556,12 @@ Expected: no output.
 ### Task 4: Surface Initial Category Load Failures
 
 **Files:**
+
 - Create: `apps/admin-web/src/views/CategoriesView.spec.ts`
 - Modify: `apps/admin-web/src/views/CategoriesView.vue:13,25-39,130`
 
 **Interfaces:**
+
 - Consumes: `lastError: Ref<string | null>` returned by `useCategories` and `ElMessage.error(message)` from Element Plus.
 - Produces: every non-null category refresh error becomes a visible merchant notification; successful loading does not emit an error.
 
@@ -683,10 +688,12 @@ Expected: no output.
 ### Task 5: Validate the Complete Admin Category Slice
 
 **Files:**
+
 - Verify: all changed files listed above.
 - Do not modify unrelated files to make checks pass.
 
 **Interfaces:**
+
 - Consumes: the completed route, view, hook, config, component, and tests.
 - Produces: evidence that the category slice passes package checks and renders through the real SPA route.
 

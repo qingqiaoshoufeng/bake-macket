@@ -10,19 +10,10 @@
 
 import { reactive, ref, type Ref } from 'vue';
 
-import {
-  categoriesApi,
-} from '../api/index.js';
-import {
-  createCategoryDefaults,
-} from '../config/defaults.js';
-import type {
-  AdminCategoryView,
-} from '../../../api/catalog.js';
-import type {
-  CategoryFormShape,
-  CategoryInlineEdit,
-} from '../type/form.js';
+import { categoriesApi } from '../api/index.js';
+import { createCategoryDefaults } from '../config/defaults.js';
+import type { AdminCategoryView } from '../../../api/catalog.js';
+import type { CategoryFormShape, CategoryInlineEdit } from '../type/form.js';
 
 export type UseCategoriesResult = {
   readonly categories: Ref<readonly AdminCategoryView[]>;
@@ -64,8 +55,7 @@ export function useCategories(): UseCategoriesResult {
     try {
       categories.value = await categoriesApi.list();
     } catch (error) {
-      lastError.value =
-        error instanceof Error ? error.message : '分类加载失败';
+      lastError.value = error instanceof Error ? error.message : '分类加载失败';
     } finally {
       loading.value = false;
     }
@@ -73,9 +63,7 @@ export function useCategories(): UseCategoriesResult {
 
   function nextSortOrder(): number {
     if (categories.value.length === 0) return 0;
-    const max = Math.max(
-      ...categories.value.map((row) => row.sortOrder ?? 0),
-    );
+    const max = Math.max(...categories.value.map((row) => row.sortOrder ?? 0));
     return Number.isFinite(max) ? max + 1 : 0;
   }
 

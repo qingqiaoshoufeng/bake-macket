@@ -1,9 +1,7 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
 /** Adds managed-media object keys and indexes for Task 12 admin queries. */
-export class Task12AdminMediaAndOrderIndexes1718000000002
-  implements MigrationInterface
-{
+export class Task12AdminMediaAndOrderIndexes1718000000002 implements MigrationInterface {
   name = 'Task12AdminMediaAndOrderIndexes1718000000002';
 
   async up(queryRunner: QueryRunner): Promise<void> {

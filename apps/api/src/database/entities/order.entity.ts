@@ -28,10 +28,10 @@ export class Order {
   @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
   id!: string;
 
-  @Column({ type: 'varchar', length: 32 })
+  @Column({ name: 'order_no', type: 'varchar', length: 32 })
   orderNo!: string;
 
-  @Column({ type: 'bigint', unsigned: true })
+  @Column({ name: 'user_id', type: 'bigint', unsigned: true })
   userId!: string;
 
   @ManyToOne(() => User, { onDelete: 'RESTRICT' })
@@ -41,30 +41,40 @@ export class Order {
   @Column({ type: 'enum', enum: OrderStatus, default: OrderStatus.NEW })
   status!: OrderStatus;
 
-  @Column({ type: 'enum', enum: FulfillmentType })
+  @Column({ name: 'fulfillment_type', type: 'enum', enum: FulfillmentType })
   fulfillmentType!: FulfillmentType;
 
-  @Column({ type: 'varchar', length: 64 })
+  @Column({ name: 'contact_name', type: 'varchar', length: 64 })
   contactName!: string;
 
-  @Column({ type: 'varchar', length: 32 })
+  @Column({ name: 'contact_phone', type: 'varchar', length: 32 })
   contactPhone!: string;
 
-  @Column({ type: 'varchar', length: 256, nullable: true })
+  @Column({
+    name: 'pickup_time_text',
+    type: 'varchar',
+    length: 256,
+    nullable: true,
+  })
   pickupTimeText!: string | null;
 
-  @Column({ type: 'varchar', length: 512, nullable: true })
+  @Column({
+    name: 'delivery_address_text',
+    type: 'varchar',
+    length: 512,
+    nullable: true,
+  })
   deliveryAddressText!: string | null;
 
-  @Column({ type: 'int', unsigned: true })
+  @Column({ name: 'goods_total_cents', type: 'int', unsigned: true })
   goodsTotalCents!: number;
 
   @Column({ type: 'varchar', length: 512, nullable: true })
   remark!: string | null;
 
-  @CreateDateColumn({ type: 'datetime', precision: 0 })
+  @CreateDateColumn({ name: 'created_at', type: 'datetime', precision: 0 })
   createdAt!: Date;
 
-  @UpdateDateColumn({ type: 'datetime', precision: 0 })
+  @UpdateDateColumn({ name: 'updated_at', type: 'datetime', precision: 0 })
   updatedAt!: Date;
 }

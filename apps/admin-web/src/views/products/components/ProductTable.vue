@@ -38,10 +38,16 @@ void props;
     <ElTableColumn :label="nameColumn.label" :min-width="nameColumn.minWidth">
       <template #default="{ row }">{{ row.name }}</template>
     </ElTableColumn>
-    <ElTableColumn :label="categoryColumn.label" :min-width="categoryColumn.minWidth">
+    <ElTableColumn
+      :label="categoryColumn.label"
+      :min-width="categoryColumn.minWidth"
+    >
       <template #default="{ row }">{{ row.categoryName }}</template>
     </ElTableColumn>
-    <ElTableColumn :label="coverImageColumn.label" :width="coverImageColumn.width">
+    <ElTableColumn
+      :label="coverImageColumn.label"
+      :width="coverImageColumn.width"
+    >
       <template #default="{ row }">
         <ElImage
           v-if="row.coverImage"
@@ -53,10 +59,16 @@ void props;
         <span v-else>无主图</span>
       </template>
     </ElTableColumn>
-    <ElTableColumn :label="activeSkuCountColumn.label" :width="activeSkuCountColumn.width">
+    <ElTableColumn
+      :label="activeSkuCountColumn.label"
+      :width="activeSkuCountColumn.width"
+    >
       <template #default="{ row }">{{ row.activeSkuCount }}</template>
     </ElTableColumn>
-    <ElTableColumn :label="sortOrderColumn.label" :width="sortOrderColumn.width">
+    <ElTableColumn
+      :label="sortOrderColumn.label"
+      :width="sortOrderColumn.width"
+    >
       <template #default="{ row }">{{ row.sortOrder }}</template>
     </ElTableColumn>
     <ElTableColumn :label="statusColumn.label" :width="statusColumn.width">

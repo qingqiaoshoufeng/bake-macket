@@ -11,15 +11,41 @@ const items = [
     id: 'cart-1',
     quantity: 2,
     available: true,
-    sku: { id: 'sku-1', name: '6寸', attributes: {}, priceCents: 6800, stock: 3, imageUrl: null, isActive: true },
-    product: { id: 'product-1', name: '草莓云朵蛋糕', coverImageUrl: null, isActive: true },
+    sku: {
+      id: 'sku-1',
+      name: '6寸',
+      attributes: {},
+      priceCents: 6800,
+      stock: 3,
+      imageUrl: null,
+      isActive: true,
+    },
+    product: {
+      id: 'product-1',
+      name: '草莓云朵蛋糕',
+      coverImageUrl: null,
+      isActive: true,
+    },
   },
   {
     id: 'cart-2',
     quantity: 1,
     available: false,
-    sku: { id: 'sku-2', name: '已下架', attributes: {}, priceCents: 3200, stock: 0, imageUrl: null, isActive: false },
-    product: { id: 'product-2', name: '昨日限定', coverImageUrl: null, isActive: false },
+    sku: {
+      id: 'sku-2',
+      name: '已下架',
+      attributes: {},
+      priceCents: 3200,
+      stock: 0,
+      imageUrl: null,
+      isActive: false,
+    },
+    product: {
+      id: 'product-2',
+      name: '昨日限定',
+      coverImageUrl: null,
+      isActive: false,
+    },
   },
 ];
 
@@ -51,6 +77,8 @@ describe('CartView', () => {
 
     expect(wrapper.text()).toContain('已失效');
     expect(wrapper.text()).toContain('¥136.00');
-    expect(wrapper.get('[data-testid="checkout"]').attributes('disabled')).toBeUndefined();
+    expect(
+      wrapper.get('[data-testid="checkout"]').attributes('disabled'),
+    ).toBeUndefined();
   });
 });

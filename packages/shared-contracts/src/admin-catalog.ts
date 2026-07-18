@@ -64,10 +64,7 @@ type SaveProductSkuFields = {
 };
 
 export type SaveProductSkuInput = SaveProductSkuFields &
-  (
-    | { id?: never; stockVersion?: never }
-    | { id: string; stockVersion: number }
-  );
+  ({ id?: never; stockVersion?: never } | { id: string; stockVersion: number });
 
 export type SaveProductRequest = {
   name: string;

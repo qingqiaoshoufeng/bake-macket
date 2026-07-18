@@ -30,8 +30,13 @@ const ActionTableAdapter = defineComponent({
         'div',
         slots.default?.().flatMap((column) =>
           (props.data as (typeof categoryListMock)[number][]).map((row) =>
-            (column.children as { default?: (scope: { row: (typeof categoryListMock)[number] }) => VNode[] })
-              .default?.({ row }),
+            (
+              column.children as {
+                default?: (scope: {
+                  row: (typeof categoryListMock)[number];
+                }) => VNode[];
+              }
+            ).default?.({ row }),
           ),
         ),
       );

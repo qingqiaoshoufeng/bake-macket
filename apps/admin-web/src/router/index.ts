@@ -52,7 +52,20 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'products',
         name: 'admin-products',
-        component: () => import('../views/PlaceholderView.vue'),
+        component: () => import('../views/products/ProductsView.vue'),
+        meta: { title: '商品管理' },
+      },
+      {
+        path: 'products/new',
+        name: 'admin-product-new',
+        component: () => import('../views/products/ProductEditorView.vue'),
+        meta: { title: '新建商品' },
+      },
+      {
+        path: 'products/:id/edit',
+        name: 'admin-product-edit',
+        component: () => import('../views/products/ProductEditorView.vue'),
+        meta: { title: '编辑商品' },
       },
       {
         path: 'banners',
@@ -105,5 +118,6 @@ router.beforeEach((to) => {
 declare module 'vue-router' {
   interface RouteMeta {
     requiresAdminAuth?: boolean;
+    title?: string;
   }
 }

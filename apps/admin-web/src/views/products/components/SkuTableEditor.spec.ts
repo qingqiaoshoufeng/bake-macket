@@ -75,4 +75,36 @@ describe('SkuTableEditor', () => {
 
     expect(wrapper.emitted('uploading-change')?.at(-1)?.[0]).toBe(true);
   });
+
+  it('keeps an existing SKU upload gated while soft-deactivating the row', async () => {
+    const wrapper = mount(SkuTableEditor, {
+      props: { modelValue: [row] },
+    });
+    const uploader = wrapper.findComponent({ name: 'CosImageUploader' });
+    uploader.vm.$emit('uploading-change', true);
+    await wrapper.vm.$nextTick();
+
+    await wrapper.get('[data-testid="remove-0"]').trigger('click');
+
+    expect(wrapper.emitted('uploading-change')?.at(-1)?.[0]).toBe(true);
+    expect(
+      (wrapper.emitted('update:modelValue')?.at(-1)?.[0] as SkuFormRow[])[0],
+    ).toMatchObject({ id: 'sku-1', isActive: false });
+
+    uploader.vm.$emit('uploading-change', false);
+    await wrapper.vm.$nextTick();
+    expect(wrapper.emitted('uploading-change')?.at(-1)?.[0]).toBe(false);
+  });
+
+  it('emits invalid visible drafts instead of silently retaining old SKU values', async () => {
+    const wrapper = mount(SkuTableEditor, { props: { modelValue: [row] } });
+
+    await wrapper.get('[data-testid="price-0"]').setValue('68.501');
+    await wrapper.get('[data-testid="price-0"]').trigger('change');
+
+    expect(
+      (wrapper.emitted('update:modelValue')?.at(-1)?.[0] as SkuFormRow[])[0]
+        ?.priceYuan,
+    ).toBe('68.501');
+  });
 });

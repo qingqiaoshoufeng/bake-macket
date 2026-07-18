@@ -32,10 +32,13 @@ function onAdd(): void {
 }
 
 function onRemove(rowId: string): void {
+  const removedRow = editor.rows.value.find((row) => row.rowId === rowId);
   editor.removeRow(rowId);
-  const { [rowId]: removed, ...remaining } = uploadingByRow.value;
-  void removed;
-  uploadingByRow.value = remaining;
+  if (!removedRow?.id) {
+    const { [rowId]: removed, ...remaining } = uploadingByRow.value;
+    void removed;
+    uploadingByRow.value = remaining;
+  }
   emit('uploading-change', uploading.value);
   emitRows();
 }

@@ -1,3 +1,4 @@
+import type { PublicProductDetailView } from '@bake-mall/contracts';
 import { mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { createRouter, createMemoryHistory } from 'vue-router';
@@ -15,22 +16,28 @@ vi.mock('./catalog/api/index.js', () => ({
   },
 }));
 
-const detail = {
+const detail: PublicProductDetailView = {
   id: 'product-1',
   categoryId: 'cake',
   name: '草莓云朵蛋糕',
-  summary: '当日草莓与轻盈奶油',
-  coverImageUrl: 'https://cdn.example.com/product.webp',
-  images: [],
   detailHtml: '<p>服务端清洗后的商品详情</p>',
+  images: [],
   skus: [
     {
-      id: 'sku-1',
+      id: 'sku-live',
       name: '6寸',
-      attributes: { size: '6寸' },
+      attributes: {},
       priceCents: 6800,
       stock: 3,
       isAvailable: true,
+    },
+    {
+      id: 'sku-zero',
+      name: '8寸',
+      attributes: {},
+      priceCents: 8800,
+      stock: 0,
+      isAvailable: false,
     },
   ],
 };
@@ -64,5 +71,13 @@ describe('ProductDetailView', () => {
     expect(wrapper.html()).toContain('服务端清洗后的商品详情');
     await wrapper.get('[data-testid="choose-sku"]').trigger('click');
     expect(wrapper.find('[data-testid="sku-sheet"]').exists()).toBe(true);
+    expect(
+      (wrapper.get('[data-testid="sku-sku-live"]').element as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+    expect(
+      (wrapper.get('[data-testid="sku-sku-zero"]').element as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
   });
 });

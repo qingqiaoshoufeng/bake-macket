@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import type { SkuView } from '@bake-mall/contracts';
 
 /**
@@ -29,7 +29,12 @@ const quantity = ref(1);
 
 const selectedSku = computed<SkuView | null>(() => {
   if (!selectedSkuId.value) return null;
-  return props.skus.find((sku) => sku.id === selectedSkuId.value) ?? null;
+  const sku = props.skus.find(({ id }) => id === selectedSkuId.value);
+  return sku && isSelectable(sku) ? sku : null;
+});
+
+watch(selectedSku, (sku) => {
+  if (!sku) selectedSkuId.value = null;
 });
 
 const canAdd = computed(() => {
@@ -82,7 +87,7 @@ function onAdd(): void {
           type="button"
           :class="[
             'sku-picker__item',
-            selectedSkuId === sku.id ? 'sku-picker__item--selected' : '',
+            selectedSku?.id === sku.id ? 'sku-picker__item--selected' : '',
             !isSelectable(sku) ? 'sku-picker__item--disabled' : '',
           ]"
           :data-testid="`sku-${sku.id}`"

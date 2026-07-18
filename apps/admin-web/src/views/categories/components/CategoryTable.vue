@@ -36,7 +36,7 @@ const emit = defineEmits<{
   'cancel-edit': [];
   'save-edit': [category: AdminCategoryView];
   'toggle-active': [category: AdminCategoryView];
-  'remove': [category: AdminCategoryView];
+  remove: [category: AdminCategoryView];
 }>();
 
 const [
@@ -63,17 +63,16 @@ function asCategory(row: unknown): AdminCategoryView {
     :empty-text="'暂无分类'"
     :data-testid="'categories-table'"
   >
-    <ElTableColumn
-      :label="nameColumn.label"
-      :min-width="nameColumn.minWidth"
-    >
+    <ElTableColumn :label="nameColumn.label" :min-width="nameColumn.minWidth">
       <template #default="{ row }">
         <template v-if="editingId === row.id">
           <ElInput
             :model-value="draft.name"
             size="small"
             :data-testid="`edit-name-${row.id}`"
-            @update:model-value="(v) => emit('update:draft', { name: String(v) })"
+            @update:model-value="
+              (v) => emit('update:draft', { name: String(v) })
+            "
           />
         </template>
         <template v-else>
@@ -82,10 +81,7 @@ function asCategory(row: unknown): AdminCategoryView {
       </template>
     </ElTableColumn>
 
-    <ElTableColumn
-      :label="imageColumn.label"
-      :min-width="imageColumn.minWidth"
-    >
+    <ElTableColumn :label="imageColumn.label" :min-width="imageColumn.minWidth">
       <template #default="{ row }">
         <template v-if="editingId === row.id">
           <ElInput
@@ -93,7 +89,9 @@ function asCategory(row: unknown): AdminCategoryView {
             size="small"
             placeholder="https://..."
             :data-testid="`edit-image-${row.id}`"
-            @update:model-value="(v) => emit('update:draft', { imageUrl: String(v) })"
+            @update:model-value="
+              (v) => emit('update:draft', { imageUrl: String(v) })
+            "
           />
         </template>
         <template v-else>
@@ -106,7 +104,9 @@ function asCategory(row: unknown): AdminCategoryView {
           >
             {{ row.imageUrl }}
           </a>
-          <ElTag v-else type="info" :data-testid="`category-no-image-${row.id}`">无图</ElTag>
+          <ElTag v-else type="info" :data-testid="`category-no-image-${row.id}`"
+            >无图</ElTag
+          >
         </template>
       </template>
     </ElTableColumn>
@@ -122,7 +122,9 @@ function asCategory(row: unknown): AdminCategoryView {
             size="small"
             :min="0"
             :data-testid="`edit-sort-${row.id}`"
-            @update:model-value="(v) => emit('update:draft', { sortOrder: Number(v ?? 0) })"
+            @update:model-value="
+              (v) => emit('update:draft', { sortOrder: Number(v ?? 0) })
+            "
           />
         </template>
         <template v-else>
@@ -131,10 +133,7 @@ function asCategory(row: unknown): AdminCategoryView {
       </template>
     </ElTableColumn>
 
-    <ElTableColumn
-      :label="activeColumn.label"
-      :width="activeColumn.width"
-    >
+    <ElTableColumn :label="activeColumn.label" :width="activeColumn.width">
       <template #default="{ row }">
         <ElSwitch
           :model-value="row.isActive"
@@ -144,10 +143,7 @@ function asCategory(row: unknown): AdminCategoryView {
       </template>
     </ElTableColumn>
 
-    <ElTableColumn
-      :label="statusColumn.label"
-      :width="statusColumn.width"
-    >
+    <ElTableColumn :label="statusColumn.label" :width="statusColumn.width">
       <template #default="{ row }">
         <ElTag
           :type="row.isActive ? 'success' : 'info'"

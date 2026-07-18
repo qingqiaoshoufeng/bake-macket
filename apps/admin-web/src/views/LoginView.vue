@@ -12,12 +12,12 @@ const route = useRoute();
 
 const defaultLogin =
   import.meta.env.DEV && import.meta.env.MODE !== 'production'
-  ? getDefaultAdminLogin({
-      isDevelopment: true,
-      email: import.meta.env.VITE_ADMIN_EMAIL,
-      password: import.meta.env.VITE_ADMIN_PASSWORD,
-    })
-  : getDefaultAdminLogin({ isDevelopment: false });
+    ? getDefaultAdminLogin({
+        isDevelopment: true,
+        email: import.meta.env.VITE_ADMIN_EMAIL,
+        password: import.meta.env.VITE_ADMIN_PASSWORD,
+      })
+    : getDefaultAdminLogin({ isDevelopment: false });
 const email = ref(defaultLogin.email);
 const password = ref(defaultLogin.password);
 const submitting = ref(false);

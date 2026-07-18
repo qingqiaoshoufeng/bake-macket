@@ -22,7 +22,21 @@ const adminAuth = useAdminAuthStore();
 const router = useRouter();
 const route = useRoute();
 
-const activePath = computed(() => route.path);
+const activePath = computed(() =>
+  route.path.startsWith('/products/') ? '/products' : route.path,
+);
+const pageTitle = computed(() => {
+  const matchedTitle = [...route.matched]
+    .reverse()
+    .map((record) => record.meta.title)
+    .find((title): title is string => typeof title === 'string');
+
+  return (
+    matchedTitle ??
+    NAV_ITEMS.find(({ path }) => path === route.path)?.label ??
+    '概览'
+  );
+});
 const greeting = computed(() => {
   const name = adminAuth.profile?.displayName;
   if (name) return `你好,${name}`;
@@ -70,9 +84,11 @@ async function onSelect(path: string): Promise<void> {
 
     <div class="admin-layout__main">
       <header class="admin-layout__topbar">
-        <span class="admin-layout__topbar-title">{{
-          NAV_ITEMS.find((item) => item.path === activePath)?.label ?? '概览'
-        }}</span>
+        <span
+          class="admin-layout__topbar-title"
+          data-testid="admin-page-title"
+          >{{ pageTitle }}</span
+        >
         <div class="admin-layout__topbar-user">
           <span>{{ greeting }}</span>
           <ElButton

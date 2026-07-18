@@ -90,6 +90,7 @@ function parsePriceYuan(value: string): number {
 function isValidRow(row: SkuFormRow): boolean {
   try {
     parsePriceYuan(row.priceYuan);
+    normalizeAttributes(row.attributes);
     return (
       row.name.trim() !== '' && Number.isInteger(row.stock) && row.stock >= 0
     );
@@ -162,14 +163,10 @@ export function useSkuEditor(
   }
 
   function setPriceYuan(rowId: string, priceYuan: string): void {
-    parsePriceYuan(priceYuan);
-    updateRow(rowId, (row) => ({ ...row, priceYuan: priceYuan.trim() }));
+    updateRow(rowId, (row) => ({ ...row, priceYuan }));
   }
 
   function setStock(rowId: string, stock: number): void {
-    if (!Number.isInteger(stock) || stock < 0) {
-      throw new Error('库存必须是非负整数');
-    }
     updateRow(rowId, (row) => ({ ...row, stock }));
   }
 
@@ -181,8 +178,10 @@ export function useSkuEditor(
     rowId: string,
     attributes: readonly SkuAttributeRow[],
   ): void {
-    const normalized = normalizeAttributes(attributes);
-    updateRow(rowId, (row) => ({ ...row, attributes: normalized }));
+    updateRow(rowId, (row) => ({
+      ...row,
+      attributes: attributes.map(cloneAttribute),
+    }));
   }
 
   function setImage(rowId: string, image: SkuFormRow['image']): void {

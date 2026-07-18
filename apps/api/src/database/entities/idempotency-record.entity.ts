@@ -22,7 +22,7 @@ export class IdempotencyRecord {
   @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
   id!: string;
 
-  @Column({ type: 'bigint', unsigned: true })
+  @Column({ name: 'user_id', type: 'bigint', unsigned: true })
   userId!: string;
 
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
@@ -33,9 +33,9 @@ export class IdempotencyRecord {
   key!: string;
 
   /** Foreign key into the orders table once the request is finalised. */
-  @Column({ type: 'bigint', unsigned: true, nullable: true })
+  @Column({ name: 'order_id', type: 'bigint', unsigned: true, nullable: true })
   orderId!: string | null;
 
-  @CreateDateColumn({ type: 'datetime', precision: 0 })
+  @CreateDateColumn({ name: 'created_at', type: 'datetime', precision: 0 })
   createdAt!: Date;
 }
