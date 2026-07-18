@@ -12,6 +12,10 @@ import {
   canTransitionOrder,
   FulfillmentType,
   OrderStatus,
+  type AdminOrderListItem,
+  type AdminOrderListQuery,
+  type AdminOrderListResult,
+  type OrderStatusUpdateResult,
   type OrderView,
 } from '@bake-mall/contracts';
 import { randomInt } from 'node:crypto';
@@ -29,11 +33,6 @@ import { User } from '../database/entities/user.entity.js';
 import { CreateOrderDto } from './dto/create-order.dto.js';
 
 const UNIQUE_VIOLATION_CODE = 'ER_DUP_ENTRY';
-
-type OrderStatusUpdateResult = {
-  order: OrderView;
-  noRestock: boolean;
-};
 
 /**
  * Order lifecycle service. Wraps every mutation that touches stock, the
@@ -331,13 +330,6 @@ export class OrdersService {
       throw new NotFoundException('Order not found');
     }
 
-    if (order.status === nextStatus) {
-      return {
-        order: await this.fetchOrderView(order),
-        noRestock: false,
-      };
-    }
-
     if (!canTransitionOrder(order.status, nextStatus)) {
       throw new UnprocessableEntityException({
         code: ApiErrorCode.INVALID_ORDER_TRANSITION,
@@ -395,13 +387,43 @@ export class OrdersService {
     return Promise.all(orders.map((order) => this.fetchOrderView(order)));
   }
 
-  /** Admin-side list with optional status filtering. */
-  async listAll(status?: OrderStatus): Promise<OrderView[]> {
-    const orders = await this.orders.find({
-      where: status ? { status } : {},
-      order: { createdAt: 'DESC' },
-    });
-    return Promise.all(orders.map((order) => this.fetchOrderView(order)));
+  /** Admin-side lightweight list with contract-defined filtering and paging. */
+  async listAll(query: AdminOrderListQuery): Promise<AdminOrderListResult> {
+    const builder = this.orders.createQueryBuilder('order');
+    if (query.orderNo?.trim()) {
+      builder.andWhere('order.orderNo LIKE :orderNo', {
+        orderNo: `%${query.orderNo.trim()}%`,
+      });
+    }
+    if (query.status) {
+      builder.andWhere('order.status = :status', { status: query.status });
+    }
+    if (query.fulfillmentType) {
+      builder.andWhere('order.fulfillmentType = :fulfillmentType', {
+        fulfillmentType: query.fulfillmentType,
+      });
+    }
+    if (query.createdAtFrom) {
+      builder.andWhere('order.createdAt >= :createdAtFrom', {
+        createdAtFrom: new Date(query.createdAtFrom),
+      });
+    }
+    if (query.createdAtBefore) {
+      builder.andWhere('order.createdAt < :createdAtBefore', {
+        createdAtBefore: new Date(query.createdAtBefore),
+      });
+    }
+    const [orders, total] = await builder
+      .orderBy('order.createdAt', 'DESC')
+      .skip((query.page - 1) * query.pageSize)
+      .take(query.pageSize)
+      .getManyAndCount();
+    return {
+      items: orders.map((order) => this.toAdminListItem(order)),
+      page: query.page,
+      pageSize: query.pageSize,
+      total,
+    };
   }
 
   async getMine(userId: string, orderId: string): Promise<OrderView> {
@@ -418,6 +440,20 @@ export class OrdersService {
       throw new NotFoundException('Order not found');
     }
     return this.fetchOrderView(order);
+  }
+
+  private toAdminListItem(order: Order): AdminOrderListItem {
+    return {
+      id: order.id,
+      orderNo: order.orderNo,
+      status: order.status,
+      fulfillmentType: order.fulfillmentType,
+      contactName: order.contactName,
+      contactPhone: order.contactPhone,
+      goodsTotalCents: order.goodsTotalCents,
+      createdAt: order.createdAt.toISOString(),
+      updatedAt: order.updatedAt.toISOString(),
+    };
   }
 
   private async fetchOrderView(order: Order): Promise<OrderView> {

@@ -8,6 +8,7 @@ import {
   ApiErrorCode,
   FulfillmentType,
   OrderStatus,
+  type AdminOrderListQuery,
 } from '@bake-mall/contracts';
 
 import { AuditService } from '../audit/audit.service.js';
@@ -118,6 +119,11 @@ describe('OrdersService', () => {
         createQueryBuilder: () => {
           let lastParams: Record<string, unknown> = {};
           let setValues: Record<string, unknown> = {};
+          const predicates: Array<
+            (record: Record<string, unknown>) => boolean
+          > = [];
+          let offset = 0;
+          let limit = Number.POSITIVE_INFINITY;
           const builder: Record<string, unknown> = {
             update: () => builder,
             set: (values: Record<string, unknown>) => {
@@ -127,6 +133,43 @@ describe('OrdersService', () => {
             where: (_sql: string, params: Record<string, unknown>) => {
               lastParams = params;
               return builder;
+            },
+            andWhere: (clause: string, parameters: Record<string, unknown>) => {
+              const predicate = clause.includes('orderNo')
+                ? (record: Record<string, unknown>) =>
+                    String(record.orderNo).includes(
+                      String(parameters.orderNo).replaceAll('%', ''),
+                    )
+                : clause.includes('fulfillmentType')
+                  ? (record: Record<string, unknown>) =>
+                      record.fulfillmentType === parameters.fulfillmentType
+                  : clause.includes('createdAt >=')
+                    ? (record: Record<string, unknown>) =>
+                        (record.createdAt as Date) >=
+                        (parameters.createdAtFrom as Date)
+                    : clause.includes('createdAt <')
+                      ? (record: Record<string, unknown>) =>
+                          (record.createdAt as Date) <
+                          (parameters.createdAtBefore as Date)
+                      : (record: Record<string, unknown>) =>
+                          record.status === parameters.status;
+              predicates.push(predicate);
+              return builder;
+            },
+            orderBy: () => builder,
+            skip: (value: number) => {
+              offset = value;
+              return builder;
+            },
+            take: (value: number) => {
+              limit = value;
+              return builder;
+            },
+            getManyAndCount: async () => {
+              const filtered = list.filter((record) =>
+                predicates.every((predicate) => predicate(record)),
+              );
+              return [filtered.slice(offset, offset + limit), filtered.length];
             },
             execute: async () => {
               // Translate the conditional decrement into the in-memory model.
@@ -354,6 +397,71 @@ describe('OrdersService', () => {
     expect(records.skuRecords.find((s) => s.id === 'sku-1')?.stock).toBe(4);
   });
 
+  it('filters and paginates the lightweight admin order list', async () => {
+    const createdAt = new Date('2026-07-18T08:00:00.000Z');
+    const { service } = buildService({
+      orders: [
+        {
+          id: 'order-1',
+          orderNo: 'BM2026071800000001',
+          status: OrderStatus.NEW,
+          fulfillmentType: FulfillmentType.PICKUP,
+          contactName: 'Alice',
+          contactPhone: '13800000000',
+          goodsTotalCents: 6800,
+          createdAt,
+          updatedAt: createdAt,
+        },
+        {
+          id: 'order-2',
+          orderNo: 'BM2026071800000002',
+          status: OrderStatus.PROCESSING,
+          fulfillmentType: FulfillmentType.DELIVERY,
+          contactName: 'Bob',
+          contactPhone: '13900000000',
+          goodsTotalCents: 8800,
+          createdAt: new Date('2026-07-18T09:00:00.000Z'),
+          updatedAt: new Date('2026-07-18T09:00:00.000Z'),
+        },
+      ],
+      orderItems: [
+        {
+          id: 'item-1',
+          orderId: 'order-2',
+          productName: '不应加载的详情',
+        },
+      ],
+    });
+    const query: AdminOrderListQuery = {
+      orderNo: '0002',
+      status: OrderStatus.PROCESSING,
+      fulfillmentType: FulfillmentType.DELIVERY,
+      createdAtFrom: '2026-07-18T08:30:00.000Z',
+      createdAtBefore: '2026-07-19T00:00:00.000Z',
+      page: 1,
+      pageSize: 20,
+    };
+
+    await expect(service.listAll(query)).resolves.toEqual({
+      items: [
+        {
+          id: 'order-2',
+          orderNo: 'BM2026071800000002',
+          status: OrderStatus.PROCESSING,
+          fulfillmentType: FulfillmentType.DELIVERY,
+          contactName: 'Bob',
+          contactPhone: '13900000000',
+          goodsTotalCents: 8800,
+          createdAt: '2026-07-18T09:00:00.000Z',
+          updatedAt: '2026-07-18T09:00:00.000Z',
+        },
+      ],
+      page: 1,
+      pageSize: 20,
+      total: 1,
+    });
+  });
+
   it('rejects an illegal order status transition with INVALID_ORDER_TRANSITION', async () => {
     const { service } = buildService({
       users: [
@@ -391,6 +499,33 @@ describe('OrdersService', () => {
       };
       expect(response.code).toBe(ApiErrorCode.INVALID_ORDER_TRANSITION);
     }
+  });
+
+  it('rejects a same-status request as an invalid transition', async () => {
+    const { service } = buildService({
+      adminUsers: [{ id: 'admin-1', isActive: true }],
+      orders: [
+        {
+          id: 'order-1',
+          orderNo: 'BM2026010100000001',
+          status: OrderStatus.COMPLETED,
+          fulfillmentType: FulfillmentType.PICKUP,
+          contactName: 'Alice',
+          contactPhone: '13800000000',
+          goodsTotalCents: 1000,
+          createdAt: new Date('2026-07-18T00:00:00.000Z'),
+          updatedAt: new Date('2026-07-18T00:00:00.000Z'),
+        },
+      ],
+    });
+
+    await expect(
+      service.updateStatus('order-1', OrderStatus.COMPLETED, 'admin-1'),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({
+        code: ApiErrorCode.INVALID_ORDER_TRANSITION,
+      }),
+    });
   });
 
   it('marks cancellation as noRestock and writes an audit log entry', async () => {

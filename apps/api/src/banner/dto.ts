@@ -1,4 +1,3 @@
-import { PartialType } from '@nestjs/mapped-types';
 import { Type } from 'class-transformer';
 import {
   IsBoolean,
@@ -10,13 +9,25 @@ import {
   MaxLength,
   Min,
   ValidateIf,
+  ValidateNested,
 } from 'class-validator';
 
 import { BannerTargetType } from '@bake-mall/contracts';
 
-export class CreateBannerDto {
-  @IsUrl({ protocols: ['https'], require_protocol: true })
-  imageUrl!: string;
+class BannerMediaAssetDto {
+  @IsString()
+  @MaxLength(512)
+  objectKey!: string;
+
+  @IsUrl({ protocols: ['http', 'https'], require_protocol: true })
+  @MaxLength(512)
+  publicUrl!: string;
+}
+
+export class SaveBannerDto {
+  @ValidateNested()
+  @Type(() => BannerMediaAssetDto)
+  image!: BannerMediaAssetDto;
 
   @IsOptional()
   @IsString()
@@ -26,21 +37,15 @@ export class CreateBannerDto {
   @IsEnum(BannerTargetType)
   targetType!: BannerTargetType;
 
-  @ValidateIf(
-    (dto: CreateBannerDto) => dto.targetType !== BannerTargetType.NONE,
-  )
+  @ValidateIf((dto: SaveBannerDto) => dto.targetType !== BannerTargetType.NONE)
   @IsString()
-  targetId?: string | null;
+  targetId?: string;
 
-  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(0)
-  sortOrder?: number;
+  sortOrder!: number;
 
-  @IsOptional()
   @IsBoolean()
-  isActive?: boolean;
+  isActive!: boolean;
 }
-
-export class UpdateBannerDto extends PartialType(CreateBannerDto) {}

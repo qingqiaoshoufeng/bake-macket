@@ -188,6 +188,21 @@ describe('useProductEditor', () => {
     expect(editor.categories.value).toEqual(categoryListMock);
   });
 
+  it('rejects every product without at least one SKU before the API call', async () => {
+    const { editor, load } = newEditor();
+    await load;
+    editor.replaceForm({
+      ...editor.form.value,
+      name: '下架新品',
+      categoryId: 'category-1',
+      isActive: false,
+      skus: [],
+    });
+
+    await expect(editor.save()).rejects.toThrow('至少需要一个 SKU');
+    expect(api.create).not.toHaveBeenCalled();
+  });
+
   it('rejects active products without active SKUs before the API call', async () => {
     const { editor, load } = newEditor();
     await load;

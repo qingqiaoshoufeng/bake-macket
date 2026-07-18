@@ -70,12 +70,14 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'banners',
         name: 'admin-banners',
-        component: () => import('../views/PlaceholderView.vue'),
+        component: () => import('../views/banners/BannersView.vue'),
+        meta: { title: 'Banner 管理' },
       },
       {
         path: 'orders',
         name: 'admin-orders',
-        component: () => import('../views/PlaceholderView.vue'),
+        component: () => import('../views/orders/OrdersView.vue'),
+        meta: { title: '订单管理' },
       },
       {
         path: ':pathMatch(.*)*',

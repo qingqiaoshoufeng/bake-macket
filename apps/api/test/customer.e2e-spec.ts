@@ -17,6 +17,7 @@ import { AddressService } from '../src/customer/address.service.js';
 import { CustomerModule } from '../src/customer/customer.module.js';
 import { Address } from '../src/database/entities/address.entity.js';
 import { AdminUser } from '../src/database/entities/admin-user.entity.js';
+import { AuditLog } from '../src/database/entities/audit-log.entity.js';
 import { Banner } from '../src/database/entities/banner.entity.js';
 import { CartItem } from '../src/database/entities/cart-item.entity.js';
 import { Category } from '../src/database/entities/category.entity.js';
@@ -153,6 +154,7 @@ describe('Customer domain (e2e)', () => {
     const userRepo = memoryRepository<User>();
     const adminRepo = memoryRepository<AdminUser>();
     const addressRepo = memoryRepository<Address>();
+    const auditRepo = memoryRepository<AuditLog>();
     const cartRepo = memoryRepository<CartItem>();
     const skuRepo = memoryRepository<Sku>();
     const categoryRepo = memoryRepository<Category>();
@@ -225,6 +227,8 @@ describe('Customer domain (e2e)', () => {
       .useValue(adminRepo)
       .overrideProvider(getRepositoryToken(Address))
       .useValue(addressRepo)
+      .overrideProvider(getRepositoryToken(AuditLog))
+      .useValue(auditRepo)
       .overrideProvider(getRepositoryToken(CartItem))
       .useValue(cartRepo)
       .overrideProvider(getRepositoryToken(Sku))
@@ -327,11 +331,42 @@ describe('Customer domain (e2e)', () => {
       .post('/api/v1/admin/banners')
       .set(adminHeaders)
       .send({
-        imageUrl: 'https://cdn.example.test/valid.jpg',
+        image: {
+          objectKey: 'banners/valid.jpg',
+          publicUrl: 'http://127.0.0.1:9000/bake-mall/banners/valid.jpg',
+        },
+        title: 'Valid product Banner',
         targetType: 'PRODUCT',
         targetId: 'product-1',
+        sortOrder: 1,
+        isActive: true,
       })
       .expect(201);
+    expect(validBanner.body).toEqual(
+      expect.objectContaining({
+        image: {
+          objectKey: 'banners/valid.jpg',
+          publicUrl: 'http://127.0.0.1:9000/bake-mall/banners/valid.jpg',
+        },
+        targetType: 'PRODUCT',
+        targetId: 'product-1',
+      }),
+    );
+    const clearedBanner = await request(app.getHttpServer())
+      .patch(`/api/v1/admin/banners/${validBanner.body.id}`)
+      .set(adminHeaders)
+      .send({
+        image: validBanner.body.image,
+        targetType: 'NONE',
+        sortOrder: 1,
+        isActive: true,
+      })
+      .expect(200);
+    expect(clearedBanner.body).not.toHaveProperty('targetId');
+    expect(clearedBanner.body).not.toHaveProperty('title');
+    expect(
+      bannerRepo.records.find((banner) => banner.id === validBanner.body.id),
+    ).toEqual(expect.objectContaining({ targetType: 'NONE', targetId: null }));
     await bannerRepo.save({
       imageUrl: 'https://cdn.example.test/disabled.jpg',
       targetType: 'NONE',
@@ -350,10 +385,11 @@ describe('Customer domain (e2e)', () => {
       .get('/api/v1/public/banners')
       .expect(200);
     expect(banners.body).toEqual([
-      expect.objectContaining({
+      {
         id: validBanner.body.id,
-        targetId: 'product-1',
-      }),
+        imageUrl: validBanner.body.image.publicUrl,
+        targetType: 'NONE',
+      },
     ]);
   });
 });

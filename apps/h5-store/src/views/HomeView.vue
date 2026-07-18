@@ -3,6 +3,8 @@ import { onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { showToast } from 'vant';
 
+import { BannerTargetType, type BannerView } from '@bake-mall/contracts';
+
 import { CATALOG_COPY } from './catalog/config/copy.js';
 import ProductCard from './catalog/components/ProductCard.vue';
 import StoreTabbar from './catalog/components/StoreTabbar.vue';
@@ -19,24 +21,18 @@ onMounted(async () => {
   }
 });
 
-function openBanner(targetType: string, targetId?: string): void {
-  if (!targetId) return;
+function openBanner(banner: BannerView): void {
+  if (banner.targetType === BannerTargetType.NONE) return;
   const path =
-    targetType === 'PRODUCT'
-      ? `/products/${targetId}`
-      : `/category/${targetId}`;
+    banner.targetType === BannerTargetType.PRODUCT
+      ? `/products/${banner.targetId}`
+      : `/category/${banner.targetId}`;
   void router.push(path);
 }
 </script>
 
 <template>
   <main class="home-shell">
-    <section class="hero">
-      <p class="hero__eyebrow">{{ CATALOG_COPY.eyebrow }}</p>
-      <h1>{{ CATALOG_COPY.heroTitle }}</h1>
-      <p>{{ CATALOG_COPY.heroDescription }}</p>
-    </section>
-
     <section
       v-if="catalog.banners.value.length"
       class="banner-reel"
@@ -47,11 +43,18 @@ function openBanner(targetType: string, targetId?: string): void {
         :key="banner.id"
         type="button"
         class="banner-reel__frame"
-        @click="openBanner(banner.targetType, banner.targetId)"
+        :data-testid="`home-banner-${banner.id}`"
+        @click="openBanner(banner)"
       >
         <img :src="banner.imageUrl" :alt="banner.title ?? '推荐烘焙'" />
         <span>{{ banner.title ?? '门店今日推荐' }}</span>
       </button>
+    </section>
+
+    <section class="hero">
+      <p class="hero__eyebrow">{{ CATALOG_COPY.eyebrow }}</p>
+      <h1>{{ CATALOG_COPY.heroTitle }}</h1>
+      <p>{{ CATALOG_COPY.heroDescription }}</p>
     </section>
 
     <section class="section-block">
@@ -166,7 +169,7 @@ function openBanner(targetType: string, targetId?: string): void {
   grid-auto-flow: column;
   grid-auto-columns: 82%;
   gap: 12px;
-  margin: 18px -16px 0;
+  margin: 0 -16px 18px;
   padding: 0 16px 4px;
   overflow-x: auto;
   scrollbar-width: none;

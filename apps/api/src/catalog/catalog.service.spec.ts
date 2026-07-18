@@ -172,6 +172,15 @@ describe('catalog safety', () => {
     ).rejects.toThrow(BadRequestException);
   });
 
+  it('rejects saving an aggregate without any SKU', async () => {
+    const { service, transaction } = buildAggregateService();
+
+    await expect(
+      service.saveProductAggregate(null, aggregateRequest(), 'admin-1'),
+    ).rejects.toThrow('商品至少需要一个 SKU');
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
   it('rejects publishing an aggregate without an active SKU', async () => {
     const service = new CatalogService(
       {} as never,

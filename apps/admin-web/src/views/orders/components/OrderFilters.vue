@@ -1,0 +1,89 @@
+<script setup lang="ts">
+import { FulfillmentType, OrderStatus } from '@bake-mall/contracts';
+import {
+  ElButton,
+  ElDatePicker,
+  ElForm,
+  ElFormItem,
+  ElInput,
+  ElOption,
+  ElSelect,
+} from 'element-plus';
+
+import {
+  FULFILLMENT_LABELS,
+  ORDER_STATUS_LABELS,
+} from '../../../constants/labels.js';
+import type { OrderFilterForm } from '../type/index.js';
+
+const props = defineProps<{ filters: OrderFilterForm; loading: boolean }>();
+const emit = defineEmits<{
+  change: [value: Partial<OrderFilterForm>];
+  search: [];
+  reset: [];
+}>();
+</script>
+
+<template>
+  <ElForm inline class="order-filters">
+    <ElFormItem label="订单号">
+      <ElInput
+        :model-value="props.filters.orderNo"
+        clearable
+        placeholder="输入订单号"
+        @update:model-value="emit('change', { orderNo: $event })"
+        @keyup.enter="emit('search')"
+      />
+    </ElFormItem>
+    <ElFormItem label="状态">
+      <ElSelect
+        :model-value="props.filters.status"
+        clearable
+        placeholder="全部状态"
+        @update:model-value="emit('change', { status: $event })"
+      >
+        <ElOption
+          v-for="status in Object.values(OrderStatus)"
+          :key="status"
+          :label="ORDER_STATUS_LABELS[status]"
+          :value="status"
+        />
+      </ElSelect>
+    </ElFormItem>
+    <ElFormItem label="履约方式">
+      <ElSelect
+        :model-value="props.filters.fulfillmentType"
+        clearable
+        placeholder="全部方式"
+        @update:model-value="emit('change', { fulfillmentType: $event })"
+      >
+        <ElOption
+          v-for="type in Object.values(FulfillmentType)"
+          :key="type"
+          :label="FULFILLMENT_LABELS[type]"
+          :value="type"
+        />
+      </ElSelect>
+    </ElFormItem>
+    <ElFormItem label="下单时间">
+      <ElDatePicker
+        :model-value="
+          props.filters.createdAtRange
+            ? [...props.filters.createdAtRange]
+            : null
+        "
+        type="datetimerange"
+        range-separator="至"
+        start-placeholder="开始时间"
+        end-placeholder="结束时间"
+        @update:model-value="emit('change', { createdAtRange: $event })"
+      />
+    </ElFormItem>
+    <ElFormItem>
+      <ElButton type="primary" :loading="loading" @click="emit('search')">
+        查询
+      </ElButton>
+      <ElButton :disabled="loading" @click="emit('reset')">重置</ElButton>
+    </ElFormItem>
+  </ElForm>
+</template>

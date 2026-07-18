@@ -174,15 +174,27 @@ export class MediaAssetPolicyService {
   constructor(private readonly config: ConfigService<AppConfig, true>) {}
 
   assertProductAsset(asset: MediaAsset): void {
+    this.assertAsset(asset, 'products/', '商品媒体资产路径或来源无效');
+  }
+
+  assertBannerAsset(asset: MediaAsset): void {
+    this.assertAsset(asset, 'banners/', 'Banner 媒体资产路径或来源无效');
+  }
+
+  private assertAsset(
+    asset: MediaAsset,
+    requiredPrefix: `${string}/`,
+    message: string,
+  ): void {
     const env = this.config.get('appEnv', { infer: true });
     const isValid =
-      asset.objectKey.startsWith('products/') &&
+      asset.objectKey.startsWith(requiredPrefix) &&
       isAllowedProductAssetUrl(asset.publicUrl, asset.objectKey, env);
     if (isValid) return;
 
     throw new UnprocessableEntityException({
       code: ApiErrorCode.PRODUCT_ASSET_OWNERSHIP_INVALID,
-      message: '商品媒体资产路径或来源无效',
+      message,
     });
   }
 }

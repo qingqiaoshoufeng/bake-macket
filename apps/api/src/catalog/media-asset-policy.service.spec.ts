@@ -53,6 +53,42 @@ describe('MediaAssetPolicyService', () => {
     );
   });
 
+  it('accepts only an exact banners asset for Banner persistence', () => {
+    const service = buildPolicy(productionEnv);
+
+    expect(() =>
+      service.assertBannerAsset({
+        objectKey: 'banners/summer.webp',
+        publicUrl: 'https://cdn.example.com/banners/summer.webp',
+      }),
+    ).not.toThrow();
+    expect(() =>
+      service.assertBannerAsset({
+        objectKey: 'products/cover.webp',
+        publicUrl: 'https://cdn.example.com/products/cover.webp',
+      }),
+    ).toThrowError(
+      expect.objectContaining({
+        response: {
+          code: ApiErrorCode.PRODUCT_ASSET_OWNERSHIP_INVALID,
+          message: 'Banner 媒体资产路径或来源无效',
+        },
+        status: 422,
+      }),
+    );
+  });
+
+  it('rejects a Banner object key paired with a different public URL', () => {
+    const service = buildPolicy(productionEnv);
+
+    expect(() =>
+      service.assertBannerAsset({
+        objectKey: 'banners/summer.webp',
+        publicUrl: 'https://cdn.example.com/banners/other.webp',
+      }),
+    ).toThrowError(expect.objectContaining({ status: 422 }));
+  });
+
   it('rejects a product object key paired with a different media namespace', () => {
     const service = buildPolicy(productionEnv);
 

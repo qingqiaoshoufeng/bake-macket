@@ -165,6 +165,9 @@ export class CatalogService {
     dto: SaveProductRequest,
     adminUserId: string,
   ): Promise<AdminProductDetailView> {
+    if (dto.skus.length === 0) {
+      throw new BadRequestException('商品至少需要一个 SKU');
+    }
     if (dto.isActive && !dto.skus.some((sku) => sku.isActive)) {
       throw new BadRequestException('上架商品至少需要一个启用 SKU');
     }

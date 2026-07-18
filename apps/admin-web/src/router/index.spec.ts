@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import CategoriesView from '../views/CategoriesView.vue';
+import BannersView from '../views/banners/BannersView.vue';
+import OrdersView from '../views/orders/OrdersView.vue';
 import ProductEditorView from '../views/products/ProductEditorView.vue';
 import ProductsView from '../views/products/ProductsView.vue';
 import { router } from './index.js';
@@ -22,6 +24,40 @@ describe('admin category route', () => {
 
     const loaded = await (component as LazyViewLoader)();
     expect(loaded.default).toBe(CategoriesView);
+  });
+});
+
+describe('admin Banner route', () => {
+  it('lazy-loads the protected Banner management view', async () => {
+    const resolved = router.resolve('/banners');
+    const routeRecord = resolved.matched.find(
+      (record) => record.name === 'admin-banners',
+    );
+    const component = routeRecord?.components?.default;
+
+    expect(resolved.meta.requiresAdminAuth).toBe(true);
+    expect(resolved.meta.title).toBe('Banner 管理');
+    expect(typeof component).toBe('function');
+
+    const loaded = await (component as LazyViewLoader)();
+    expect(loaded.default).toBe(BannersView);
+  });
+});
+
+describe('admin order route', () => {
+  it('lazy-loads the protected order management view', async () => {
+    const resolved = router.resolve('/orders');
+    const routeRecord = resolved.matched.find(
+      (record) => record.name === 'admin-orders',
+    );
+    const component = routeRecord?.components?.default;
+
+    expect(resolved.meta.requiresAdminAuth).toBe(true);
+    expect(resolved.meta.title).toBe('订单管理');
+    expect(typeof component).toBe('function');
+
+    const loaded = await (component as LazyViewLoader)();
+    expect(loaded.default).toBe(OrdersView);
   });
 });
 

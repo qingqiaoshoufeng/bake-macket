@@ -194,6 +194,7 @@ export function validateProductForm(
       ? ['排序必须是非负整数']
       : []),
     ...(uploading ? ['图片上传中，请完成后再保存'] : []),
+    ...(form.skus.length === 0 ? ['商品至少需要一个 SKU'] : []),
     ...(form.isActive && !form.skus.some((sku) => sku.isActive)
       ? ['至少需要一个上架 SKU']
       : []),
