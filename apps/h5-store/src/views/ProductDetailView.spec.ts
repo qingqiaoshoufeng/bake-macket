@@ -76,6 +76,7 @@ describe('ProductDetailView', () => {
     ).toBe('商城主导航');
     await wrapper.get('[data-testid="choose-sku"]').trigger('click');
     expect(wrapper.find('[data-testid="sku-sheet"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="store-tabbar"]').exists()).toBe(false);
     expect(
       (wrapper.get('[data-testid="sku-sku-live"]').element as HTMLButtonElement)
         .disabled,

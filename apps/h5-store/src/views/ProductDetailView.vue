@@ -122,7 +122,11 @@ async function addToCart(payload: {
         <p v-if="submitting" class="sku-sheet-body__status">正在加入购物车…</p>
       </div>
     </ActionSheet>
-    <StoreTabbar :active-path="route.path" @navigate="router.push" />
+    <StoreTabbar
+      v-if="!skuSheetOpen"
+      :active-path="route.path"
+      @navigate="router.push"
+    />
   </StorePage>
 </template>
 
