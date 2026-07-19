@@ -62,9 +62,10 @@ const isActive = computed({
     :title="editing ? '编辑 Banner' : '新增 Banner'"
     width="min(640px, 92vw)"
     :close-on-click-modal="false"
+    class="admin-form-dialog"
     @close="emit('close')"
   >
-    <ElForm label-position="top" class="banner-form">
+    <ElForm label-position="top" class="banner-form admin-dialog-form">
       <ElFormItem label="Banner 图片" required>
         <CosImageUploader
           scope="banners"
@@ -143,7 +144,8 @@ const isActive = computed({
 
 <style scoped>
 .banner-form {
-  padding: 4px 6px 0;
+  display: grid;
+  gap: 4px;
 }
 
 .form-grid {

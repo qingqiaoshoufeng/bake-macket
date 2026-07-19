@@ -2,14 +2,9 @@
 import { computed } from 'vue';
 
 import type { AdminBannerView } from '@bake-mall/contracts';
-import {
-  ElButton,
-  ElEmpty,
-  ElSwitch,
-  ElTable,
-  ElTableColumn,
-} from 'element-plus';
+import { ElButton, ElSwitch, ElTable, ElTableColumn } from 'element-plus';
 
+import AdminEmptyState from '../../../components/feedback/AdminEmptyState.vue';
 import { bannerColumns } from '../config/columns.js';
 
 const props = defineProps<{
@@ -34,6 +29,7 @@ const tableData = computed(() => [...props.banners]);
       v-loading="loading"
       :data="tableData"
       row-key="id"
+      class="admin-table banner-table__table"
     >
       <ElTableColumn
         :label="bannerColumns[0].label"
@@ -56,7 +52,10 @@ const tableData = computed(() => [...props.banners]);
           </div>
         </template>
       </ElTableColumn>
-      <ElTableColumn :label="bannerColumns[1].label" min-width="180">
+      <ElTableColumn
+        :label="bannerColumns[1].label"
+        :min-width="bannerColumns[1].minWidth"
+      >
         <template #default="{ row }">
           <span class="target-label">{{
             props.getTargetLabel(row as AdminBannerView)
@@ -82,6 +81,14 @@ const tableData = computed(() => [...props.banners]);
           />
         </template>
       </ElTableColumn>
+      <template #empty>
+        <AdminEmptyState
+          title="暂无 Banner"
+          description="先创建一张首页横幅，让顾客快速看到主推内容。"
+          tone="lilac"
+        />
+      </template>
+
       <ElTableColumn
         :label="bannerColumns[4].label"
         :width="bannerColumns[4].width"
@@ -103,21 +110,18 @@ const tableData = computed(() => [...props.banners]);
         </template>
       </ElTableColumn>
     </ElTable>
-    <ElEmpty
+    <AdminEmptyState
       v-else
-      description="还没有 Banner，先创建一张首页横幅"
-      :image-size="120"
+      title="暂无 Banner"
+      description="先创建一张首页横幅，让顾客快速看到主推内容。"
+      tone="lilac"
     />
   </div>
 </template>
 
 <style scoped>
-.banner-table {
-  overflow: hidden;
-  border: 1px solid #ece6f8;
-  border-radius: 18px;
-  background: #fff;
-  box-shadow: 0 12px 32px rgb(97 73 138 / 7%);
+.banner-table__table {
+  min-width: 920px;
 }
 
 .banner-ticket {

@@ -3,6 +3,9 @@ import type { AdminBannerView, MediaAsset } from '@bake-mall/contracts';
 import { onMounted } from 'vue';
 import { ElAlert, ElButton, ElMessage, ElMessageBox } from 'element-plus';
 
+import AdminDataPanel from '../../components/layout/AdminDataPanel.vue';
+import AdminPage from '../../components/layout/AdminPage.vue';
+import AdminPageHeader from '../../components/layout/AdminPageHeader.vue';
 import BannerFormDialog from './components/BannerFormDialog.vue';
 import BannerTable from './components/BannerTable.vue';
 import { useBanners } from './hooks/useBanners.js';
@@ -56,17 +59,18 @@ async function removeBanner(banner: AdminBannerView): Promise<void> {
 </script>
 
 <template>
-  <section class="banners-page">
-    <header class="banners-page__head">
-      <div>
-        <span class="banners-page__eyebrow">首页橱窗</span>
-        <h1>Banner 管理</h1>
-        <p>控制首页横幅的图片、顺序、展示状态与跳转目标。</p>
-      </div>
-      <ElButton type="primary" size="large" @click="state.openCreate">
-        新增 Banner
-      </ElButton>
-    </header>
+  <AdminPage>
+    <AdminPageHeader
+      eyebrow="HOMEPAGE"
+      title="Banner 管理"
+      description="控制首页横幅的图片、顺序、展示状态与跳转目标。"
+    >
+      <template #actions>
+        <ElButton type="primary" @click="state.openCreate">
+          新增 Banner
+        </ElButton>
+      </template>
+    </AdminPageHeader>
 
     <ElAlert
       v-if="state.lastError.value"
@@ -80,14 +84,16 @@ async function removeBanner(banner: AdminBannerView): Promise<void> {
       </template>
     </ElAlert>
 
-    <BannerTable
-      :banners="state.banners.value"
-      :loading="state.loading.value"
-      :get-target-label="state.getTargetLabel"
-      @edit="state.startEdit"
-      @toggle="toggleBanner"
-      @remove="removeBanner"
-    />
+    <AdminDataPanel>
+      <BannerTable
+        :banners="state.banners.value"
+        :loading="state.loading.value"
+        :get-target-label="state.getTargetLabel"
+        @edit="state.startEdit"
+        @toggle="toggleBanner"
+        @remove="removeBanner"
+      />
+    </AdminDataPanel>
 
     <BannerFormDialog
       :visible="state.dialogVisible.value"
@@ -103,54 +109,5 @@ async function removeBanner(banner: AdminBannerView): Promise<void> {
       @image-change="updateImage"
       @uploading-change="state.setUploading"
     />
-  </section>
+  </AdminPage>
 </template>
-
-<style scoped>
-.banners-page {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-
-.banners-page__head {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 24px;
-  padding: 22px 24px;
-  overflow: hidden;
-  border: 1px solid #e9e0f8;
-  border-radius: 20px;
-  background:
-    radial-gradient(circle at 92% 15%, rgb(255 221 231 / 72%), transparent 24%),
-    linear-gradient(118deg, #fff 0%, #faf7ff 62%, #f5edff 100%);
-}
-
-.banners-page__eyebrow {
-  color: #9a76c6;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.18em;
-}
-
-.banners-page h1 {
-  margin: 6px 0 0;
-  color: #332b45;
-  font-size: 24px;
-  letter-spacing: -0.02em;
-}
-
-.banners-page p {
-  margin: 7px 0 0;
-  color: #817692;
-  font-size: 13px;
-}
-
-@media (max-width: 640px) {
-  .banners-page__head {
-    align-items: stretch;
-    flex-direction: column;
-  }
-}
-</style>
