@@ -34,15 +34,14 @@ export const sumBy = <T>(xs: readonly T[], key: (x: T) => number): number =>
 export const partition = <T>(
   xs: readonly T[],
   predicate: (x: T) => boolean,
-): { readonly satisfied: T[]; readonly rest: T[] } => {
-  const satisfied: T[] = [];
-  const rest: T[] = [];
-  for (const item of xs) {
-    if (predicate(item)) satisfied.push(item);
-    else rest.push(item);
-  }
-  return { satisfied, rest };
-};
+): { readonly satisfied: T[]; readonly rest: T[] } =>
+  xs.reduce<{ readonly satisfied: T[]; readonly rest: T[] }>(
+    (groups, item) =>
+      predicate(item)
+        ? { ...groups, satisfied: [...groups.satisfied, item] }
+        : { ...groups, rest: [...groups.rest, item] },
+    { satisfied: [], rest: [] },
+  );
 
 export const findById = <T extends { id: string }>(
   xs: readonly T[],

@@ -7,7 +7,10 @@
     >
       <slot name="toolbar" />
     </div>
-    <div class="admin-data-panel__data" data-region="data">
+    <div
+      class="admin-data-panel__data admin-horizontal-scroll"
+      data-region="data"
+    >
       <slot />
     </div>
     <footer
