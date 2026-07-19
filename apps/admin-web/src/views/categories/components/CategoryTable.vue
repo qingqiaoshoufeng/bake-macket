@@ -18,9 +18,10 @@ import {
   ElTag,
 } from 'element-plus';
 
+import AdminEmptyState from '../../../components/feedback/AdminEmptyState.vue';
 import { CATEGORY_COLUMNS } from '../config/columns.js';
 import { ACTIVE_LABEL, INACTIVE_LABEL } from '../config/defaults.js';
-import type { AdminCategoryView } from '../../../api/catalog.js';
+import type { AdminCategoryView } from '@bake-mall/contracts';
 import type { CategoryInlineEdit } from '../type/form.js';
 
 const props = defineProps<{
@@ -60,7 +61,8 @@ function asCategory(row: unknown): AdminCategoryView {
     v-loading="loading"
     :data="[...categories]"
     row-key="id"
-    :empty-text="'暂无分类'"
+    class="admin-table category-table"
+    :empty-text="'暂无分类，先创建一个商品分类'"
     :data-testid="'categories-table'"
   >
     <ElTableColumn :label="nameColumn.label" :min-width="nameColumn.minWidth">
@@ -154,6 +156,14 @@ function asCategory(row: unknown): AdminCategoryView {
       </template>
     </ElTableColumn>
 
+    <template #empty>
+      <AdminEmptyState
+        title="暂无分类"
+        description="先创建一个分类，再为商品安排归属。"
+        tone="mint"
+      />
+    </template>
+
     <ElTableColumn
       :label="actionsColumn.label"
       :width="actionsColumn.width"
@@ -200,6 +210,10 @@ function asCategory(row: unknown): AdminCategoryView {
 </template>
 
 <style scoped>
+.category-table {
+  min-width: 980px;
+}
+
 :deep(.admin-row) td {
   vertical-align: middle;
 }

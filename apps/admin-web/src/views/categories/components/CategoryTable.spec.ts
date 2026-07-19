@@ -95,6 +95,7 @@ describe('CategoryTable', () => {
       .map((column) => column.props());
 
     expect(table.props('rowKey')).toBe('id');
+    expect(table.classes()).toContain('admin-table');
     expect(table.props('data')).toEqual(categoryListMock);
     expect(table.props('data')).not.toBe(categoryListMock);
     expect(columnProps).toHaveLength(CATEGORY_COLUMNS.length);
