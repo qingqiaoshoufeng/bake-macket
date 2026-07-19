@@ -61,7 +61,9 @@ function submitSearch(): void {
         <template v-else-if="query.trim()">
           “{{ query.trim() }}”共找到 {{ catalog.products.value.length }} 款
         </template>
-        <template v-else>共找到 {{ catalog.products.value.length }} 款商品</template>
+        <template v-else
+          >共找到 {{ catalog.products.value.length }} 款商品</template
+        >
       </p>
     </section>
 

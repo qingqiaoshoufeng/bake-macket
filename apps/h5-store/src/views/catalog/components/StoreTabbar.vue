@@ -14,11 +14,7 @@ function isActive(path: string): boolean {
 </script>
 
 <template>
-  <nav
-    class="store-tabbar"
-    aria-label="商城主导航"
-    data-testid="store-tabbar"
-  >
+  <nav class="store-tabbar" aria-label="商城主导航" data-testid="store-tabbar">
     <button
       v-for="item in STORE_NAV_ITEMS"
       :key="item.key"

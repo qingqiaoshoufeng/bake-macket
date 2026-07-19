@@ -10,5 +10,4 @@ export type CheckoutFormValues = {
 };
 
 export type CheckoutValidation =
-  | { valid: true }
-  | { valid: false; message: string };
+  { valid: true } | { valid: false; message: string };

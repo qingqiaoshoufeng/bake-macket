@@ -34,9 +34,22 @@ async function logout(): Promise<void> {
 
 <template>
   <StorePage with-tabbar class="profile">
-    <StorePageHeader title="个人中心" eyebrow="MY BAKE ACCOUNT" description="查看账号资料与常用服务。" />
-    <ProfileSummary :profile="profile.data.profile.value" @navigate="navigate" @logout="logout" />
-    <StoreStatePanel v-if="profile.loading.value" state="loading" title="正在加载资料" description="马上为你整理好账号信息。" />
+    <StorePageHeader
+      title="个人中心"
+      eyebrow="MY BAKE ACCOUNT"
+      description="查看账号资料与常用服务。"
+    />
+    <ProfileSummary
+      :profile="profile.data.profile.value"
+      @navigate="navigate"
+      @logout="logout"
+    />
+    <StoreStatePanel
+      v-if="profile.loading.value"
+      state="loading"
+      title="正在加载资料"
+      description="马上为你整理好账号信息。"
+    />
     <StoreTabbar :active-path="route.path" @navigate="navigate" />
   </StorePage>
 </template>

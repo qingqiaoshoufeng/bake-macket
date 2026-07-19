@@ -47,5 +47,9 @@ defineExpose({ phone: login.data.phone, code: login.data.code });
 </template>
 
 <style scoped>
-.store-auth-page { display: grid; min-height: 100%; place-items: center; }
+.store-auth-page {
+  display: grid;
+  min-height: 100%;
+  place-items: center;
+}
 </style>

@@ -1,5 +1,8 @@
 import { PartialType } from '@nestjs/mapped-types';
-import type { CreateAddressRequest, UpdateAddressRequest } from '@bake-mall/contracts';
+import type {
+  CreateAddressRequest,
+  UpdateAddressRequest,
+} from '@bake-mall/contracts';
 import {
   IsBoolean,
   IsOptional,

@@ -11,17 +11,32 @@ import * as profileFeature from './profile/index.js';
 
 const FEATURE_EXPORTS = [
   [cartFeature, ['CartItemCard', 'CartCheckoutBar', 'useCart']],
-  [checkoutFeature, ['CheckoutItems', 'CheckoutFulfillment', 'CheckoutContact', 'CheckoutSubmit', 'useCheckout']],
-  [ordersFeature, ['OrderCard', 'OrderSnapshot', 'useOrderList', 'useOrderDetail']],
+  [
+    checkoutFeature,
+    [
+      'CheckoutItems',
+      'CheckoutFulfillment',
+      'CheckoutContact',
+      'CheckoutSubmit',
+      'useCheckout',
+    ],
+  ],
+  [
+    ordersFeature,
+    ['OrderCard', 'OrderSnapshot', 'useOrderList', 'useOrderDetail'],
+  ],
   [addressesFeature, ['AddressCard', 'AddressForm', 'useAddresses']],
   [profileFeature, ['ProfileSummary', 'useProfile']],
   [loginFeature, ['LoginForm', 'useLogin']],
 ] as const;
 
 describe('H5 feature module architecture', () => {
-  it.each(FEATURE_EXPORTS)('exports its components and hooks', (feature, names) => {
-    expect(names.every((name) => name in feature)).toBe(true);
-  });
+  it.each(FEATURE_EXPORTS)(
+    'exports its components and hooks',
+    (feature, names) => {
+      expect(names.every((name) => name in feature)).toBe(true);
+    },
+  );
 
   it('keeps StoreTabbar controlled through props and navigate events', async () => {
     const wrapper = mount(StoreTabbar, {
@@ -29,7 +44,10 @@ describe('H5 feature module architecture', () => {
     });
 
     expect(wrapper.get('[aria-current="page"]').text()).toContain('购物车');
-    await wrapper.findAll('button').find((button) => button.text().includes('我的'))?.trigger('click');
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('我的'))
+      ?.trigger('click');
 
     expect(wrapper.emitted('navigate')).toEqual([['/profile']]);
   });

@@ -41,7 +41,8 @@ withDefaults(
 
 .store-page--with-tabbar {
   padding-bottom: calc(
-    var(--mall-tabbar-height) + var(--mall-space-5) + env(safe-area-inset-bottom)
+    var(--mall-tabbar-height) + var(--mall-space-5) +
+      env(safe-area-inset-bottom)
   );
 }
 

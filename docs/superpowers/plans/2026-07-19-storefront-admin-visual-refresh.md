@@ -108,7 +108,11 @@ describe('H5 visual shell', () => {
 
   it('renders consistent page and section hierarchy', () => {
     const header = mount(StorePageHeader, {
-      props: { eyebrow: 'FRESH TODAY', title: '今日烘焙', description: '门店现做' },
+      props: {
+        eyebrow: 'FRESH TODAY',
+        title: '今日烘焙',
+        description: '门店现做',
+      },
     });
     expect(header.get('h1').text()).toBe('今日烘焙');
     expect(header.text()).toContain('FRESH TODAY');
@@ -225,21 +229,31 @@ git diff --check -- apps/h5-store/src/styles/theme.css apps/h5-store/src/compone
 ```ts
 expect(wrapper.find('.store-page').exists()).toBe(true);
 expect(wrapper.find('.store-section').exists()).toBe(true);
-expect(wrapper.get('[data-testid="store-tabbar"]').attributes('aria-label')).toBe('商城主导航');
+expect(
+  wrapper.get('[data-testid="store-tabbar"]').attributes('aria-label'),
+).toBe('商城主导航');
 ```
 
 `ProductCard.spec.ts` 增加：
 
 ```ts
-expect(wrapper.get('[data-testid="product-card-product-1"]').classes()).toContain('product-card');
-expect(wrapper.get('.product-card__body').attributes('data-layout')).toBe('stable');
+expect(
+  wrapper.get('[data-testid="product-card-product-1"]').classes(),
+).toContain('product-card');
+expect(wrapper.get('.product-card__body').attributes('data-layout')).toBe(
+  'stable',
+);
 ```
 
 `SkuPicker.spec.ts` 增加：
 
 ```ts
-expect(wrapper.get('[data-testid="qty"]').classes()).toContain('sku-picker__qty-input');
-expect(wrapper.get('[data-testid="add-cart"]').attributes('aria-disabled')).toBe('true');
+expect(wrapper.get('[data-testid="qty"]').classes()).toContain(
+  'sku-picker__qty-input',
+);
+expect(
+  wrapper.get('[data-testid="add-cart"]').attributes('aria-disabled'),
+).toBe('true');
 ```
 
 运行：
@@ -310,14 +324,18 @@ git diff --check -- apps/h5-store/src/views/HomeView.vue apps/h5-store/src/views
 
 ```ts
 expect(wrapper.find('.store-page--with-fixed-action').exists()).toBe(true);
-expect(wrapper.get('[data-testid="checkout"]').classes()).toContain('store-primary-action');
+expect(wrapper.get('[data-testid="checkout"]').classes()).toContain(
+  'store-primary-action',
+);
 ```
 
 结算测试增加：
 
 ```ts
 expect(wrapper.findAll('.store-form-card').length).toBeGreaterThanOrEqual(3);
-expect(wrapper.get('[data-testid="submit"]').attributes('aria-disabled')).toBeDefined();
+expect(
+  wrapper.get('[data-testid="submit"]').attributes('aria-disabled'),
+).toBeDefined();
 ```
 
 登录测试增加：
@@ -413,7 +431,11 @@ it('provides a consistent page hierarchy and action slot', () => {
 
 it('separates toolbar, data and footer regions', () => {
   const wrapper = mount(AdminDataPanel, {
-    slots: { toolbar: '<div>filters</div>', default: '<div>table</div>', footer: '<div>pager</div>' },
+    slots: {
+      toolbar: '<div>filters</div>',
+      default: '<div>table</div>',
+      footer: '<div>pager</div>',
+    },
   });
   expect(wrapper.find('[data-region="toolbar"]').exists()).toBe(true);
   expect(wrapper.find('[data-region="data"]').exists()).toBe(true);
@@ -649,20 +671,20 @@ rg -n 'linear-gradient' apps/admin-web/src/views/CategoriesView.vue apps/admin-w
 `ProductForm.spec.ts` 增加：
 
 ```ts
-expect(wrapper.findAll('[data-form-section]').map((node) => node.attributes('data-form-section'))).toEqual([
-  'basic',
-  'media',
-  'detail',
-  'skus',
-  'publish',
-]);
+expect(
+  wrapper
+    .findAll('[data-form-section]')
+    .map((node) => node.attributes('data-form-section')),
+).toEqual(['basic', 'media', 'detail', 'skus', 'publish']);
 expect(wrapper.find('.product-form__sticky-actions').exists()).toBe(true);
 ```
 
 `SkuTableEditor.spec.ts` 增加：
 
 ```ts
-expect(wrapper.get('[data-testid="sku-table-scroll"]').classes()).toContain('admin-horizontal-scroll');
+expect(wrapper.get('[data-testid="sku-table-scroll"]').classes()).toContain(
+  'admin-horizontal-scroll',
+);
 ```
 
 运行定向测试，预期新增结构断言 FAIL。
@@ -784,16 +806,16 @@ git diff --check
 
 ### 规格覆盖
 
-| 规格要求 | 对应任务 |
-|---|---|
-| H5 清透 token、画布、安全区与状态组件 | 任务 1 |
-| H5 首页、分类、商品、SKU、Tabbar | 任务 2 |
-| H5 购物车、结算、订单、地址、个人、登录 | 任务 3 |
-| Admin token、侧栏、topbar、页面骨架 | 任务 4 |
-| Admin 轻二次元品牌入口、Dashboard、空状态 | 任务 5 |
-| Admin 分类/商品/Banner/订单统一页面结构 | 任务 6 |
-| Admin 商品编辑任务流与共享编辑组件 | 任务 7 |
-| 360–560px、1024–1920px、流程优先、真实浏览器 | 任务 8 |
+| 规格要求                                     | 对应任务 |
+| -------------------------------------------- | -------- |
+| H5 清透 token、画布、安全区与状态组件        | 任务 1   |
+| H5 首页、分类、商品、SKU、Tabbar             | 任务 2   |
+| H5 购物车、结算、订单、地址、个人、登录      | 任务 3   |
+| Admin token、侧栏、topbar、页面骨架          | 任务 4   |
+| Admin 轻二次元品牌入口、Dashboard、空状态    | 任务 5   |
+| Admin 分类/商品/Banner/订单统一页面结构      | 任务 6   |
+| Admin 商品编辑任务流与共享编辑组件           | 任务 7   |
+| 360–560px、1024–1920px、流程优先、真实浏览器 | 任务 8   |
 
 ### 占位扫描
 

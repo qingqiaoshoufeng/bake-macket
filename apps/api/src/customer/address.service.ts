@@ -42,7 +42,11 @@ export class AddressService {
     });
   }
 
-  update(userId: string, id: string, dto: UpdateAddressDto): Promise<AddressView> {
+  update(
+    userId: string,
+    id: string,
+    dto: UpdateAddressDto,
+  ): Promise<AddressView> {
     return this.dataSource.transaction(async (manager) => {
       const addresses = manager.getRepository(Address);
       const address = await addresses.findOneBy({ id, userId });
@@ -95,7 +99,11 @@ function toAddressView(address: Address): AddressView {
     district: address.district,
     detail: address.detail,
     isDefault: address.isDefault,
-    ...(address.createdAt ? { createdAt: address.createdAt.toISOString() } : {}),
-    ...(address.updatedAt ? { updatedAt: address.updatedAt.toISOString() } : {}),
+    ...(address.createdAt
+      ? { createdAt: address.createdAt.toISOString() }
+      : {}),
+    ...(address.updatedAt
+      ? { updatedAt: address.updatedAt.toISOString() }
+      : {}),
   };
 }

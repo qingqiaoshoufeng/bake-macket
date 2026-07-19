@@ -43,9 +43,9 @@ describe('ProductCard', () => {
     expect(wrapper.text()).toContain('¥68.00 起');
     expect(wrapper.text()).not.toContain('¥58.00 起');
     expect(wrapper.text()).not.toContain('¥48.00 起');
-    expect(wrapper.get('[data-testid="product-card-product-1"]').classes()).toContain(
-      'product-card',
-    );
+    expect(
+      wrapper.get('[data-testid="product-card-product-1"]').classes(),
+    ).toContain('product-card');
     expect(wrapper.get('.product-card__body').attributes('data-layout')).toBe(
       'stable',
     );
@@ -54,7 +54,9 @@ describe('ProductCard', () => {
   it('emits open with the product id when clicked', async () => {
     const wrapper = mount(ProductCard, { props: { product } });
 
-    await wrapper.get('[data-testid="product-card-product-1"]').trigger('click');
+    await wrapper
+      .get('[data-testid="product-card-product-1"]')
+      .trigger('click');
 
     expect(wrapper.emitted('open')).toEqual([['product-1']]);
   });

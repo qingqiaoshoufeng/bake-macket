@@ -46,23 +46,42 @@ async function submit(): Promise<void> {
 
 <template>
   <StorePage class="checkout">
-    <StorePageHeader back title="结算订单" eyebrow="CONFIRM YOUR BAKE" description="提交前请确认履约方式、联系人和备注信息。" @back="router.back()" />
-    <CheckoutItems :items="checkout.data.availableItems.value" :total-cents="checkout.data.cartTotalCents.value" />
+    <StorePageHeader
+      back
+      title="结算订单"
+      eyebrow="CONFIRM YOUR BAKE"
+      description="提交前请确认履约方式、联系人和备注信息。"
+      @back="router.back()"
+    />
+    <CheckoutItems
+      :items="checkout.data.availableItems.value"
+      :total-cents="checkout.data.cartTotalCents.value"
+    />
     <form class="checkout__form" @submit.prevent="submit">
       <CheckoutFulfillment
         :fulfillment-type="checkout.data.values.value.fulfillmentType"
         :pickup-time-text="checkout.data.values.value.pickupTimeText"
         :address-id="checkout.data.values.value.addressId"
         :addresses="checkout.data.addresses.value"
-        @update:fulfillment-type="checkout.methods.updateValues({ fulfillmentType: $event })"
-        @update:pickup-time-text="checkout.methods.updateValues({ pickupTimeText: $event })"
-        @update:address-id="checkout.methods.updateValues({ addressId: $event })"
+        @update:fulfillment-type="
+          checkout.methods.updateValues({ fulfillmentType: $event })
+        "
+        @update:pickup-time-text="
+          checkout.methods.updateValues({ pickupTimeText: $event })
+        "
+        @update:address-id="
+          checkout.methods.updateValues({ addressId: $event })
+        "
       />
       <CheckoutContact
         :contact-name="checkout.data.values.value.contactName"
         :contact-phone="checkout.data.values.value.contactPhone"
-        @update:contact-name="checkout.methods.updateValues({ contactName: $event })"
-        @update:contact-phone="checkout.methods.updateValues({ contactPhone: $event })"
+        @update:contact-name="
+          checkout.methods.updateValues({ contactName: $event })
+        "
+        @update:contact-phone="
+          checkout.methods.updateValues({ contactPhone: $event })
+        "
       />
       <CheckoutSubmit
         :remark="checkout.data.values.value.remark"
@@ -80,5 +99,9 @@ async function submit(): Promise<void> {
 </template>
 
 <style scoped>
-.checkout__form { display: grid; gap: var(--mall-space-3); margin-top: var(--mall-space-3); }
+.checkout__form {
+  display: grid;
+  gap: var(--mall-space-3);
+  margin-top: var(--mall-space-3);
+}
 </style>

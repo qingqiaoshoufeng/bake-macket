@@ -72,7 +72,9 @@ function openBanner(banner: BannerView): void {
           type="button"
           @click="router.push(`/category/${category.id}`)"
         >
-          <span class="category-strip__mark">{{ category.name.slice(0, 1) }}</span>
+          <span class="category-strip__mark">{{
+            category.name.slice(0, 1)
+          }}</span>
           {{ category.name }}
         </button>
       </div>
@@ -260,7 +262,8 @@ function openBanner(banner: BannerView): void {
 
 .future-card {
   padding: var(--mall-space-5);
-  border: 1px dashed color-mix(in srgb, var(--mall-accent) 55%, var(--mall-border));
+  border: 1px dashed
+    color-mix(in srgb, var(--mall-accent) 55%, var(--mall-border));
   border-radius: var(--mall-radius-feature);
   background: color-mix(in srgb, var(--mall-accent) 9%, var(--mall-surface));
 }

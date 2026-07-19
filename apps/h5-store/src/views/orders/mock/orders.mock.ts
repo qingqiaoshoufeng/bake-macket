@@ -1,4 +1,8 @@
-import { FulfillmentType, OrderStatus, type OrderView } from '@bake-mall/contracts';
+import {
+  FulfillmentType,
+  OrderStatus,
+  type OrderView,
+} from '@bake-mall/contracts';
 
 export const orderListMock: readonly OrderView[] = [
   {
