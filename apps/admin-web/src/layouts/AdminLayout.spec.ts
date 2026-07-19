@@ -70,6 +70,22 @@ describe('AdminLayout', () => {
     );
   });
 
+  it('places the narrow-screen warning below the topbar and before content', async () => {
+    const { wrapper } = await mountAdminLayoutAtEditor();
+    const mainChildren = wrapper
+      .get('.admin-layout__main')
+      .element.querySelectorAll(':scope > *');
+
+    expect([...mainChildren].map((element) => element.className)).toEqual([
+      'admin-layout__topbar',
+      'admin-layout__narrow-warning',
+      'admin-layout__canvas',
+    ]);
+    expect(
+      wrapper.get('[data-testid="admin-narrow-warning"]').attributes('role'),
+    ).toBe('status');
+  });
+
   it('isolates router history between mounts', async () => {
     const first = await mountAdminLayoutAtEditor();
     const second = await mountAdminLayoutAtEditor();

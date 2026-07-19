@@ -45,6 +45,17 @@ describe('ProductForm', () => {
     expect(wrapper.find('[data-testid="images-editor"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="rich-editor"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="sku-editor"]').exists()).toBe(true);
+    expect(
+      wrapper
+        .findAll('[data-form-section]')
+        .map((node) => node.attributes('data-form-section')),
+    ).toEqual(['basic', 'media', 'detail', 'skus', 'publish']);
+    expect(wrapper.find('.product-form__sticky-actions').exists()).toBe(true);
+    expect(
+      wrapper
+        .get('.product-form__sticky-actions')
+        .attributes('data-sticky-offset'),
+    ).toBe('content-edge');
   });
 
   it('emits false after the last local upload completes even when the parent mirrors true', async () => {
@@ -68,6 +79,27 @@ describe('ProductForm', () => {
     await wrapper.vm.$nextTick();
 
     expect(wrapper.emitted('update:uploading')?.at(-1)?.[0]).toBe(false);
+  });
+
+  it('keeps save disabled while uploading or saving', async () => {
+    const wrapper = mount(ProductForm, {
+      props: {
+        form: createDefaultProductForm(),
+        categories: [],
+        saving: false,
+        uploading: true,
+      },
+      global: { stubs: productFormStubs },
+    });
+    const saveButton = wrapper.get('button[type="submit"]');
+
+    expect(saveButton.attributes('disabled')).toBeDefined();
+
+    await wrapper.setProps({ uploading: false, saving: true });
+    expect(saveButton.attributes('disabled')).toBeDefined();
+
+    await wrapper.setProps({ saving: false });
+    expect(saveButton.attributes('disabled')).toBeUndefined();
   });
 
   it('emits an immutable replacement form rather than fetching data', async () => {

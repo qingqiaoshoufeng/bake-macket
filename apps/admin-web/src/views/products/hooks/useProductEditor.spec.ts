@@ -181,13 +181,15 @@ describe('useProductEditor', () => {
     expect(editor.savedPreviewHtml.value).toBe('<p>clean</p>');
   });
 
-  it('loads categories and details in parallel for edit mode', async () => {
+  it('loads edit detail into the draft without treating it as a saved response', async () => {
     const { editor, load } = loadedEditor();
     await load;
 
     expect(categories.list).toHaveBeenCalledOnce();
     expect(api.getOne).toHaveBeenCalledWith('product-1');
     expect(editor.categories.value).toEqual(categoryListMock);
+    expect(editor.form.value.detailHtml).toBe(PRODUCT_DETAIL_MOCK.detailHtml);
+    expect(editor.savedPreviewHtml.value).toBe('');
   });
 
   it('rejects every product without at least one SKU before the API call', async () => {

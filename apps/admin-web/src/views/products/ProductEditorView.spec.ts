@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiClientError } from '../../api/http.js';
 import { categoriesApi } from '../categories/api/index.js';
 import { productsApi } from './api/index.js';
+import SanitizedHtmlPreview from '../../components/SanitizedHtmlPreview.vue';
 import ProductEditorView from './ProductEditorView.vue';
 import { PRODUCT_DETAIL_MOCK } from './mock/detail.mock.js';
 
@@ -86,14 +87,21 @@ describe('ProductEditorView', () => {
     expect(api.replace).toHaveBeenCalledWith('product-2', expect.anything());
   });
 
-  it('renders create and edit titles', async () => {
+  it('renders create and edit titles without previewing initially loaded detail HTML', async () => {
     categories.list.mockResolvedValue([]);
     expect((await mountEditor()).text()).toContain('新增商品');
 
-    api.getOne.mockResolvedValue(PRODUCT_DETAIL_MOCK);
-    expect((await mountEditor('/products/product-1/edit')).text()).toContain(
-      '编辑商品',
-    );
+    api.getOne.mockResolvedValue({
+      ...PRODUCT_DETAIL_MOCK,
+      detailHtml: '<p>initial draft only</p>',
+    });
+    const wrapper = await mountEditor('/products/product-1/edit');
+
+    expect(wrapper.text()).toContain('编辑商品');
+    expect(
+      wrapper.findComponent({ name: 'ProductForm' }).props('form'),
+    ).toMatchObject({ detailHtml: '<p>initial draft only</p>' });
+    expect(wrapper.find('[data-testid="saved-preview"]').exists()).toBe(false);
   });
 
   it('shows a non-conflict save message without a reload retry and keeps the draft', async () => {
@@ -184,5 +192,49 @@ describe('ProductEditorView', () => {
     expect(wrapper.get('[data-testid="saved-preview"]').html()).toContain(
       '<p>server</p>',
     );
+    expect(wrapper.findComponent(SanitizedHtmlPreview).props('html')).toBe(
+      '<p>server</p>',
+    );
+  });
+
+  it('keeps untrusted server preview behind the shared sanitized boundary', async () => {
+    categories.list.mockResolvedValue([]);
+    api.create.mockResolvedValue({
+      ...PRODUCT_DETAIL_MOCK,
+      detailHtml:
+        '<p onclick="alert(1)">安全预览</p><script>alert(1)</script><a href="javascript:alert(1)">坏链接</a>',
+    });
+    const wrapper = await mountEditor();
+    const form = wrapper.findComponent({ name: 'ProductForm' });
+    form.vm.$emit('update:form', {
+      ...form.props('form'),
+      name: '新品',
+      categoryId: 'category-1',
+      isActive: false,
+      skus: PRODUCT_DETAIL_MOCK.skus.map((sku) => ({
+        rowId: sku.id,
+        id: sku.id,
+        stockVersion: sku.stockVersion,
+        name: sku.name,
+        attributes: Object.entries(sku.attributes).map(([key, value]) => ({
+          key,
+          value,
+        })),
+        priceYuan: '68.50',
+        stock: sku.stock,
+        isActive: sku.isActive,
+        image: sku.image,
+      })),
+    });
+
+    form.vm.$emit('submit');
+    await flushPromises();
+
+    const preview = wrapper.get('[data-testid="saved-preview"]');
+    expect(preview.html()).toContain('<p>安全预览</p>');
+    expect(preview.html()).toContain('<a>坏链接</a>');
+    expect(preview.html()).not.toContain('onclick');
+    expect(preview.html()).not.toContain('<script');
+    expect(preview.html()).not.toContain('javascript:');
   });
 });

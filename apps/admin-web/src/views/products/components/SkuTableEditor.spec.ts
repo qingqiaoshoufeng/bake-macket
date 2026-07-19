@@ -29,6 +29,12 @@ describe('SkuTableEditor', () => {
     expect(wrapper.findComponent({ name: 'CosImageUploader' }).exists()).toBe(
       true,
     );
+    expect(wrapper.get('[data-testid="sku-table-scroll"]').classes()).toContain(
+      'admin-horizontal-scroll',
+    );
+    expect(wrapper.get('[data-testid="name-0"]').classes()).toContain(
+      'sku-editor__input--name',
+    );
     expect(wrapper.text()).toContain('下架');
 
     await wrapper.get('[data-testid="remove-0"]').trigger('click');

@@ -250,10 +250,14 @@ export function useProductEditor(
     uploading.value = nextUploading;
   }
 
-  function applyDetail(detail: AdminProductDetailView): void {
+  function applyLoadedDetail(detail: AdminProductDetailView): void {
     replaceForm(mapDetailToForm(detail));
-    savedPreviewHtml.value = detail.detailHtml;
     stockConflict.value = false;
+  }
+
+  function applySavedDetail(detail: AdminProductDetailView): void {
+    applyLoadedDetail(detail);
+    savedPreviewHtml.value = detail.detailHtml;
   }
 
   async function load(): Promise<void> {
@@ -269,7 +273,7 @@ export function useProductEditor(
         ]);
         if (loadId !== currentLoad) return;
         categories.value = [...nextCategories];
-        applyDetail(detail);
+        applyLoadedDetail(detail);
       } else {
         const nextCategories = await categoriesApi.list();
         if (loadId !== currentLoad) return;
@@ -294,7 +298,7 @@ export function useProductEditor(
     try {
       const detail = await productsApi.getOne(mode.productId);
       if (loadId !== currentLoad) return;
-      applyDetail(detail);
+      applyLoadedDetail(detail);
     } catch (caughtError) {
       if (loadId === currentLoad) loadError.value = caughtError;
     } finally {
@@ -318,7 +322,7 @@ export function useProductEditor(
         mode.mode === 'edit'
           ? await productsApi.replace(mode.productId, request)
           : await productsApi.create(request);
-      if (saveId === currentSave) applyDetail(response);
+      if (saveId === currentSave) applySavedDetail(response);
       return response;
     } catch (caughtError) {
       if (saveId === currentSave) {

@@ -56,7 +56,11 @@ async function onSelect(path: string): Promise<void> {
         </div>
       </div>
 
-      <nav class="admin-layout__nav" data-testid="admin-nav" aria-label="后台导航">
+      <nav
+        class="admin-layout__nav"
+        data-testid="admin-nav"
+        aria-label="后台导航"
+      >
         <ElMenu
           class="admin-layout__menu"
           :default-active="activePath"
@@ -120,16 +124,19 @@ async function onSelect(path: string): Promise<void> {
           </ElButton>
         </div>
       </header>
+      <div
+        class="admin-layout__narrow-warning"
+        data-testid="admin-narrow-warning"
+        role="status"
+      >
+        <span class="admin-layout__narrow-icon" aria-hidden="true">i</span>
+        <p>建议使用 ≥ 1024px 宽度的桌面浏览器访问商家后台。</p>
+      </div>
       <main class="admin-layout__canvas">
         <div class="admin-layout__content">
           <RouterView />
         </div>
       </main>
-    </div>
-
-    <div class="admin-layout__narrow-warning" role="status">
-      <span class="admin-layout__narrow-icon" aria-hidden="true">i</span>
-      <p>建议使用 ≥ 1024px 宽度的桌面浏览器访问商家后台。</p>
     </div>
   </div>
 </template>
@@ -379,19 +386,16 @@ async function onSelect(path: string): Promise<void> {
 
 @media (max-width: 1023px) {
   .admin-layout__narrow-warning {
-    position: fixed;
-    z-index: 20;
-    right: 16px;
-    bottom: 16px;
+    position: sticky;
+    z-index: 9;
+    top: var(--admin-topbar-height);
     display: flex;
-    max-width: calc(100vw - 32px);
+    min-height: 40px;
     align-items: center;
     gap: 8px;
-    padding: 10px 14px;
-    background: var(--admin-surface);
-    border: 1px solid var(--admin-border);
-    border-radius: var(--admin-radius-control);
-    box-shadow: var(--admin-shadow-card);
+    padding: 8px 28px;
+    background: #fff9fb;
+    border-bottom: 1px solid rgb(180 63 102 / 16%);
     color: var(--admin-danger);
     font-size: 12px;
   }
@@ -435,9 +439,7 @@ async function onSelect(path: string): Promise<void> {
   }
 
   .admin-layout__narrow-warning {
-    right: 12px;
-    bottom: 12px;
-    max-width: calc(100vw - 24px);
+    padding-inline: 16px;
   }
 }
 </style>
