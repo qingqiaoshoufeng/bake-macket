@@ -3,9 +3,16 @@ import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryHistory, createRouter } from 'vue-router';
 
-import { DEVELOPMENT_LOGIN_HINT } from '../bridge/miniapp.js';
-import { useAuthStore } from '../stores/auth.js';
+import {
+  DEVELOPMENT_LOGIN_HINT,
+  installMiniappBridge,
+} from '../bridge/miniapp.js';
 import LoginView from './LoginView.vue';
+import { loginFeatureApi } from './login/api/index.js';
+
+vi.mock('./login/api/index.js', () => ({
+  loginFeatureApi: { login: vi.fn() },
+}));
 
 vi.mock('vant', async (importOriginal) => {
   const actual = await importOriginal<typeof import('vant')>();
@@ -51,9 +58,20 @@ afterEach(() => {
 });
 
 describe('LoginView', () => {
+  it('removes the miniapp message listener when the view unmounts', async () => {
+    const teardown = vi.fn();
+    vi.mocked(installMiniappBridge).mockReturnValueOnce(teardown);
+    const { wrapper } = await mountLogin();
+
+    expect(installMiniappBridge).toHaveBeenCalledOnce();
+    wrapper.unmount();
+    expect(teardown).toHaveBeenCalledOnce();
+  });
+
   it('renders the shared development credentials', async () => {
     const { wrapper } = await mountLogin();
 
+    expect(wrapper.get('main').classes()).toContain('store-auth-page');
     expect((getPhone(wrapper).element as HTMLInputElement).value).toBe(
       DEVELOPMENT_LOGIN_HINT.phone,
     );
@@ -62,15 +80,16 @@ describe('LoginView', () => {
     );
   });
 
-  it('submits the rendered credentials through the auth store', async () => {
-    const { pinia, wrapper } = await mountLogin();
-    const auth = useAuthStore(pinia);
-    const login = vi.fn().mockResolvedValue(undefined);
-    auth.loginWithDevelopmentCode = login;
+  it('submits the rendered credentials through the login feature API', async () => {
+    vi.mocked(loginFeatureApi.login).mockResolvedValue({
+      accessToken: 'user-token-1',
+      expiresAt: '2026-07-12T01:00:00.000Z',
+    });
+    const { wrapper } = await mountLogin();
 
     await wrapper.get('form').trigger('submit.prevent');
 
-    expect(login).toHaveBeenCalledWith(
+    expect(loginFeatureApi.login).toHaveBeenCalledWith(
       DEVELOPMENT_LOGIN_HINT.phone,
       DEVELOPMENT_LOGIN_HINT.code,
     );

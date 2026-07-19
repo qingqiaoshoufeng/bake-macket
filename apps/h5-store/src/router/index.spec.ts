@@ -14,23 +14,61 @@ const expectedViews = [
     path: '/category/cake',
     routeName: 'category',
     componentName: 'CategoryView',
+    meta: {},
   },
   {
     path: '/products/product-1',
     routeName: 'product-detail',
     componentName: 'ProductDetailView',
+    meta: {},
   },
-  { path: '/cart', routeName: 'cart', componentName: 'CartView' },
+  { path: '/cart', routeName: 'cart', componentName: 'CartView', meta: {} },
+  {
+    path: '/checkout',
+    routeName: 'checkout',
+    componentName: 'CheckoutView',
+    meta: { requiresVerifiedPhone: true },
+  },
+  {
+    path: '/orders',
+    routeName: 'orders',
+    componentName: 'OrdersView',
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/orders/order-1',
+    routeName: 'order-detail',
+    componentName: 'OrderDetailView',
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/profile',
+    routeName: 'profile',
+    componentName: 'ProfileView',
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/addresses',
+    routeName: 'addresses',
+    componentName: 'AddressesView',
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/login',
+    routeName: 'login',
+    componentName: 'LoginView',
+    meta: {},
+  },
 ] as const;
 
-describe('H5 catalog routes', () => {
+describe('H5 routes', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
   });
 
   it.each(expectedViews)(
     'loads $componentName for $path',
-    async ({ path, routeName, componentName }) => {
+    async ({ path, routeName, componentName, meta }) => {
       const record = router
         .resolve(path)
         .matched.find((candidate) => candidate.name === routeName);
@@ -38,6 +76,7 @@ describe('H5 catalog routes', () => {
 
       expect(typeof loader).toBe('function');
       expect((await loader?.())?.default.__name).toBe(componentName);
+      expect(record?.meta).toMatchObject(meta);
     },
   );
 });

@@ -3,6 +3,10 @@ import { defineStore } from 'pinia';
 import type { AuthSessionView, UserProfileView } from '@bake-mall/contracts';
 
 import { apiClient } from '../api/http.js';
+import { useAddressesStore } from './addresses.js';
+import { useCartStore } from './cart.js';
+import { useOrdersStore } from './orders.js';
+import { advanceSession } from './session.js';
 
 const TOKEN_STORAGE_KEY = 'bake_user_token';
 const PROFILE_STORAGE_KEY = 'bake_user_profile';
@@ -11,6 +15,21 @@ type AuthState = {
   accessToken: string | null;
   profile: UserProfileView | null;
 };
+
+function resetUserDomainStores(): void {
+  useCartStore().$reset();
+  useAddressesStore().$reset();
+  useOrdersStore().$reset();
+}
+
+function sessionIdentityChanged(
+  currentToken: string | null,
+  currentProfile: UserProfileView | null,
+  nextToken: string | null,
+  nextProfile: UserProfileView | null,
+): boolean {
+  return currentToken !== nextToken || currentProfile?.id !== nextProfile?.id;
+}
 
 /**
  * Customer-facing authentication state.
@@ -46,13 +65,23 @@ export const useAuthStore = defineStore('auth', {
       try {
         const token = window.localStorage.getItem(TOKEN_STORAGE_KEY);
         const profileRaw = window.localStorage.getItem(PROFILE_STORAGE_KEY);
-        if (token) {
-          this.accessToken = token;
-          apiClient.setAccessToken(token);
+        const persistedProfile = profileRaw
+          ? (JSON.parse(profileRaw) as UserProfileView)
+          : null;
+        if (
+          sessionIdentityChanged(
+            this.accessToken,
+            this.profile,
+            token,
+            persistedProfile,
+          )
+        ) {
+          advanceSession();
+          resetUserDomainStores();
         }
-        if (profileRaw) {
-          this.profile = JSON.parse(profileRaw) as UserProfileView;
-        }
+        this.accessToken = token;
+        this.profile = persistedProfile;
+        apiClient.setAccessToken(token);
       } catch {
         // Corrupted storage shouldn't block app boot — drop and continue.
         this.accessToken = null;
@@ -61,33 +90,21 @@ export const useAuthStore = defineStore('auth', {
     },
 
     /**
-     * Exchange a phone/code pair with `POST /auth/dev/login`. The API treats
-     * the dev code as already verifying the phone, so we mirror that into
-     * `profile.phoneVerified` immediately.
-     */
-    async loginWithDevelopmentCode(
-      phone: string,
-      code: string,
-    ): Promise<AuthSessionView> {
-      const session = await apiClient.post<AuthSessionView>('/auth/dev/login', {
-        phone,
-        code,
-      });
-      this.applySession(session, {
-        id: '',
-        phone,
-        phoneVerified: true,
-        nickname: undefined,
-        avatarUrl: undefined,
-      });
-      return session;
-    },
-
-    /**
      * Persist the issued token and the user profile snapshot, and forward
      * the bearer token to the shared HTTP client.
      */
     applySession(session: AuthSessionView, profile: UserProfileView): void {
+      if (
+        sessionIdentityChanged(
+          this.accessToken,
+          this.profile,
+          session.accessToken,
+          profile,
+        )
+      ) {
+        advanceSession();
+        resetUserDomainStores();
+      }
       this.accessToken = session.accessToken;
       this.profile = profile;
       if (typeof window !== 'undefined') {
@@ -123,6 +140,10 @@ export const useAuthStore = defineStore('auth', {
      * the registered unauthorized handler) or when a phone re-bind fails.
      */
     clearSession(): void {
+      if (this.accessToken || this.profile) {
+        advanceSession();
+        resetUserDomainStores();
+      }
       this.accessToken = null;
       this.profile = null;
       if (typeof window !== 'undefined') {

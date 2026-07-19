@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
+import type { CartItemView } from '@bake-mall/contracts';
 
+import { useCart } from '../views/cart/hooks/useCart.js';
 import { useCartStore } from './cart.js';
 
 /**
@@ -10,9 +12,8 @@ import { useCartStore } from './cart.js';
  *   exposes the items through the reactive `items` array.
  * - `setQuantity(id, quantity)` updates a cart item's quantity but clamps
  *   the value to `[1, 99]`, mirroring the backend's
- *   `UpsertCartItemDto.quantity` bounds. The backend upsert endpoint adds
- *   the supplied delta to the existing row, so the store computes the
- *   delta against the locally-cached row and sends it.
+ *   `UpsertCartItemDto.quantity` bounds. The upsert request uses absolute
+ *   quantity semantics, so the target quantity is sent unchanged.
  * - `remove(id)` issues `DELETE /me/cart/items/:id` and drops the row from
  *   the local cache on success.
  *
@@ -20,7 +21,7 @@ import { useCartStore } from './cart.js';
  * matching how `auth.spec.ts` exercises the same transport boundary.
  */
 
-const cartPayload = [
+const cartPayload: CartItemView[] = [
   {
     id: 'cart-1',
     quantity: 2,
@@ -63,7 +64,7 @@ const cartPayload = [
   },
 ];
 
-describe('useCartStore', () => {
+describe('useCart', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
   });
@@ -82,16 +83,16 @@ describe('useCartStore', () => {
     );
     vi.stubGlobal('fetch', fetchMock);
 
-    const cart = useCartStore();
-    await cart.refresh();
+    const cart = useCart();
+    await cart.methods.refresh();
 
-    expect(cart.items).toEqual(cartPayload);
+    expect(cart.data.items.value).toEqual(cartPayload);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toContain('/api/v1/me/cart/items');
     expect(init.method).toBe('GET');
   });
 
-  it('clamps setQuantity to 1-99 and posts the delta against the cached row', async () => {
+  it('clamps setQuantity to 1-99 and posts the absolute target quantity', async () => {
     const seenRefresh = vi.fn();
     const fetchMock = vi
       .fn()
@@ -114,12 +115,12 @@ describe('useCartStore', () => {
       });
     vi.stubGlobal('fetch', fetchMock);
 
-    const cart = useCartStore();
-    await cart.refresh();
+    const cart = useCart();
+    await cart.methods.refresh();
 
     fetchMock.mockClear();
     seenRefresh.mockClear();
-    await cart.setQuantity('cart-1', 250);
+    await cart.methods.setQuantity('cart-1', 250);
     expect((fetchMock.mock.calls[0] as [string, RequestInit])[0]).toContain(
       '/api/v1/me/cart/items',
     );
@@ -127,23 +128,103 @@ describe('useCartStore', () => {
       JSON.parse(
         (fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string,
       ),
-    ).toEqual({ skuId: 'sku-1', quantity: 97 });
+    ).toEqual({ skuId: 'sku-1', quantity: 99 });
 
     fetchMock.mockClear();
-    await cart.setQuantity('cart-1', 0);
+    await cart.methods.setQuantity('cart-1', 0);
     expect(
       JSON.parse(
         (fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string,
       ),
-    ).toEqual({ skuId: 'sku-1', quantity: -1 });
+    ).toEqual({ skuId: 'sku-1', quantity: 1 });
 
     fetchMock.mockClear();
-    await cart.setQuantity('cart-1', 4);
+    await cart.methods.setQuantity('cart-1', 4);
     expect(
       JSON.parse(
         (fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string,
       ),
-    ).toEqual({ skuId: 'sku-1', quantity: 2 });
+    ).toEqual({ skuId: 'sku-1', quantity: 4 });
+  });
+
+  it('merges repeated same-SKU additions and serializes concurrent clicks', async () => {
+    let resolveFirst: ((value: (typeof cartPayload)[0]) => void) | undefined;
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveFirst = (value) =>
+              resolve(
+                new Response(JSON.stringify(value), {
+                  status: 200,
+                  headers: { 'content-type': 'application/json' },
+                }),
+              );
+          }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ...cartPayload[0], quantity: 4 }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const cart = useCart();
+    const store = useCartStore();
+    store.applyItems(cartPayload);
+
+    const first = cart.methods.add({ skuId: 'sku-1', quantity: 1 });
+    const second = cart.methods.add({ skuId: 'sku-1', quantity: 1 });
+    await Promise.resolve();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(fetchMock.mock.calls[0][1]?.body as string)).toEqual({
+      skuId: 'sku-1',
+      quantity: 3,
+    });
+
+    resolveFirst?.({ ...cartPayload[0], quantity: 3 });
+    await first;
+    await second;
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(fetchMock.mock.calls[1][1]?.body as string)).toEqual({
+      skuId: 'sku-1',
+      quantity: 4,
+    });
+    expect(cart.data.items.value[0].quantity).toBe(4);
+  });
+
+  it('refreshes before adding when the cart has not been loaded', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(cartPayload), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ...cartPayload[0], quantity: 4 }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const cart = useCart();
+    await cart.methods.add({ skuId: 'sku-1', quantity: 2 });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect((fetchMock.mock.calls[0] as [string, RequestInit])[1].method).toBe(
+      'GET',
+    );
+    expect(JSON.parse(fetchMock.mock.calls[1][1]?.body as string)).toEqual({
+      skuId: 'sku-1',
+      quantity: 4,
+    });
   });
 
   it('skips the network call when the target equals the cached quantity', async () => {
@@ -169,12 +250,12 @@ describe('useCartStore', () => {
       });
     vi.stubGlobal('fetch', fetchMock);
 
-    const cart = useCartStore();
-    await cart.refresh();
+    const cart = useCart();
+    await cart.methods.refresh();
 
     fetchMock.mockClear();
     seenRefresh2.mockClear();
-    const result = await cart.setQuantity('cart-1', 2);
+    const result = await cart.methods.setQuantity('cart-1', 2);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(result.id).toBe('cart-1');
   });
@@ -191,12 +272,12 @@ describe('useCartStore', () => {
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
     vi.stubGlobal('fetch', fetchMock);
 
-    const cart = useCartStore();
-    await cart.refresh();
-    expect(cart.items).toHaveLength(2);
+    const cart = useCart();
+    await cart.methods.refresh();
+    expect(cart.data.items.value).toHaveLength(2);
 
-    await cart.remove('cart-1');
-    expect(cart.items.map((item) => item.id)).toEqual(['cart-2']);
+    await cart.methods.remove('cart-1');
+    expect(cart.data.items.value.map((item) => item.id)).toEqual(['cart-2']);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     const [url, init] = fetchMock.mock.calls[1] as [string, RequestInit];
     expect(url).toContain('/api/v1/me/cart/items/cart-1');

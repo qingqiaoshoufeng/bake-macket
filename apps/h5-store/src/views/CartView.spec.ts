@@ -6,6 +6,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { customerApi } from '../api/customer.js';
 import CartView from './CartView.vue';
 
+const vantMocks = vi.hoisted(() => ({
+  showConfirmDialog: vi.fn(),
+  showToast: vi.fn(),
+}));
+
+vi.mock('vant', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('vant')>();
+  return { ...actual, ...vantMocks };
+});
+
 const items = [
   {
     id: 'cart-1',
@@ -68,6 +78,8 @@ async function mountCart() {
 describe('CartView', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vantMocks.showConfirmDialog.mockReset();
+    vantMocks.showToast.mockReset();
     vi.spyOn(customerApi, 'listCart').mockResolvedValue(items);
   });
 
@@ -75,10 +87,43 @@ describe('CartView', () => {
     const wrapper = await mountCart();
     await vi.waitFor(() => expect(wrapper.text()).toContain('草莓云朵蛋糕'));
 
+    expect(wrapper.find('.store-page--with-fixed-action').exists()).toBe(true);
+    expect(wrapper.get('[data-testid="checkout"]').classes()).toContain(
+      'store-primary-action',
+    );
     expect(wrapper.text()).toContain('已失效');
     expect(wrapper.text()).toContain('¥136.00');
     expect(
       wrapper.get('[data-testid="checkout"]').attributes('disabled'),
     ).toBeUndefined();
+  });
+
+  it('silently keeps the item when the remove confirmation is cancelled', async () => {
+    vantMocks.showConfirmDialog.mockRejectedValueOnce(new Error('cancel'));
+    const removeSpy = vi.spyOn(customerApi, 'removeCartItem');
+    const wrapper = await mountCart();
+    await vi.waitFor(() => expect(wrapper.text()).toContain('草莓云朵蛋糕'));
+
+    await wrapper.get('.cart-row__actions > button').trigger('click');
+    await vi.waitFor(() =>
+      expect(vantMocks.showConfirmDialog).toHaveBeenCalledOnce(),
+    );
+
+    expect(removeSpy).not.toHaveBeenCalled();
+    expect(vantMocks.showToast).not.toHaveBeenCalled();
+  });
+
+  it('shows an explicit toast when the confirmed remove API call fails', async () => {
+    vantMocks.showConfirmDialog.mockResolvedValueOnce(undefined);
+    vi.spyOn(customerApi, 'removeCartItem').mockRejectedValueOnce(
+      new Error('network'),
+    );
+    const wrapper = await mountCart();
+    await vi.waitFor(() => expect(wrapper.text()).toContain('草莓云朵蛋糕'));
+
+    await wrapper.get('.cart-row__actions > button').trigger('click');
+    await vi.waitFor(() =>
+      expect(vantMocks.showToast).toHaveBeenCalledWith('移除失败，请稍后重试'),
+    );
   });
 });

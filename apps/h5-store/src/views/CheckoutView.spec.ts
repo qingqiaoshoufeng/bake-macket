@@ -5,10 +5,14 @@ import { createMemoryHistory, createRouter, type Router } from 'vue-router';
 
 import CheckoutView from './CheckoutView.vue';
 import { useAuthStore } from '../stores/auth.js';
-import { useCartStore } from '../stores/cart.js';
-import { useOrdersStore } from '../stores/orders.js';
-import { useAddressesStore } from '../stores/addresses.js';
-import type { CartItemView, AddressView } from '../api/customer.js';
+import { customerApi } from '../api/customer.js';
+import { ordersApi } from '../api/orders.js';
+import {
+  FulfillmentType,
+  OrderStatus,
+  type AddressView,
+  type CartItemView,
+} from '@bake-mall/contracts';
 import { ApiClientError } from '../api/http.js';
 
 /**
@@ -83,6 +87,7 @@ function mountCheckout(): {
   // Bind the test's store mutations to the SAME pinia the component
   // resolves `useCartStore()` etc. against.
   setActivePinia(pinia);
+  useAuthStore().profile = verifiedProfile();
   const wrapper = mount(CheckoutView, {
     global: { plugins: [pinia, router] },
   });
@@ -98,22 +103,20 @@ function verifiedProfile() {
   };
 }
 
-function seedStores(opts?: {
+function seedApis(opts?: {
   cart?: CartItemView[];
   addresses?: AddressView[];
   cartRefresh?: ReturnType<typeof vi.fn>;
   addressesRefresh?: ReturnType<typeof vi.fn>;
 }) {
-  const cartStore = useCartStore();
-  cartStore.items = opts?.cart ?? cart;
-  cartStore.refresh =
+  const cartRefresh =
     opts?.cartRefresh ?? vi.fn().mockResolvedValue(opts?.cart ?? cart);
-  const addressesStore = useAddressesStore();
-  addressesStore.items = opts?.addresses ?? savedAddresses;
-  addressesStore.refresh =
+  const addressesRefresh =
     opts?.addressesRefresh ??
     vi.fn().mockResolvedValue(opts?.addresses ?? savedAddresses);
-  return { cartStore, addressesStore };
+  vi.spyOn(customerApi, 'listCart').mockImplementation(cartRefresh);
+  vi.spyOn(customerApi, 'listAddresses').mockImplementation(addressesRefresh);
+  return { cartRefresh, addressesRefresh };
 }
 
 describe('CheckoutView', () => {
@@ -142,16 +145,23 @@ describe('CheckoutView', () => {
   });
 
   it('requires pickup time for PICKUP and an address for DELIVERY', async () => {
-    useAuthStore().profile = verifiedProfile();
-    const { wrapper } = mountCheckout();
     // Start with no saved addresses so the auto-default-fill doesn't
     // satisfy the DELIVERY address requirement on mode switch.
-    seedStores({ addresses: [] });
+    seedApis({ addresses: [] });
+    const { wrapper } = mountCheckout();
+    await flushPromises();
 
     // Fill the always-required contact fields so the validation falls
     // through to the per-mode required-field check.
     await wrapper.get('[data-testid="contact-name"]').setValue('小明');
     await wrapper.get('[data-testid="contact-phone"]').setValue('13800000000');
+
+    expect(wrapper.findAll('.store-form-card').length).toBeGreaterThanOrEqual(
+      3,
+    );
+    expect(
+      wrapper.get('[data-testid="submit"]').attributes('aria-disabled'),
+    ).toBeDefined();
 
     const pickupRadio = wrapper.get(
       '[data-testid="fulfillment-pickup"]',
@@ -175,16 +185,15 @@ describe('CheckoutView', () => {
   });
 
   it('submits a valid PICKUP order with a stable Idempotency-Key', async () => {
-    useAuthStore().profile = verifiedProfile();
-    const { wrapper } = mountCheckout();
     const refreshSpy = vi.fn().mockResolvedValue(cart);
-    seedStores({ cartRefresh: refreshSpy });
-    const ordersStore = useOrdersStore();
-    const createSpy = vi.fn().mockResolvedValue({
+    seedApis({ cartRefresh: refreshSpy });
+    const { wrapper, router } = mountCheckout();
+    await flushPromises();
+    const createSpy = vi.spyOn(ordersApi, 'create').mockResolvedValue({
       id: 'order-1',
       orderNo: 'BM2026071200000001',
-      status: 'NEW',
-      fulfillmentType: 'PICKUP',
+      status: OrderStatus.NEW,
+      fulfillmentType: FulfillmentType.PICKUP,
       contactName: '小明',
       contactPhone: '13800000000',
       pickupTimeText: '明天上午十点',
@@ -193,7 +202,6 @@ describe('CheckoutView', () => {
       createdAt: '2026-07-12T10:00:00.000Z',
       updatedAt: '2026-07-12T10:00:00.000Z',
     });
-    ordersStore.create = createSpy;
 
     await wrapper.get('[data-testid="fulfillment-pickup"]').trigger('click');
     await wrapper.get('[data-testid="contact-name"]').setValue('小明');
@@ -214,22 +222,22 @@ describe('CheckoutView', () => {
     expect(key).toBeTruthy();
     // Cart is refetched on success so the cleared items disappear.
     expect(refreshSpy).toHaveBeenCalled();
+    expect(router.currentRoute.value.fullPath).toBe('/orders/order-1');
   });
 
   it('reuses the same Idempotency-Key across retries until success', async () => {
-    useAuthStore().profile = verifiedProfile();
+    seedApis();
     const { wrapper } = mountCheckout();
-    seedStores();
-    const ordersStore = useOrdersStore();
+    await flushPromises();
     const networkError = new ApiClientError(0, '网络异常,请稍后重试');
     const createSpy = vi
-      .fn()
+      .spyOn(ordersApi, 'create')
       .mockRejectedValueOnce(networkError)
       .mockResolvedValueOnce({
         id: 'order-2',
         orderNo: 'BM2026071200000002',
-        status: 'NEW',
-        fulfillmentType: 'PICKUP',
+        status: OrderStatus.NEW,
+        fulfillmentType: FulfillmentType.PICKUP,
         contactName: '小明',
         contactPhone: '13800000000',
         pickupTimeText: '明天上午十点',
@@ -238,7 +246,6 @@ describe('CheckoutView', () => {
         createdAt: '2026-07-12T10:00:00.000Z',
         updatedAt: '2026-07-12T10:00:00.000Z',
       });
-    ordersStore.create = createSpy;
 
     await wrapper.get('[data-testid="fulfillment-pickup"]').trigger('click');
     await wrapper.get('[data-testid="contact-name"]').setValue('小明');

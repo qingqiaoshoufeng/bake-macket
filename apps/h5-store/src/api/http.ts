@@ -67,6 +67,20 @@ export type ApiRequestInit = Omit<RequestInit, 'body'> & {
 export type UnauthorizedHandler = (path: string) => void;
 
 const DEFAULT_API_BASE = '/api/v1';
+export const API_REQUEST_TIMEOUT_MS = 10_000;
+const MAX_RETRY_ATTEMPTS = 1;
+const SAFE_RETRY_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+function canRetryRequest(method: string, headers: Headers): boolean {
+  return (
+    SAFE_RETRY_METHODS.has(method) ||
+    (method === 'POST' && Boolean(headers.get('Idempotency-Key')))
+  );
+}
+
+function isRetryableStatus(status: number): boolean {
+  return status >= 500 && status <= 599;
+}
 
 /**
  * Pull the JSON body out of a fetch `Response` while normalising error
@@ -128,67 +142,117 @@ export class ApiClient {
   }
 
   async request<T>(path: string, init: ApiRequestInit = {}): Promise<T> {
-    const { body, token, throwOnError = true, headers, ...rest } = init;
+    const {
+      body,
+      token,
+      throwOnError = true,
+      headers,
+      signal: callerSignal,
+      method: requestedMethod,
+      ...rest
+    } = init;
     const url = this.resolve(path);
+    const method = (requestedMethod ?? 'GET').toUpperCase();
     const requestHeaders = new Headers(headers ?? {});
     const bearerToken = token ?? this.token;
     if (bearerToken) {
       requestHeaders.set('Authorization', `Bearer ${bearerToken}`);
     }
 
-    let bodyPayload: BodyInit | undefined;
-    if (body === undefined || body === null) {
-      bodyPayload = undefined;
-    } else if (typeof body === 'string' || body instanceof FormData) {
-      bodyPayload = body;
-    } else {
-      bodyPayload = JSON.stringify(body);
-      if (!requestHeaders.has('content-type')) {
-        requestHeaders.set('content-type', 'application/json');
-      }
+    const bodyPayload =
+      body === undefined || body === null
+        ? undefined
+        : typeof body === 'string' || body instanceof FormData
+          ? body
+          : JSON.stringify(body);
+    if (
+      bodyPayload !== undefined &&
+      typeof body !== 'string' &&
+      !(body instanceof FormData) &&
+      !requestHeaders.has('content-type')
+    ) {
+      requestHeaders.set('content-type', 'application/json');
     }
 
-    let response: Response;
-    try {
-      response = await fetch(url, {
-        ...rest,
-        headers: requestHeaders,
-        body: bodyPayload,
-      });
-    } catch (networkError) {
-      throw new ApiClientError(0, '网络异常,请稍后重试', {
-        cause: networkError,
-      });
-    }
+    const retryable = canRetryRequest(method, requestHeaders);
 
-    if (!response.ok) {
-      const payload = await readErrorPayload(response);
-      const error = new ApiClientError(response.status, payload.message, {
-        code: payload.code,
-        details: payload.details,
-        requestId: payload.requestId,
-      });
-      if (response.status === 401) {
-        this.token = null;
-        this.unauthorizedHandler?.(
-          typeof window === 'undefined' ? '/' : window.location.pathname,
+    const execute = async (attempt: number): Promise<T> => {
+      const controller = new AbortController();
+      const abortFromCaller = (): void =>
+        controller.abort(callerSignal?.reason);
+      if (callerSignal?.aborted) abortFromCaller();
+      else
+        callerSignal?.addEventListener('abort', abortFromCaller, {
+          once: true,
+        });
+      const timeoutId = window.setTimeout(
+        () =>
+          controller.abort(
+            new DOMException('Request timed out', 'TimeoutError'),
+          ),
+        API_REQUEST_TIMEOUT_MS,
+      );
+
+      let response: Response;
+      try {
+        response = await fetch(url, {
+          ...rest,
+          method,
+          headers: requestHeaders,
+          body: bodyPayload,
+          signal: controller.signal,
+        });
+      } catch (networkError) {
+        const callerAborted = callerSignal?.aborted ?? false;
+        const timedOut = controller.signal.aborted && !callerAborted;
+        if (!callerAborted && retryable && attempt < MAX_RETRY_ATTEMPTS) {
+          return execute(attempt + 1);
+        }
+        throw new ApiClientError(
+          0,
+          timedOut ? '请求超时，请稍后重试' : '网络异常,请稍后重试',
+          { cause: networkError },
         );
+      } finally {
+        window.clearTimeout(timeoutId);
+        callerSignal?.removeEventListener('abort', abortFromCaller);
       }
-      if (throwOnError) {
-        throw error;
+
+      if (
+        retryable &&
+        isRetryableStatus(response.status) &&
+        attempt < MAX_RETRY_ATTEMPTS
+      ) {
+        return execute(attempt + 1);
       }
-      return undefined as T;
-    }
 
-    if (response.status === 204) {
-      return undefined as T;
-    }
+      if (!response.ok) {
+        const payload = await readErrorPayload(response);
+        const error = new ApiClientError(response.status, payload.message, {
+          code: payload.code,
+          details: payload.details,
+          requestId: payload.requestId,
+        });
+        if (response.status === 401) {
+          this.token = null;
+          this.unauthorizedHandler?.(
+            typeof window === 'undefined' ? '/' : window.location.pathname,
+          );
+        }
+        if (throwOnError) throw error;
+        return undefined as T;
+      }
 
-    const contentType = response.headers.get('content-type') ?? '';
-    if (contentType.includes('application/json')) {
-      return (await response.json()) as T;
-    }
-    return (await response.text()) as unknown as T;
+      if (response.status === 204) return undefined as T;
+
+      const contentType = response.headers.get('content-type') ?? '';
+      if (contentType.includes('application/json')) {
+        return (await response.json()) as T;
+      }
+      return (await response.text()) as unknown as T;
+    };
+
+    return execute(0);
   }
 
   get<T>(path: string, init?: ApiRequestInit): Promise<T> {

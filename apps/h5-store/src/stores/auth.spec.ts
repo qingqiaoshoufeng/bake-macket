@@ -1,7 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setActivePinia, createPinia } from 'pinia';
 
+import {
+  FulfillmentType,
+  OrderStatus,
+  type AddressView,
+  type CartItemView,
+  type OrderView,
+} from '@bake-mall/contracts';
+
+import { useCart } from '../views/cart/hooks/useCart.js';
+import { useAddressesStore } from './addresses.js';
 import { useAuthStore } from './auth.js';
+import { useCartStore } from './cart.js';
+import { useOrdersStore } from './orders.js';
 
 /**
  * Pinia auth-store contract pinned by Task 8.
@@ -10,11 +22,9 @@ import { useAuthStore } from './auth.js';
  *   target whenever the user lacks a verified phone; the consumer is a
  *   router navigation guard that should never re-checkout when the user is
  *   anonymous or unverified.
- * - `loginWithDevelopmentCode(phone, code)` must persist the issued token in
- *   the store so subsequent requests carry the user JWT. The phone round-trips
- *   back into `profile.phone` because the dev login flow treats the phone as
- *   already verified by the fixed `123456` development code (see API
- *   `POST /api/v1/auth/dev/login`).
+ * - `applySession(session, profile)` persists state produced by the login
+ *   feature hook; the store owns state/application only and never performs
+ *   feature network requests itself.
  */
 
 describe('useAuthStore', () => {
@@ -25,6 +35,7 @@ describe('useAuthStore', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it('returns the login redirect when the verified phone is absent', () => {
@@ -53,29 +64,184 @@ describe('useAuthStore', () => {
     expect(store.requireVerifiedPhone('/checkout')).toBeNull();
   });
 
-  it('persists the issued token after a successful development login', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          accessToken: 'user-token-1',
-          expiresAt: '2026-07-12T01:00:00.000Z',
-        }),
-        { status: 200, headers: { 'content-type': 'application/json' } },
-      ),
+  it('resets user-domain caches when the account changes and refreshes before the new account adds', async () => {
+    const auth = useAuthStore();
+    const cartStore = useCartStore();
+    const addresses = useAddressesStore();
+    const orders = useOrdersStore();
+    const cartItem = {
+      id: 'cart-a',
+      quantity: 5,
+      available: true,
+      sku: {
+        id: 'sku-1',
+        name: '6寸',
+        attributes: {},
+        priceCents: 6800,
+        stock: 10,
+        imageUrl: null,
+        isActive: true,
+      },
+      product: {
+        id: 'product-1',
+        name: '草莓蛋糕',
+        coverImageUrl: null,
+        isActive: true,
+      },
+    } satisfies CartItemView;
+    const address = {
+      id: 'address-a',
+      recipient: '账号A',
+      phone: '13800000000',
+      province: '浙江省',
+      city: '杭州市',
+      district: '西湖区',
+      detail: 'A 地址',
+      isDefault: true,
+    } satisfies AddressView;
+    const order = {
+      id: 'order-a',
+      orderNo: 'BM-A',
+      status: OrderStatus.NEW,
+      fulfillmentType: FulfillmentType.PICKUP,
+      contactName: '账号A',
+      contactPhone: '13800000000',
+      pickupTimeText: '明天',
+      goodsTotalCents: 6800,
+      items: [],
+      createdAt: '2026-07-19T10:00:00.000Z',
+      updatedAt: '2026-07-19T10:00:00.000Z',
+    } satisfies OrderView;
+
+    auth.applySession(
+      { accessToken: 'token-a', expiresAt: '2026-07-20T00:00:00.000Z' },
+      { id: 'user-a', phone: '13800000000', phoneVerified: true },
     );
+    cartStore.applyItems([cartItem]);
+    cartStore.setLoading(true);
+    cartStore.setError('A cart error');
+    addresses.applyItems([address]);
+    addresses.setLoading(true);
+    addresses.setSaving(true);
+    addresses.setError('A address error');
+    orders.applyItems([order]);
+    orders.applyCurrent(order);
+    orders.setLoading(true);
+    orders.setSubmitting(true);
+    orders.setError('A order error');
+
+    auth.clearSession();
+    auth.applySession(
+      { accessToken: 'token-b', expiresAt: '2026-07-20T00:00:00.000Z' },
+      { id: 'user-b', phone: '13900000000', phoneVerified: true },
+    );
+
+    expect(cartStore.$state).toMatchObject({
+      items: [],
+      hydrated: false,
+      loading: false,
+      lastError: null,
+    });
+    expect(addresses.$state).toMatchObject({
+      items: [],
+      loading: false,
+      saving: false,
+      lastError: null,
+    });
+    expect(orders.$state).toMatchObject({
+      items: [],
+      current: null,
+      loading: false,
+      submitting: false,
+      lastError: null,
+    });
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify([]), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ ...cartItem, id: 'cart-b', quantity: 1 }),
+          {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          },
+        ),
+      );
     vi.stubGlobal('fetch', fetchMock);
 
+    await useCart().methods.add({ skuId: 'sku-1', quantity: 1 });
+    expect((fetchMock.mock.calls[0] as [string, RequestInit])[1].method).toBe(
+      'GET',
+    );
+    expect(JSON.parse(fetchMock.mock.calls[1][1]?.body as string)).toEqual({
+      skuId: 'sku-1',
+      quantity: 1,
+    });
+  });
+
+  it('does not reset user-domain caches when hydrating the same session', () => {
+    window.localStorage.setItem('bake_user_token', 'same-token');
+    window.localStorage.setItem(
+      'bake_user_profile',
+      JSON.stringify({ id: 'user-a', phoneVerified: true }),
+    );
+    const auth = useAuthStore();
+    auth.applySession(
+      { accessToken: 'same-token', expiresAt: '2026-07-20T00:00:00.000Z' },
+      { id: 'user-a', phoneVerified: true },
+    );
+    const cart = useCartStore();
+    cart.applyItems([
+      {
+        id: 'cart-a',
+        quantity: 2,
+        available: true,
+        sku: {
+          id: 'sku-1',
+          name: '6寸',
+          attributes: {},
+          priceCents: 6800,
+          stock: 10,
+          imageUrl: null,
+          isActive: true,
+        },
+        product: {
+          id: 'product-1',
+          name: '草莓蛋糕',
+          coverImageUrl: null,
+          isActive: true,
+        },
+      },
+    ]);
+
+    auth.hydrate();
+
+    expect(cart.items).toHaveLength(1);
+    expect(cart.hydrated).toBe(true);
+  });
+
+  it('persists the session state applied by the login feature hook', () => {
     const store = useAuthStore();
-    await store.loginWithDevelopmentCode('13800000000', '123456');
+    store.applySession(
+      {
+        accessToken: 'user-token-1',
+        expiresAt: '2026-07-12T01:00:00.000Z',
+      },
+      {
+        id: '',
+        phone: '13800000000',
+        phoneVerified: true,
+      },
+    );
 
     expect(store.accessToken).toBe('user-token-1');
     expect(store.profile?.phone).toBe('13800000000');
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toContain('/api/v1/auth/dev/login');
-    expect(JSON.parse(init.body as string)).toEqual({
-      phone: '13800000000',
-      code: '123456',
-    });
+    expect(window.localStorage.getItem('bake_user_token')).toBe('user-token-1');
   });
 });

@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router';
 
+import StoreStatePanel from '../components/feedback/StoreStatePanel.vue';
+import StorePage from '../components/layout/StorePage.vue';
+
 const router = useRouter();
 
 function backHome(): void {
@@ -9,37 +12,42 @@ function backHome(): void {
 </script>
 
 <template>
-  <section class="not-found">
-    <h1>页面未找到</h1>
-    <p>链接可能已失效,返回首页继续逛逛吧。</p>
-    <button type="button" class="not-found__action" @click="backHome">
-      返回首页
-    </button>
-  </section>
+  <StorePage class="not-found">
+    <StoreStatePanel
+      state="error"
+      title="页面未找到"
+      description="链接可能已失效,返回首页继续逛逛吧。"
+    >
+      <template #action>
+        <button type="button" class="not-found__action" @click="backHome">
+          返回首页
+        </button>
+      </template>
+    </StoreStatePanel>
+  </StorePage>
 </template>
 
 <style scoped>
 .not-found {
-  padding: 48px 16px;
-  text-align: center;
-  color: var(--mall-ink);
+  display: grid;
+  min-height: 100%;
+  place-items: center;
 }
-h1 {
-  margin: 0 0 8px;
-  color: var(--mall-apricot);
-  font-size: 22px;
+
+.not-found :deep(.store-state-panel) {
+  width: 100%;
 }
-p {
-  margin: 0 0 16px;
-  color: var(--mall-muted);
-  font-size: 14px;
-}
+
 .not-found__action {
+  min-height: 44px;
+  padding: 0 var(--mall-space-5);
   border: 0;
-  background: var(--van-primary-color);
+  border-radius: var(--mall-radius-card);
+  background: var(--mall-primary);
   color: #fff;
-  border-radius: var(--van-radius-lg);
-  padding: 10px 18px;
+  font: inherit;
   font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
 }
 </style>
