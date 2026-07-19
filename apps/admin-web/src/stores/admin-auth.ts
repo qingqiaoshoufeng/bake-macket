@@ -3,6 +3,7 @@ import { defineStore } from 'pinia';
 import type { AuthSessionView } from '@bake-mall/contracts';
 
 import { apiClient } from '../api/http.js';
+import { loginAsAdmin } from '../views/login/api/index.js';
 
 /**
  * Storage key for the merchant administrator's bearer token. Kept separate
@@ -80,10 +81,7 @@ export const useAdminAuthStore = defineStore('admin-auth', {
       email: string,
       password: string,
     ): Promise<AdminLoginResponse> {
-      const response = await apiClient.post<AdminLoginResponse>(
-        '/admin/auth/login',
-        { email, password },
-      );
+      const response = await loginAsAdmin({ email, password });
       this.applySession(response, email);
       return response;
     },

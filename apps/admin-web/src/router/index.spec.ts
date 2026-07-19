@@ -1,6 +1,14 @@
+import { flushPromises, mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
+import { createMemoryHistory, createRouter } from 'vue-router';
 
 import CategoriesView from '../views/CategoriesView.vue';
+import DashboardView from '../views/DashboardView.vue';
+import NotFoundView from '../views/NotFoundView.vue';
+import PlaceholderView from '../views/PlaceholderView.vue';
+import OrderFlowGuide from '../views/dashboard/components/OrderFlowGuide.vue';
+import { ORDER_FLOW } from '../views/dashboard/config/order-flow.js';
+import { DASHBOARD_ENTRY_PREVIEW } from '../views/dashboard/mock/entries.mock.js';
 import BannersView from '../views/banners/BannersView.vue';
 import OrdersView from '../views/orders/OrdersView.vue';
 import ProductEditorView from '../views/products/ProductEditorView.vue';
@@ -89,4 +97,125 @@ describe('admin product routes', () => {
       expect(loaded.default).toBe(view);
     },
   );
+});
+
+describe('admin branded entry and state pages', () => {
+  it('renders a dashboard with real navigation entries and no placeholder KPI copy', async () => {
+    const dashboardRouter = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: '/dashboard', component: DashboardView },
+        {
+          path: '/categories',
+          component: { template: '<div>categories</div>' },
+        },
+        { path: '/products', component: { template: '<div>products</div>' } },
+        { path: '/banners', component: { template: '<div>banners</div>' } },
+        { path: '/orders', component: { template: '<div>orders</div>' } },
+      ],
+    });
+    await dashboardRouter.push('/dashboard');
+    await dashboardRouter.isReady();
+
+    const wrapper = mount(DashboardView, {
+      global: { plugins: [dashboardRouter] },
+    });
+
+    expect(wrapper.find('.admin-page').exists()).toBe(true);
+    expect(wrapper.find('.admin-page-header').exists()).toBe(true);
+    expect(wrapper.findAll('[data-testid="dashboard-entry"]')).toHaveLength(4);
+    expect(wrapper.text()).toContain('NEW');
+    expect(wrapper.text()).toContain('PROCESSING');
+    expect(wrapper.text()).toContain('COMPLETED');
+    expect(wrapper.text()).toContain('CANCELLED');
+    expect(wrapper.text()).not.toMatch(/Task 11|Task 12|占位提示|伪统计/);
+  });
+
+  it('routes every real dashboard entry to its configured feature', async () => {
+    const routes = ['/orders', '/products', '/categories', '/banners'] as const;
+
+    await Promise.all(
+      routes.map(async (path, index) => {
+        const dashboardRouter = createRouter({
+          history: createMemoryHistory(),
+          routes: [
+            { path: '/dashboard', component: DashboardView },
+            { path, component: { template: `<div>${path}</div>` } },
+          ],
+        });
+        await dashboardRouter.push('/dashboard');
+        await dashboardRouter.isReady();
+        const wrapper = mount(DashboardView, {
+          global: { plugins: [dashboardRouter] },
+        });
+
+        const entry = wrapper.findAll('[data-testid="dashboard-entry"]')[index];
+        expect(entry.text()).toContain(DASHBOARD_ENTRY_PREVIEW[index].title);
+        await entry.trigger('click');
+        await flushPromises();
+        expect(dashboardRouter.currentRoute.value.fullPath).toBe(path);
+      }),
+    );
+  });
+
+  it('renders NEW to PROCESSING before the completed or cancelled branch', () => {
+    const wrapper = mount(OrderFlowGuide, {
+      props: { flow: ORDER_FLOW },
+    });
+
+    expect(
+      wrapper
+        .findAll('[data-flow-stage]')
+        .map((node) => node.attributes('data-flow-stage')),
+    ).toEqual(['NEW', 'PROCESSING', 'OUTCOMES']);
+    expect(wrapper.get('[data-flow-stage="OUTCOMES"]').text()).toContain(
+      'COMPLETED',
+    );
+    expect(wrapper.get('[data-flow-stage="OUTCOMES"]').text()).toContain(
+      'CANCELLED',
+    );
+    expect(wrapper.find('.order-flow-step__marker').exists()).toBe(false);
+  });
+
+  it('uses the shared empty state and preserves dashboard navigation', async () => {
+    const stateRouter = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: '/missing', component: NotFoundView },
+        { path: '/dashboard', component: { template: '<div>dashboard</div>' } },
+      ],
+    });
+    await stateRouter.push('/missing');
+    await stateRouter.isReady();
+
+    const wrapper = mount(NotFoundView, {
+      global: { plugins: [stateRouter] },
+    });
+
+    expect(wrapper.find('.admin-empty-state').exists()).toBe(true);
+    await wrapper.get('[data-testid="not-found-home"]').trigger('click');
+    await flushPromises();
+    expect(stateRouter.currentRoute.value.fullPath).toBe('/dashboard');
+  });
+
+  it('keeps Placeholder navigation back to the dashboard', async () => {
+    const stateRouter = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: '/preview', component: PlaceholderView },
+        { path: '/dashboard', component: { template: '<div>dashboard</div>' } },
+      ],
+    });
+    await stateRouter.push('/preview');
+    await stateRouter.isReady();
+
+    const wrapper = mount(PlaceholderView, {
+      global: { plugins: [stateRouter] },
+    });
+
+    expect(wrapper.find('.admin-empty-state').exists()).toBe(true);
+    await wrapper.get('[data-testid="placeholder-home"]').trigger('click');
+    await flushPromises();
+    expect(stateRouter.currentRoute.value.fullPath).toBe('/dashboard');
+  });
 });
