@@ -59,6 +59,11 @@ describe('HomeView', () => {
     expect(api.listProducts).toHaveBeenCalledTimes(1);
     expect(wrapper.text()).toContain('今日新鲜出炉');
     expect(wrapper.text()).toContain('草莓云朵蛋糕');
+    expect(wrapper.find('.store-page').exists()).toBe(true);
+    expect(wrapper.find('.store-section').exists()).toBe(true);
+    expect(
+      wrapper.get('[data-testid="store-tabbar"]').attributes('aria-label'),
+    ).toBe('商城主导航');
     expect(wrapper.findAll('[data-testid^="product-card-"]')).toHaveLength(2);
   });
 

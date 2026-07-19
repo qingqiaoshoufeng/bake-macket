@@ -116,6 +116,7 @@ function onAdd(): void {
           min="1"
           max="99"
           step="1"
+          class="sku-picker__qty-input"
           data-testid="qty"
           :value="quantity"
           @input="
@@ -130,6 +131,7 @@ function onAdd(): void {
         class="sku-picker__add"
         data-testid="add-cart"
         :disabled="!canAdd"
+        :aria-disabled="!canAdd"
         @click="onAdd"
       >
         加入购物车
@@ -142,95 +144,133 @@ function onAdd(): void {
 .sku-picker {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--mall-space-5);
 }
+
 .sku-picker__list {
-  list-style: none;
-  padding: 0;
+  display: grid;
   margin: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  padding: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--mall-space-2);
+  list-style: none;
 }
+
 .sku-picker__item {
   display: flex;
+  width: 100%;
+  min-height: 82px;
+  padding: var(--mall-space-3);
   flex-direction: column;
   align-items: flex-start;
-  gap: 4px;
-  padding: 10px 14px;
-  border-radius: var(--van-radius-md);
-  border: 1px solid #e7e2d8;
-  background: #fff;
-  cursor: pointer;
+  gap: var(--mall-space-1);
+  border: 1px solid var(--mall-border);
+  border-radius: var(--mall-radius-card);
+  background: var(--mall-surface);
+  color: var(--mall-text);
   text-align: left;
+  cursor: pointer;
   transition:
     border-color 120ms ease,
-    background 120ms ease;
-  min-width: 110px;
+    background 120ms ease,
+    box-shadow 120ms ease;
 }
+
 .sku-picker__item--selected {
-  border-color: var(--mall-leaf);
-  background: rgba(143, 181, 143, 0.1);
+  border-color: var(--mall-primary);
+  background: var(--mall-surface-soft);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--mall-primary) 14%, transparent);
 }
+
 .sku-picker__item--disabled {
-  opacity: 0.55;
+  background: color-mix(in srgb, var(--mall-canvas) 76%, var(--mall-surface));
   cursor: not-allowed;
-  background: #f5f0e6;
+  opacity: 0.58;
 }
+
 .sku-picker__name {
   font-size: 14px;
-  font-weight: 500;
-  color: var(--mall-ink);
+  font-weight: 600;
 }
+
 .sku-picker__price {
+  color: var(--mall-accent);
   font-size: 13px;
-  color: var(--mall-apricot);
+  font-weight: 600;
 }
+
 .sku-picker__stock {
+  color: var(--mall-text-muted);
   font-size: 12px;
-  color: var(--mall-muted);
 }
+
 .sku-picker__row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--mall-space-3);
 }
+
 .sku-picker__qty {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--mall-space-2);
+  color: var(--mall-text-muted);
   font-size: 14px;
-  color: var(--mall-muted);
 }
-.sku-picker__qty input {
+
+.sku-picker__qty-input {
   width: 64px;
-  height: 36px;
-  border-radius: var(--van-radius-md);
-  border: 1px solid #e7e2d8;
-  background: #fff;
-  padding: 0 8px;
-  font-size: 14px;
-  color: var(--mall-ink);
+  height: 44px;
+  padding: 0 var(--mall-space-2);
+  border: 1px solid var(--mall-border);
+  border-radius: var(--mall-radius-control);
   outline: none;
+  background: var(--mall-surface);
+  color: var(--mall-text);
+  font: inherit;
   text-align: center;
 }
-.sku-picker__qty input:focus {
-  border-color: var(--mall-leaf);
+
+.sku-picker__qty-input:focus {
+  border-color: var(--mall-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--mall-primary) 12%, transparent);
 }
+
 .sku-picker__add {
+  min-width: 0;
+  height: 46px;
+  padding: 0 var(--mall-space-4);
   flex: 1;
-  height: 44px;
-  border-radius: var(--van-radius-lg);
   border: 0;
-  background: var(--van-primary-color);
+  border-radius: var(--mall-radius-card);
+  background: var(--mall-primary);
   color: #fff;
+  font: inherit;
   font-size: 15px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
 }
+
 .sku-picker__add[disabled] {
-  opacity: 0.55;
   cursor: not-allowed;
+  opacity: 0.5;
+}
+
+@media (max-width: 360px) {
+  .sku-picker__row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .sku-picker__add {
+    flex: 0 0 46px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sku-picker__item {
+    transition: none;
+  }
 }
 </style>

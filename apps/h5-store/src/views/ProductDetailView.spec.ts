@@ -69,6 +69,11 @@ describe('ProductDetailView', () => {
     await vi.waitFor(() => expect(wrapper.text()).toContain('草莓云朵蛋糕'));
 
     expect(wrapper.html()).toContain('服务端清洗后的商品详情');
+    expect(wrapper.find('.store-page').exists()).toBe(true);
+    expect(wrapper.find('.store-section').exists()).toBe(true);
+    expect(
+      wrapper.get('[data-testid="store-tabbar"]').attributes('aria-label'),
+    ).toBe('商城主导航');
     await wrapper.get('[data-testid="choose-sku"]').trigger('click');
     expect(wrapper.find('[data-testid="sku-sheet"]').exists()).toBe(true);
     expect(

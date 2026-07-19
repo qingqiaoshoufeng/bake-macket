@@ -36,7 +36,7 @@ const minimumPriceCents = computed(() =>
       />
       <div v-else class="product-card__placeholder">今日现做</div>
     </div>
-    <div class="product-card__body">
+    <div class="product-card__body" data-layout="stable">
       <h3>{{ product.name }}</h3>
       <p>{{ product.summary ?? '门店现做，新鲜交付' }}</p>
       <strong v-if="minimumPriceCents !== null">
@@ -49,50 +49,90 @@ const minimumPriceCents = computed(() =>
 
 <style scoped>
 .product-card {
+  display: flex;
+  min-width: 0;
+  height: 100%;
   overflow: hidden;
-  border-radius: 18px;
-  background: #fff;
-  box-shadow: 0 10px 28px rgba(90, 74, 52, 0.08);
+  flex-direction: column;
+  border: 1px solid var(--mall-border);
+  border-radius: var(--mall-radius-card);
+  background: var(--mall-surface);
+  box-shadow: var(--mall-shadow-card);
   cursor: pointer;
 }
+
 .product-card:focus-visible {
-  outline: 2px solid var(--mall-leaf);
+  outline: 2px solid var(--mall-primary);
   outline-offset: 2px;
 }
+
 .product-card__image-wrap {
-  aspect-ratio: 4 / 3;
-  background: #f4eadb;
+  aspect-ratio: 1 / 0.78;
+  flex: 0 0 auto;
+  overflow: hidden;
+  background: var(--mall-surface-soft);
 }
+
 .product-card__image {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  transition: transform 180ms ease;
 }
+
+.product-card:hover .product-card__image {
+  transform: scale(1.02);
+}
+
 .product-card__placeholder {
-  height: 100%;
   display: grid;
+  height: 100%;
   place-items: center;
-  color: #9b795d;
-  font-size: 13px;
-  letter-spacing: 0.12em;
+  color: var(--mall-primary-strong);
+  font-size: 12px;
+  letter-spacing: 0.1em;
 }
+
 .product-card__body {
-  padding: 12px;
+  display: flex;
+  min-height: 118px;
+  padding: var(--mall-space-3);
+  flex: 1;
+  flex-direction: column;
 }
-h3 {
+
+.product-card h3 {
+  display: -webkit-box;
+  overflow: hidden;
   margin: 0;
-  font-size: 16px;
-  color: var(--mall-ink);
+  color: var(--mall-text);
+  font-size: 15px;
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
-p {
-  margin: 5px 0 10px;
-  min-height: 34px;
-  color: var(--mall-muted);
+
+.product-card p {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: var(--mall-space-1) 0 var(--mall-space-2);
+  color: var(--mall-text-muted);
   font-size: 12px;
   line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
-strong {
-  color: #c87945;
+
+.product-card strong {
+  margin-top: auto;
+  color: var(--mall-accent);
   font-size: 15px;
+  line-height: 1.4;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .product-card__image {
+    transition: none;
+  }
 }
 </style>

@@ -54,6 +54,12 @@ describe('SkuPicker', () => {
 
     // Selecting an out-of-stock SKU keeps the add button disabled.
     await wrapper.get('[data-testid="sku-sku-empty"]').trigger('click');
+    expect(wrapper.get('[data-testid="qty"]').classes()).toContain(
+      'sku-picker__qty-input',
+    );
+    expect(
+      wrapper.get('[data-testid="add-cart"]').attributes('aria-disabled'),
+    ).toBe('true');
     expect(
       (wrapper.get('[data-testid="add-cart"]').element as HTMLButtonElement)
         .disabled,
