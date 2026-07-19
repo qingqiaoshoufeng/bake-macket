@@ -7,19 +7,49 @@
  * Vant components inherit the look without per-component overrides.
  */
 :root {
-  --mall-cream: #fffaf3;
-  --mall-leaf: #8fb58f;
-  --mall-apricot: #f2c99d;
-  --mall-ink: #3f3a35;
-  --mall-muted: #8a8378;
+  --mall-canvas: #f7faf6;
+  --mall-surface: #ffffff;
+  --mall-surface-soft: #eef5ec;
+  --mall-primary: #78a281;
+  --mall-primary-strong: #4f7659;
+  --mall-accent: #e9a86f;
+  --mall-text: #2f3b33;
+  --mall-text-muted: #748078;
+  --mall-border: #dfe8de;
+  --mall-danger: #c75d62;
+  --mall-warning: #d39453;
+  --mall-success: #5d936d;
+  --mall-space-1: 4px;
+  --mall-space-2: 8px;
+  --mall-space-3: 12px;
+  --mall-space-4: 16px;
+  --mall-space-5: 20px;
+  --mall-space-6: 24px;
+  --mall-space-8: 32px;
+  --mall-radius-control: 10px;
+  --mall-radius-card: 16px;
+  --mall-radius-feature: 22px;
+  --mall-shadow-card: 0 8px 24px rgb(58 83 64 / 7%);
+  --mall-shadow-floating: 0 14px 34px rgb(48 72 54 / 14%);
+  --mall-page-width: 560px;
+  --mall-page-gutter: 16px;
+  --mall-tabbar-height: 70px;
 
-  --van-primary-color: #7da77d;
-  --van-background: var(--mall-cream);
-  --van-background-2: #fff;
-  --van-text-color: var(--mall-ink);
-  --van-text-color-2: var(--mall-muted);
-  --van-radius-lg: 16px;
-  --van-radius-md: 12px;
+  /* Temporary aliases keep existing pages stable while they adopt the new tokens. */
+  --mall-cream: var(--mall-canvas);
+  --mall-leaf: var(--mall-primary);
+  --mall-apricot: var(--mall-accent);
+  --mall-ink: var(--mall-text);
+  --mall-muted: var(--mall-text-muted);
+
+  --van-primary-color: var(--mall-primary);
+  --van-background: var(--mall-canvas);
+  --van-background-2: var(--mall-surface);
+  --van-text-color: var(--mall-text);
+  --van-text-color-2: var(--mall-text-muted);
+  --van-border-color: var(--mall-border);
+  --van-radius-lg: var(--mall-radius-card);
+  --van-radius-md: var(--mall-radius-control);
   --van-button-default-height: 44px;
 }
 
@@ -29,8 +59,8 @@ body,
   margin: 0;
   padding: 0;
   height: 100%;
-  background: var(--mall-cream);
-  color: var(--mall-ink);
+  background: var(--mall-canvas);
+  color: var(--mall-text);
   font-family:
     -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial,
     'PingFang SC', 'Microsoft YaHei', sans-serif;
