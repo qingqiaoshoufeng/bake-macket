@@ -45,53 +45,70 @@ const attributesText = (attributes: Record<string, string>): string =>
   >
     <div v-loading="loading" class="order-detail">
       <template v-if="order">
-        <ElDescriptions :column="2" border>
-          <ElDescriptionsItem label="订单号">{{
-            order.orderNo
-          }}</ElDescriptionsItem>
-          <ElDescriptionsItem label="状态">
-            <ElTag :type="ORDER_STATUS_TAG_TYPE[order.status]">
-              {{ ORDER_STATUS_LABELS[order.status] }}
-            </ElTag>
-          </ElDescriptionsItem>
-          <ElDescriptionsItem label="联系人">{{
-            order.contactName
-          }}</ElDescriptionsItem>
-          <ElDescriptionsItem label="联系电话">{{
-            order.contactPhone
-          }}</ElDescriptionsItem>
-          <ElDescriptionsItem label="履约方式">
-            {{ FULFILLMENT_LABELS[order.fulfillmentType] }}
-          </ElDescriptionsItem>
-          <ElDescriptionsItem label="履约快照">
-            {{ order.pickupTimeText ?? order.deliveryAddressText ?? '—' }}
-          </ElDescriptionsItem>
-          <ElDescriptionsItem label="商品总额">
-            {{ formatPriceCents(order.goodsTotalCents) }}
-          </ElDescriptionsItem>
-          <ElDescriptionsItem label="买家备注">{{
-            order.remark ?? '无'
-          }}</ElDescriptionsItem>
-        </ElDescriptions>
+        <section class="order-detail__group" data-snapshot-group="order">
+          <div class="order-detail__group-heading">
+            <span>ORDER SNAPSHOT</span>
+            <h3>订单与履约快照</h3>
+          </div>
+          <ElDescriptions :column="2" border>
+            <ElDescriptionsItem label="订单号">{{
+              order.orderNo
+            }}</ElDescriptionsItem>
+            <ElDescriptionsItem label="状态">
+              <ElTag :type="ORDER_STATUS_TAG_TYPE[order.status]">
+                {{ ORDER_STATUS_LABELS[order.status] }}
+              </ElTag>
+            </ElDescriptionsItem>
+            <ElDescriptionsItem label="联系人">{{
+              order.contactName
+            }}</ElDescriptionsItem>
+            <ElDescriptionsItem label="联系电话">{{
+              order.contactPhone
+            }}</ElDescriptionsItem>
+            <ElDescriptionsItem label="履约方式">
+              {{ FULFILLMENT_LABELS[order.fulfillmentType] }}
+            </ElDescriptionsItem>
+            <ElDescriptionsItem label="履约快照">
+              {{ order.pickupTimeText ?? order.deliveryAddressText ?? '—' }}
+            </ElDescriptionsItem>
+            <ElDescriptionsItem label="商品总额">
+              {{ formatPriceCents(order.goodsTotalCents) }}
+            </ElDescriptionsItem>
+            <ElDescriptionsItem label="买家备注">{{
+              order.remark ?? '无'
+            }}</ElDescriptionsItem>
+          </ElDescriptions>
+        </section>
 
-        <h3>商品快照</h3>
-        <ElTable :data="order.items" row-key="id">
-          <ElTableColumn prop="productName" label="商品" min-width="160" />
-          <ElTableColumn prop="skuName" label="规格" min-width="110" />
-          <ElTableColumn label="属性" min-width="150">
-            <template #default="{ row }">{{
-              attributesText(row.skuAttributes) || '—'
-            }}</template>
-          </ElTableColumn>
-          <ElTableColumn label="单价" width="100">
-            <template #default="{ row }">{{
-              formatPriceCents(row.unitPriceCents)
-            }}</template>
-          </ElTableColumn>
-          <ElTableColumn prop="quantity" label="数量" width="80" />
-        </ElTable>
+        <section class="order-detail__group" data-snapshot-group="items">
+          <div class="order-detail__group-heading">
+            <span>ITEM SNAPSHOT</span>
+            <h3>商品快照</h3>
+          </div>
+          <div class="admin-horizontal-scroll" data-testid="order-items-scroll">
+            <ElTable
+              :data="order.items"
+              row-key="id"
+              class="admin-table order-detail__items-table"
+            >
+              <ElTableColumn prop="productName" label="商品" min-width="160" />
+              <ElTableColumn prop="skuName" label="规格" min-width="110" />
+              <ElTableColumn label="属性" min-width="150">
+                <template #default="{ row }">{{
+                  attributesText(row.skuAttributes) || '—'
+                }}</template>
+              </ElTableColumn>
+              <ElTableColumn label="单价" width="100">
+                <template #default="{ row }">{{
+                  formatPriceCents(row.unitPriceCents)
+                }}</template>
+              </ElTableColumn>
+              <ElTableColumn prop="quantity" label="数量" width="80" />
+            </ElTable>
+          </div>
+        </section>
 
-        <div v-if="actions.length" class="order-actions">
+        <div v-if="actions.length" class="order-actions order-actions--sticky">
           <ElButton
             v-for="action in actions"
             :key="action.key"
@@ -110,18 +127,54 @@ const attributesText = (attributes: Record<string, string>): string =>
 
 <style scoped>
 .order-detail {
+  display: grid;
+  gap: 20px;
   min-height: 220px;
 }
 
-.order-detail h3 {
-  margin: 24px 0 12px;
-  color: #3a324c;
+.order-detail__group {
+  padding: 18px;
+  border: 1px solid var(--admin-border);
+  border-radius: var(--admin-radius-card);
+  background: var(--admin-surface);
+}
+
+.order-detail__group-heading {
+  margin-bottom: 14px;
+}
+
+.order-detail__group-heading span {
+  color: var(--admin-primary);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+
+.order-detail__group-heading h3 {
+  margin: 4px 0 0;
+  color: var(--admin-text);
+  font-size: 16px;
+}
+
+.order-detail__items-table {
+  min-width: 640px;
 }
 
 .order-actions {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
-  margin-top: 24px;
+}
+
+.order-actions--sticky {
+  position: sticky;
+  z-index: 2;
+  bottom: -20px;
+  margin: 0 -24px -20px;
+  padding: 16px 24px 20px;
+  border-top: 1px solid var(--admin-border);
+  background: rgb(255 255 255 / 96%);
+  box-shadow: 0 -8px 20px rgb(73 57 105 / 6%);
+  backdrop-filter: blur(8px);
 }
 </style>

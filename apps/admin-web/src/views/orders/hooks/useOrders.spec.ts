@@ -80,8 +80,38 @@ describe('useOrders', () => {
     await state.openDetail(row.id);
 
     expect(state.detail.value).toEqual(detail);
-    expect(state.actions.value.map((action) => action.status)).toEqual([
-      OrderStatus.PROCESSING,
+    expect(state.actions.value).toEqual([
+      {
+        key: 'start',
+        status: OrderStatus.PROCESSING,
+        label: '开始处理',
+        description: '将订单状态从“待处理”切换为“处理中”,准备安排生产或发货。',
+      },
+    ]);
+  });
+
+  it('derives processing actions from the shared definitions including no-restock copy', async () => {
+    api.getOne.mockResolvedValueOnce({
+      ...detail,
+      status: OrderStatus.PROCESSING,
+    });
+    const state = useOrders();
+
+    await state.openDetail(row.id);
+
+    expect(state.actions.value).toEqual([
+      {
+        key: 'complete',
+        status: OrderStatus.COMPLETED,
+        label: '完成订单',
+        description: '订单已交付,标记为已完成。',
+      },
+      {
+        key: 'cancel',
+        status: OrderStatus.CANCELLED,
+        label: '取消订单',
+        description: '取消订单不会回补库存,请确认后再操作。',
+      },
     ]);
   });
 

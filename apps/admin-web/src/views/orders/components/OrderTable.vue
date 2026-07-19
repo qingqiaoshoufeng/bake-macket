@@ -4,8 +4,9 @@ import type {
   FulfillmentType,
   OrderStatus,
 } from '@bake-mall/contracts';
-import { ElButton, ElEmpty, ElTable, ElTableColumn, ElTag } from 'element-plus';
+import { ElButton, ElTable, ElTableColumn, ElTag } from 'element-plus';
 
+import AdminEmptyState from '../../../components/feedback/AdminEmptyState.vue';
 import {
   FULFILLMENT_LABELS,
   ORDER_STATUS_LABELS,
@@ -34,39 +35,67 @@ const statusTagType = (value: OrderStatus) => ORDER_STATUS_TAG_TYPE[value];
       v-loading="loading"
       :data="[...props.orders]"
       row-key="id"
+      class="admin-table order-table__table"
     >
       <ElTableColumn
         prop="orderNo"
         :label="orderColumns[0].label"
-        min-width="190"
+        :min-width="orderColumns[0].minWidth"
       />
-      <ElTableColumn :label="orderColumns[1].label" min-width="150">
+      <ElTableColumn
+        :label="orderColumns[1].label"
+        :min-width="orderColumns[1].minWidth"
+      >
         <template #default="{ row }">
           <strong>{{ row.contactName }}</strong>
           <small class="contact-phone">{{ row.contactPhone }}</small>
         </template>
       </ElTableColumn>
-      <ElTableColumn :label="orderColumns[2].label" width="110">
+      <ElTableColumn
+        :label="orderColumns[2].label"
+        :width="orderColumns[2].width"
+      >
         <template #default="{ row }">{{
           fulfillmentLabel(row.fulfillmentType)
         }}</template>
       </ElTableColumn>
-      <ElTableColumn :label="orderColumns[3].label" width="110">
+      <ElTableColumn
+        :label="orderColumns[3].label"
+        :width="orderColumns[3].width"
+      >
         <template #default="{ row }">{{
           formatPriceCents(row.goodsTotalCents)
         }}</template>
       </ElTableColumn>
-      <ElTableColumn :label="orderColumns[4].label" width="100">
+      <ElTableColumn
+        :label="orderColumns[4].label"
+        :width="orderColumns[4].width"
+      >
         <template #default="{ row }">
           <ElTag :type="statusTagType(row.status)">
             {{ statusLabel(row.status) }}
           </ElTag>
         </template>
       </ElTableColumn>
-      <ElTableColumn :label="orderColumns[5].label" width="170">
+      <ElTableColumn
+        :label="orderColumns[5].label"
+        :width="orderColumns[5].width"
+      >
         <template #default="{ row }">{{ formatDate(row.createdAt) }}</template>
       </ElTableColumn>
-      <ElTableColumn :label="orderColumns[6].label" width="100" fixed="right">
+      <template #empty>
+        <AdminEmptyState
+          title="没有符合条件的订单"
+          description="调整筛选条件后再试，或等待顾客提交新订单。"
+          tone="mint"
+        />
+      </template>
+
+      <ElTableColumn
+        :label="orderColumns[6].label"
+        :width="orderColumns[6].width"
+        fixed="right"
+      >
         <template #default="{ row }">
           <ElButton link type="primary" @click="emit('open', row.id)"
             >查看详情</ElButton
@@ -74,16 +103,18 @@ const statusTagType = (value: OrderStatus) => ORDER_STATUS_TAG_TYPE[value];
         </template>
       </ElTableColumn>
     </ElTable>
-    <ElEmpty v-else description="没有符合条件的订单" />
+    <AdminEmptyState
+      v-else
+      title="没有符合条件的订单"
+      description="调整筛选条件后再试，或等待顾客提交新订单。"
+      tone="mint"
+    />
   </div>
 </template>
 
 <style scoped>
-.order-table {
-  overflow: hidden;
-  border: 1px solid #ece6f8;
-  border-radius: 16px;
-  background: #fff;
+.order-table__table {
+  min-width: 1030px;
 }
 
 .contact-phone {

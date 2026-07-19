@@ -2,6 +2,9 @@
 import { onMounted } from 'vue';
 import { ElAlert, ElMessage, ElMessageBox, ElPagination } from 'element-plus';
 
+import AdminDataPanel from '../../components/layout/AdminDataPanel.vue';
+import AdminPage from '../../components/layout/AdminPage.vue';
+import AdminPageHeader from '../../components/layout/AdminPageHeader.vue';
 import OrderDetailDrawer from './components/OrderDetailDrawer.vue';
 import OrderFilters from './components/OrderFilters.vue';
 import OrderTable from './components/OrderTable.vue';
@@ -50,21 +53,11 @@ async function runAction(action: OrderAction): Promise<void> {
 </script>
 
 <template>
-  <section class="orders-page">
-    <header class="orders-page__head">
-      <div>
-        <span>履约工作台</span>
-        <h1>订单管理</h1>
-        <p>筛选订单、查看不可变快照，并执行合法状态流转。</p>
-      </div>
-    </header>
-
-    <OrderFilters
-      :filters="state.filters"
-      :loading="state.loading.value"
-      @change="updateFilters"
-      @search="state.search"
-      @reset="state.reset"
+  <AdminPage>
+    <AdminPageHeader
+      eyebrow="FULFILLMENT"
+      title="订单管理"
+      description="筛选订单、查看不可变快照，并执行合法状态流转。"
     />
 
     <ElAlert
@@ -75,24 +68,37 @@ async function runAction(action: OrderAction): Promise<void> {
       show-icon
     />
 
-    <OrderTable
-      :orders="state.orders.value"
-      :loading="state.loading.value"
-      @open="state.openDetail"
-    />
+    <AdminDataPanel>
+      <template #toolbar>
+        <OrderFilters
+          :filters="state.filters"
+          :loading="state.loading.value"
+          @change="updateFilters"
+          @search="state.search"
+          @reset="state.reset"
+        />
+      </template>
 
-    <ElPagination
-      v-if="state.total.value > 0"
-      class="orders-page__pagination"
-      background
-      layout="total, sizes, prev, pager, next"
-      :total="state.total.value"
-      :current-page="state.page.value"
-      :page-size="state.pageSize.value"
-      :page-sizes="[...ORDER_PAGINATION.pageSizes]"
-      @update:current-page="state.setPage"
-      @update:page-size="state.setPageSize"
-    />
+      <OrderTable
+        :orders="state.orders.value"
+        :loading="state.loading.value"
+        @open="state.openDetail"
+      />
+
+      <template v-if="state.total.value > 0" #footer>
+        <ElPagination
+          class="orders-page__pagination"
+          background
+          layout="total, sizes, prev, pager, next"
+          :total="state.total.value"
+          :current-page="state.page.value"
+          :page-size="state.pageSize.value"
+          :page-sizes="[...ORDER_PAGINATION.pageSizes]"
+          @update:current-page="state.setPage"
+          @update:page-size="state.setPageSize"
+        />
+      </template>
+    </AdminDataPanel>
 
     <OrderDetailDrawer
       :visible="state.detailVisible.value"
@@ -103,42 +109,10 @@ async function runAction(action: OrderAction): Promise<void> {
       @close="state.closeDetail"
       @action="runAction"
     />
-  </section>
+  </AdminPage>
 </template>
 
 <style scoped>
-.orders-page {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.orders-page__head {
-  padding: 20px 24px;
-  border: 1px solid #e9e0f8;
-  border-radius: 18px;
-  background: linear-gradient(120deg, #fff 0%, #f7f1ff 72%, #ffeef3 100%);
-}
-
-.orders-page__head span {
-  color: #9675bf;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.16em;
-}
-
-.orders-page__head h1 {
-  margin: 5px 0 0;
-  color: #342c47;
-  font-size: 24px;
-}
-
-.orders-page__head p {
-  margin: 7px 0 0;
-  color: #817692;
-  font-size: 13px;
-}
-
 .orders-page__pagination {
   justify-content: flex-end;
 }

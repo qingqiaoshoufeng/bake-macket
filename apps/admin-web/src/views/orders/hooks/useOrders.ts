@@ -1,6 +1,5 @@
 import {
   OrderStatus,
-  canTransitionOrder,
   type AdminOrderListItem,
   type AdminOrderListQuery,
   type OrderStatusUpdateResult,
@@ -12,28 +11,7 @@ import { ordersApi } from '../api/index.js';
 import { createOrderFilterDefaults } from '../config/defaults.js';
 import { ORDER_PAGINATION } from '../config/pagination.js';
 import type { OrderFilterForm } from '../type/index.js';
-import type { OrderAction } from './useOrderActions.js';
-
-const ACTIONS: readonly OrderAction[] = [
-  {
-    key: 'start',
-    status: OrderStatus.PROCESSING,
-    label: '开始处理',
-    description: '开始安排生产或配送。',
-  },
-  {
-    key: 'complete',
-    status: OrderStatus.COMPLETED,
-    label: '完成订单',
-    description: '确认订单已经交付。',
-  },
-  {
-    key: 'cancel',
-    status: OrderStatus.CANCELLED,
-    label: '取消订单',
-    description: '取消订单不会回补库存。',
-  },
-];
+import { deriveOrderActions, type OrderAction } from './useOrderActions.js';
 
 const toQuery = (
   filters: OrderFilterForm,
@@ -70,9 +48,7 @@ export function useOrders() {
 
   const actions = computed<readonly OrderAction[]>(() => {
     const status = detail.value?.status;
-    return status
-      ? ACTIONS.filter((action) => canTransitionOrder(status, action.status))
-      : [];
+    return status ? deriveOrderActions(status) : [];
   });
 
   async function load(): Promise<void> {
