@@ -107,6 +107,21 @@ describe('ProductEditorView', () => {
       ...form.props('form'),
       name: '未保存草稿',
       categoryId: 'category-1',
+      isActive: false,
+      skus: PRODUCT_DETAIL_MOCK.skus.map((sku) => ({
+        rowId: sku.id,
+        id: sku.id,
+        stockVersion: sku.stockVersion,
+        name: sku.name,
+        attributes: Object.entries(sku.attributes).map(([key, value]) => ({
+          key,
+          value,
+        })),
+        priceYuan: '68.50',
+        stock: sku.stock,
+        isActive: sku.isActive,
+        image: sku.image,
+      })),
     });
 
     form.vm.$emit('submit');
@@ -146,6 +161,21 @@ describe('ProductEditorView', () => {
       ...form.props('form'),
       name: '新品',
       categoryId: 'category-1',
+      isActive: false,
+      skus: PRODUCT_DETAIL_MOCK.skus.map((sku) => ({
+        rowId: sku.id,
+        id: sku.id,
+        stockVersion: sku.stockVersion,
+        name: sku.name,
+        attributes: Object.entries(sku.attributes).map(([key, value]) => ({
+          key,
+          value,
+        })),
+        priceYuan: '68.50',
+        stock: sku.stock,
+        isActive: sku.isActive,
+        image: sku.image,
+      })),
     });
     form.vm.$emit('submit');
     await flushPromises();

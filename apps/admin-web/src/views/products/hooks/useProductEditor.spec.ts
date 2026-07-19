@@ -126,9 +126,10 @@ describe('useProductEditor', () => {
     categories.list.mockResolvedValueOnce(categoryListMock);
     await editor.load();
     editor.replaceForm({
-      ...editor.form.value,
+      ...mapDetailToForm(PRODUCT_DETAIL_MOCK),
       name: '未保存草稿',
       categoryId: 'category-1',
+      isActive: false,
     });
     const saveError = new ApiClientError(500, '服务暂时不可用');
     api.create.mockRejectedValueOnce(saveError);
@@ -169,9 +170,10 @@ describe('useProductEditor', () => {
     });
 
     editor.replaceForm({
-      ...editor.form.value,
+      ...mapDetailToForm(PRODUCT_DETAIL_MOCK),
       name: '新品',
       categoryId: 'category-1',
+      isActive: false,
     });
     await editor.save();
 
