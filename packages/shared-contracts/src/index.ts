@@ -3,6 +3,7 @@ export * from './admin-catalog.js';
 export * from './admin-order.js';
 export * from './auth.js';
 export * from './catalog.js';
+export * from './customer.js';
 export * from './enums.js';
 export * from './errors.js';
 export * from './media.js';

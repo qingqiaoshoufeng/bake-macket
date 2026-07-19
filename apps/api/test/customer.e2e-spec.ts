@@ -107,10 +107,7 @@ function memoryRepository<T extends { id?: string }>() {
           record['skuId' as keyof T] === skuId,
       );
       if (existing) {
-        existing['quantity' as keyof T] = Math.min(
-          99,
-          (existing['quantity' as keyof T] as number) + quantity,
-        ) as T[keyof T];
+        existing['quantity' as keyof T] = quantity as T[keyof T];
       } else {
         records.push({
           id: String(nextId++),
@@ -275,7 +272,7 @@ describe('Customer domain (e2e)', () => {
     await app?.close();
   });
 
-  it('keeps only the second default address, merges repeated SKU additions, and filters disabled or invalid banners', async () => {
+  it('keeps only the second default address, replaces repeated SKU quantities, and filters disabled or invalid banners', async () => {
     const firstAddress = {
       receiverName: 'A',
       phone: '13800000000',
@@ -310,18 +307,31 @@ describe('Customer domain (e2e)', () => {
       .set(userHeaders)
       .send({ skuId: 'sku-1', quantity: 1 })
       .expect(201);
-    await request(app.getHttpServer())
+    const replacedCartItem = await request(app.getHttpServer())
       .post('/api/v1/me/cart/items')
       .set(userHeaders)
       .send({ skuId: 'sku-1', quantity: 2 })
       .expect(201);
+    expect(replacedCartItem.body).toEqual(
+      expect.objectContaining({ quantity: 2 }),
+    );
+    await request(app.getHttpServer())
+      .post('/api/v1/me/cart/items')
+      .set(userHeaders)
+      .send({ skuId: 'sku-1', quantity: 0 })
+      .expect(400);
+    await request(app.getHttpServer())
+      .post('/api/v1/me/cart/items')
+      .set(userHeaders)
+      .send({ skuId: 'sku-1', quantity: 100 })
+      .expect(400);
     const cart = await request(app.getHttpServer())
       .get('/api/v1/me/cart/items')
       .set(userHeaders)
       .expect(200);
     expect(cart.body).toEqual([
       expect.objectContaining({
-        quantity: 3,
+        quantity: 2,
         available: true,
         sku: expect.objectContaining({ priceCents: 6800, stock: 2 }),
       }),

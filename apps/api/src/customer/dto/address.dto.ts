@@ -1,4 +1,5 @@
 import { PartialType } from '@nestjs/mapped-types';
+import type { CreateAddressRequest, UpdateAddressRequest } from '@bake-mall/contracts';
 import {
   IsBoolean,
   IsOptional,
@@ -8,7 +9,7 @@ import {
   MaxLength,
 } from 'class-validator';
 
-export class CreateAddressDto {
+export class CreateAddressDto implements CreateAddressRequest {
   @IsString()
   @MaxLength(64)
   receiverName!: string;
@@ -37,7 +38,9 @@ export class CreateAddressDto {
   isDefault?: boolean;
 }
 
-export class UpdateAddressDto extends PartialType(CreateAddressDto) {}
+export class UpdateAddressDto
+  extends PartialType(CreateAddressDto)
+  implements UpdateAddressRequest {}
 
 export class SetDefaultAddressDto {
   @IsBoolean()

@@ -1,32 +1,12 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import type { CartItemView } from '@bake-mall/contracts';
 import { Repository } from 'typeorm';
 
 import { CartItem } from '../database/entities/cart-item.entity.js';
 import { Product } from '../database/entities/product.entity.js';
 import { Sku } from '../database/entities/sku.entity.js';
 import { UpsertCartItemDto } from './dto/cart.dto.js';
-
-export type CartItemView = {
-  id: string;
-  quantity: number;
-  available: boolean;
-  sku: {
-    id: string;
-    name: string;
-    attributes: Record<string, string>;
-    priceCents: number;
-    stock: number;
-    imageUrl: string | null;
-    isActive: boolean;
-  };
-  product: {
-    id: string;
-    name: string;
-    coverImageUrl: string | null;
-    isActive: boolean;
-  };
-};
 
 @Injectable()
 export class CartService {
@@ -50,7 +30,7 @@ export class CartService {
     await this.cartItems.query(
       `INSERT INTO cart_items (user_id, sku_id, quantity)
        VALUES (?, ?, ?)
-       ON DUPLICATE KEY UPDATE quantity = LEAST(99, quantity + VALUES(quantity))`,
+       ON DUPLICATE KEY UPDATE quantity = VALUES(quantity)`,
       [userId, dto.skuId, dto.quantity],
     );
     const item = await this.cartItems.findOneByOrFail({

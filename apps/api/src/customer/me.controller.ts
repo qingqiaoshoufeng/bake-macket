@@ -11,6 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import type { CustomerProfileView } from '@bake-mall/contracts';
 import { Repository } from 'typeorm';
 
 import { CurrentUser } from '../auth/current-user.decorator.js';
@@ -32,7 +33,9 @@ export class MeController {
   ) {}
 
   @Get()
-  async profile(@CurrentUser() currentUser: AuthenticatedUser) {
+  async profile(
+    @CurrentUser() currentUser: AuthenticatedUser,
+  ): Promise<CustomerProfileView> {
     const user = await this.users.findOneByOrFail({ id: currentUser.id });
     return {
       id: user.id,
