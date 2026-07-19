@@ -1,22 +1,67 @@
-/**
- * Element Plus "light 二次元" theme tokens for the merchant admin SPA.
- *
- * Per the design spec (§5.2) the palette uses purple/violet accents with a
- * pink accent, rounded cards, and a touch of brand illustration. Tokens
- * override Element Plus' CSS variables so every EP component inherits the
- * look without per-component overrides — data tables, filters, confirm
- * dialogs and toasts all stay on the standard EP interaction model.
- *
- * The colour set is intentionally narrow: two accent hues (lilac primary,
- * pink highlight) plus neutrals for surfaces and text. Dark mode is out of
- * scope for this MVP.
- */
+/* Admin “店长小助手” visual foundation and Element Plus token bridge. */
 :root {
-  --el-color-primary: #7b61c8;
-  --el-color-success: #66a786;
-  --admin-pink: #ff8bb2;
-  --admin-lilac: #f4efff;
-  --el-border-radius-base: 10px;
+  --admin-canvas: #f7f6fb;
+  --admin-surface: #ffffff;
+  --admin-surface-soft: #f3effa;
+  --admin-sidebar: #fbfaff;
+  --admin-primary: #7965b8;
+  --admin-primary-soft: #eee9fb;
+  --admin-pink: #e98bac;
+  --admin-mint: #78aa95;
+  --admin-yellow: #e9bd6e;
+  --admin-danger: #b43f66;
+  --admin-success: #3f755e;
+  --admin-warning: #87580d;
+  --admin-text: #322f3d;
+  --admin-muted: #777184;
+  --admin-border: #e7e2ef;
+  --admin-radius-control: 10px;
+  --admin-radius-card: 16px;
+  --admin-radius-feature: 20px;
+  --admin-shadow-card: 0 10px 30px rgb(73 57 105 / 7%);
+  --admin-sidebar-width: 248px;
+  --admin-topbar-height: 68px;
+  --admin-content-max: 1600px;
+  --admin-lilac: var(--admin-primary-soft);
+
+  --el-color-primary: var(--admin-primary);
+  --el-color-primary-light-3: #a194cc;
+  --el-color-primary-light-5: #bcb2d9;
+  --el-color-primary-light-7: #d8d1e9;
+  --el-color-primary-light-8: #e5e0f2;
+  --el-color-primary-light-9: var(--admin-primary-soft);
+  --el-color-primary-dark-2: #615093;
+  --el-color-success: var(--admin-success);
+  --el-color-success-light-3: #789d8d;
+  --el-color-success-light-5: #9fbaae;
+  --el-color-success-light-7: #c5d6cf;
+  --el-color-success-light-8: #d8e4df;
+  --el-color-success-light-9: #ebf1ee;
+  --el-color-success-dark-2: #325e4b;
+  --el-color-warning: var(--admin-warning);
+  --el-color-warning-light-3: #ab8955;
+  --el-color-warning-light-5: #c3ab86;
+  --el-color-warning-light-7: #dbceb6;
+  --el-color-warning-light-8: #e7ded0;
+  --el-color-warning-light-9: #f3efe7;
+  --el-color-warning-dark-2: #6c460a;
+  --el-color-danger: var(--admin-danger);
+  --el-color-danger-light-3: #cb7895;
+  --el-color-danger-light-5: #d99fb2;
+  --el-color-danger-light-7: #e8c5d1;
+  --el-color-danger-light-8: #efd8e0;
+  --el-color-danger-light-9: #f7ebef;
+  --el-color-danger-dark-2: #903252;
+  --el-text-color-primary: var(--admin-text);
+  --el-text-color-regular: var(--admin-muted);
+  --el-border-color: var(--admin-border);
+  --el-border-color-light: var(--admin-border);
+  --el-fill-color-light: var(--admin-surface-soft);
+  --el-bg-color-page: var(--admin-canvas);
+  --el-border-radius-base: var(--admin-radius-control);
+  --el-box-shadow: 0 12px 32px rgb(73 57 105 / 14%);
+  --el-box-shadow-light: var(--admin-shadow-card);
+  --el-box-shadow-lighter: 0 6px 18px rgb(73 57 105 / 6%);
 }
 
 html,
@@ -25,10 +70,10 @@ body,
   margin: 0;
   padding: 0;
   height: 100%;
-  background: #f6f4fb;
-  color: #2f2a3d;
+  background: var(--admin-canvas);
+  color: var(--admin-text);
   font-family:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial,
+    Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI',
     'PingFang SC', 'Microsoft YaHei', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -41,4 +86,11 @@ a {
 
 * {
   box-sizing: border-box;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
 }

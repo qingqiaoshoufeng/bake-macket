@@ -57,7 +57,14 @@ describe('AdminLayout', () => {
     expect(wrapper.get('[data-testid="admin-page-title"]').text()).toBe(
       '编辑商品',
     );
-    expect(wrapper.get('.el-menu-item.is-active').text()).toBe('商品');
+    wrapper.get('[data-testid="admin-nav"]');
+    expect(wrapper.get('.admin-layout__sidebar-version').text()).toBe(
+      'v0.1 · MVP',
+    );
+    const activeMenuItem = wrapper.get('.el-menu-item.is-active');
+    expect(activeMenuItem.text()).toContain('商品');
+    expect(activeMenuItem.attributes('aria-current')).toBe('page');
+    wrapper.get('.admin-layout__canvas');
     expect(wrapper.get('[data-testid="editor-child"]').text()).toBe(
       '商品编辑内容',
     );
