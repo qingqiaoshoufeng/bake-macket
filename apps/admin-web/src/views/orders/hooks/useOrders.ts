@@ -44,7 +44,10 @@ export function useOrders() {
   const detailLoading = ref(false);
   const updating = ref(false);
   const lastError = ref<string | null>(null);
+  const detailError = ref<string | null>(null);
   const detailVisible = ref(false);
+  let listSequence = 0;
+  let detailSequence = 0;
 
   const actions = computed<readonly OrderAction[]>(() => {
     const status = detail.value?.status;
@@ -52,20 +55,25 @@ export function useOrders() {
   });
 
   async function load(): Promise<void> {
+    const sequence = listSequence + 1;
+    listSequence = sequence;
     loading.value = true;
     lastError.value = null;
     try {
       const result = await ordersApi.list(
         toQuery(filters, page.value, pageSize.value),
       );
+      if (sequence !== listSequence) return;
       orders.value = [...result.items];
       page.value = result.page;
       pageSize.value = result.pageSize;
       total.value = result.total;
     } catch {
-      lastError.value = '订单加载失败，请重试';
+      if (sequence === listSequence) {
+        lastError.value = '订单加载失败，请重试';
+      }
     } finally {
-      loading.value = false;
+      if (sequence === listSequence) loading.value = false;
     }
   }
 
@@ -92,12 +100,21 @@ export function useOrders() {
   }
 
   async function openDetail(id: string): Promise<void> {
+    const sequence = detailSequence + 1;
+    detailSequence = sequence;
     detailVisible.value = true;
+    detail.value = null;
+    detailError.value = null;
     detailLoading.value = true;
     try {
-      detail.value = await ordersApi.getOne(id);
+      const nextDetail = await ordersApi.getOne(id);
+      if (sequence === detailSequence) detail.value = nextDetail;
+    } catch {
+      if (sequence === detailSequence) {
+        detailError.value = '订单详情加载失败，请重试';
+      }
     } finally {
-      detailLoading.value = false;
+      if (sequence === detailSequence) detailLoading.value = false;
     }
   }
 
@@ -108,11 +125,12 @@ export function useOrders() {
   async function updateStatus(
     status: OrderStatus,
   ): Promise<OrderStatusUpdateResult> {
-    if (!detail.value) throw new Error('请先选择订单');
+    const selectedDetail = detail.value;
+    if (!selectedDetail || detailLoading.value) throw new Error('请先选择订单');
     updating.value = true;
     try {
-      const result = await ordersApi.updateStatus(detail.value.id, status);
-      detail.value = result.order;
+      const result = await ordersApi.updateStatus(selectedDetail.id, status);
+      if (detail.value?.id === selectedDetail.id) detail.value = result.order;
       await load();
       return result;
     } finally {
@@ -131,6 +149,7 @@ export function useOrders() {
     detailLoading,
     updating,
     lastError,
+    detailError,
     detailVisible,
     actions,
     load,

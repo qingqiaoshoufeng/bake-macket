@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
@@ -671,6 +671,16 @@ describe('Orders domain (e2e)', () => {
       }),
       noRestock: false,
     });
+  });
+
+  it.each([
+    ['date-only createdAtFrom', 'createdAtFrom=2026-07-19'],
+    ['offsetless createdAtBefore', 'createdAtBefore=2026-07-19T12%3A30%3A00'],
+  ])('rejects %s in admin order filters', async (_name, query) => {
+    await request(app.getHttpServer())
+      .get(`/api/v1/admin/orders?${query}`)
+      .set(adminHeaders)
+      .expect(400);
   });
 
   it('does not expose any admin endpoint that edits order content fields', async () => {

@@ -16,6 +16,14 @@ vi.mock('../api/index.js', () => ({
 
 const api = vi.mocked(catalogFeatureApi);
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((nextResolve) => {
+    resolve = nextResolve;
+  });
+  return { promise, resolve };
+}
+
 describe('useCatalog', () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -72,6 +80,33 @@ describe('useCatalog', () => {
     expect(api.getProduct).toHaveBeenCalledWith(detail.id);
     expect(loaded).toBe(detail);
     expect(catalog.product.value).toBe(detail);
+  });
+
+  it('clears stale product and keeps the latest detail when requests settle out of order', async () => {
+    const productA = deferred<PublicProductDetailView>();
+    const detailB = {
+      id: 'product-b',
+      categoryId: 'cake',
+      name: 'B 商品',
+      detailHtml: '<p>B</p>',
+      images: [],
+      skus: [],
+    } satisfies PublicProductDetailView;
+    api.getProduct
+      .mockReturnValueOnce(productA.promise)
+      .mockResolvedValueOnce(detailB);
+    const catalog = useCatalog();
+
+    const loadA = catalog.loadProduct('product-a');
+    const loadB = catalog.loadProduct('product-b');
+    expect(catalog.product.value).toBeNull();
+    await loadB;
+    expect(catalog.product.value).toBe(detailB);
+    expect(catalog.loading.value).toBe(false);
+
+    productA.resolve({ ...detailB, id: 'product-a', name: 'A 商品' });
+    await loadA;
+    expect(catalog.product.value).toBe(detailB);
   });
 
   it('surfaces home loading failures without keeping stale loading state', async () => {

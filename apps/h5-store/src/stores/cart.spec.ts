@@ -4,6 +4,7 @@ import type { CartItemView } from '@bake-mall/contracts';
 
 import { useCart } from '../views/cart/hooks/useCart.js';
 import { useCartStore } from './cart.js';
+import { advanceSession } from './session.js';
 
 /**
  * Cart store contract pinned by Task 9.
@@ -92,6 +93,65 @@ describe('useCart', () => {
     expect(init.method).toBe('GET');
   });
 
+  it('selects available items by default and derives totals from the current selection', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(cartPayload), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const cart = useCart();
+    await cart.methods.refresh();
+
+    expect(cart.data.selectedItemIds.value).toEqual(['cart-1']);
+    expect(cart.data.selectedItems.value.map(({ id }) => id)).toEqual([
+      'cart-1',
+    ]);
+    expect(cart.data.totalCents.value).toBe(13_600);
+    expect(cart.data.itemCount.value).toBe(2);
+
+    cart.methods.setSelected('cart-1', false);
+    expect(cart.data.selectedItems.value).toEqual([]);
+    expect(cart.data.totalCents.value).toBe(0);
+    expect(cart.data.itemCount.value).toBe(0);
+
+    cart.methods.setAllSelected(true);
+    expect(cart.data.selectedItemIds.value).toEqual(['cart-1']);
+  });
+
+  it('preserves existing choices across refresh and selects newly added available items', async () => {
+    const store = useCartStore();
+    store.applyItems(cartPayload);
+    store.setSelected('cart-1', false);
+
+    store.applyItems([
+      ...cartPayload,
+      {
+        ...cartPayload[0],
+        id: 'cart-3',
+        sku: { ...cartPayload[0].sku, id: 'sku-3' },
+      },
+    ]);
+
+    expect(store.selectedItemIds).toEqual(['cart-3']);
+  });
+
+  it('selects a newly inserted available item without reselecting existing choices', () => {
+    const store = useCartStore();
+    store.applyItems(cartPayload);
+    store.setSelected('cart-1', false);
+
+    store.applyItem({
+      ...cartPayload[0],
+      id: 'cart-3',
+      sku: { ...cartPayload[0].sku, id: 'sku-3' },
+    });
+
+    expect(store.selectedItemIds).toEqual(['cart-3']);
+  });
+
   it('clamps setQuantity to 1-99 and posts the absolute target quantity', async () => {
     const seenRefresh = vi.fn();
     const fetchMock = vi
@@ -145,6 +205,108 @@ describe('useCart', () => {
         (fetchMock.mock.calls[0] as [string, RequestInit])[1].body as string,
       ),
     ).toEqual({ skuId: 'sku-1', quantity: 4 });
+  });
+
+  it('serializes rapid per-item quantities and applies the latest intent', async () => {
+    let resolveFirst!: (value: CartItemView) => void;
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveFirst = (value) =>
+              resolve(
+                new Response(JSON.stringify(value), {
+                  status: 200,
+                  headers: { 'content-type': 'application/json' },
+                }),
+              );
+          }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ...cartPayload[0], quantity: 4 }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    const cart = useCart();
+    useCartStore().applyItems(cartPayload);
+
+    const setThree = cart.methods.setQuantity('cart-1', 3);
+    const setFour = cart.methods.setQuantity('cart-1', 4);
+    await Promise.resolve();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    resolveFirst({ ...cartPayload[0], quantity: 3 });
+    await setThree;
+    await setFour;
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(fetchMock.mock.calls[1][1]?.body as string)).toEqual({
+      skuId: 'sku-1',
+      quantity: 4,
+    });
+    expect(cart.data.items.value[0].quantity).toBe(4);
+  });
+
+  it('continues the per-item quantity queue after a failed request', async () => {
+    let rejectFirst!: (reason: unknown) => void;
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((_resolve, reject) => {
+            rejectFirst = reject;
+          }),
+      )
+      .mockRejectedValueOnce(new Error('retry failure'))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ...cartPayload[0], quantity: 4 }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    const cart = useCart();
+    useCartStore().applyItems(cartPayload);
+
+    const failed = cart.methods.setQuantity('cart-1', 3);
+    const latest = cart.methods.setQuantity('cart-1', 4);
+    await Promise.resolve();
+    rejectFirst(new Error('network failure'));
+
+    await expect(failed).rejects.toThrow();
+    await expect(latest).resolves.toMatchObject({ quantity: 4 });
+    expect(cart.data.items.value[0].quantity).toBe(4);
+  });
+
+  it('does not apply a queued quantity response after the session changes', async () => {
+    let resolveUpdate!: (value: CartItemView) => void;
+    const fetchMock = vi.fn().mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveUpdate = (value) =>
+            resolve(
+              new Response(JSON.stringify(value), {
+                status: 200,
+                headers: { 'content-type': 'application/json' },
+              }),
+            );
+        }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const cart = useCart();
+    useCartStore().applyItems(cartPayload);
+
+    const pending = cart.methods.setQuantity('cart-1', 3);
+    await Promise.resolve();
+    advanceSession();
+    useCartStore().applyItems([{ ...cartPayload[0], quantity: 8 }]);
+    resolveUpdate({ ...cartPayload[0], quantity: 3 });
+    await pending;
+
+    expect(cart.data.items.value[0].quantity).toBe(8);
   });
 
   it('merges repeated same-SKU additions and serializes concurrent clicks', async () => {

@@ -34,6 +34,9 @@ import { CreateOrderDto } from './dto/create-order.dto.js';
 
 const UNIQUE_VIOLATION_CODE = 'ER_DUP_ENTRY';
 
+const escapeLikeLiteral = (value: string): string =>
+  value.replace(/[\\%_]/g, (character) => `\\${character}`);
+
 /**
  * Order lifecycle service. Wraps every mutation that touches stock, the
  * idempotency table, the order header, the immutable item snapshots, the
@@ -391,8 +394,8 @@ export class OrdersService {
   async listAll(query: AdminOrderListQuery): Promise<AdminOrderListResult> {
     const builder = this.orders.createQueryBuilder('order');
     if (query.orderNo?.trim()) {
-      builder.andWhere('order.orderNo LIKE :orderNo', {
-        orderNo: `%${query.orderNo.trim()}%`,
+      builder.andWhere("order.orderNo LIKE :orderNo ESCAPE '\\\\'", {
+        orderNo: `%${escapeLikeLiteral(query.orderNo.trim())}%`,
       });
     }
     if (query.status) {
@@ -415,6 +418,7 @@ export class OrdersService {
     }
     const [orders, total] = await builder
       .orderBy('order.createdAt', 'DESC')
+      .addOrderBy('order.id', 'DESC')
       .skip((query.page - 1) * query.pageSize)
       .take(query.pageSize)
       .getManyAndCount();

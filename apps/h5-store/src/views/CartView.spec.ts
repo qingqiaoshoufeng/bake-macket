@@ -98,6 +98,27 @@ describe('CartView', () => {
     ).toBeUndefined();
   });
 
+  it('updates totals and checkout availability from item and all-selection controls', async () => {
+    const wrapper = await mountCart();
+    await vi.waitFor(() => expect(wrapper.text()).toContain('草莓云朵蛋糕'));
+
+    const itemSelect = wrapper.get('[data-testid="cart-item-select"]');
+    await itemSelect.setValue(false);
+
+    expect(wrapper.text()).toContain('¥0.00');
+    expect(
+      wrapper.get('[data-testid="checkout"]').attributes('disabled'),
+    ).toBeDefined();
+    expect(wrapper.get('[data-testid="select-all"]').text()).toContain('全选');
+
+    await wrapper.get('[data-testid="select-all-input"]').setValue(true);
+
+    expect(wrapper.text()).toContain('¥136.00');
+    expect(
+      wrapper.get('[data-testid="checkout"]').attributes('disabled'),
+    ).toBeUndefined();
+  });
+
   it('silently keeps the item when the remove confirmation is cancelled', async () => {
     vantMocks.showConfirmDialog.mockRejectedValueOnce(new Error('cancel'));
     const removeSpy = vi.spyOn(customerApi, 'removeCartItem');

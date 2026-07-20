@@ -3,14 +3,14 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import {
   BannerTargetType,
   type AdminBannerView,
   type BannerView,
   type SaveBannerRequest,
 } from '@bake-mall/contracts';
-import { Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 
 import { AuditService } from '../audit/audit.service.js';
 import { MediaAssetPolicyService } from '../catalog/media-asset-policy.service.js';
@@ -27,6 +27,7 @@ export class BannerService {
     private readonly categories: Repository<Category>,
     private readonly mediaPolicy: MediaAssetPolicyService,
     private readonly audit: AuditService,
+    @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
   async list(): Promise<AdminBannerView[]> {
@@ -42,26 +43,32 @@ export class BannerService {
   ): Promise<AdminBannerView> {
     this.mediaPolicy.assertBannerAsset(request.image);
     const targetId = this.getNormalizedTargetId(request);
-    await this.validateTarget(request.targetType, targetId);
-    const banner = await this.banners.save(
-      this.banners.create({
-        imageUrl: request.image.publicUrl,
-        imageObjectKey: request.image.objectKey,
-        title: request.title ?? null,
-        targetType: request.targetType,
-        targetId,
-        sortOrder: request.sortOrder,
-        isActive: request.isActive,
-      }),
-    );
-    await this.audit.record({
-      adminUserId,
-      targetEntity: 'banners',
-      targetId: banner.id,
-      action: 'BANNER_CREATED',
-      changeSummary: this.toAuditSummary(banner),
+    return this.dataSource.transaction(async (manager) => {
+      const banners = manager.getRepository(Banner);
+      await this.validateTarget(request.targetType, targetId, manager);
+      const banner = await banners.save(
+        banners.create({
+          imageUrl: request.image.publicUrl,
+          imageObjectKey: request.image.objectKey,
+          title: request.title ?? null,
+          targetType: request.targetType,
+          targetId,
+          sortOrder: request.sortOrder,
+          isActive: request.isActive,
+        }),
+      );
+      await this.audit.record(
+        {
+          adminUserId,
+          targetEntity: 'banners',
+          targetId: banner.id,
+          action: 'BANNER_CREATED',
+          changeSummary: this.toAuditSummary(banner),
+        },
+        manager,
+      );
+      return this.toAdminView(banner);
     });
-    return this.toAdminView(banner);
   }
 
   async update(
@@ -69,44 +76,56 @@ export class BannerService {
     request: SaveBannerRequest,
     adminUserId: string,
   ): Promise<AdminBannerView> {
-    const banner = await this.requireBanner(id);
     this.mediaPolicy.assertBannerAsset(request.image);
     const targetId = this.getNormalizedTargetId(request);
-    await this.validateTarget(request.targetType, targetId);
-    const previous = this.toAuditSummary(banner);
-    const saved = await this.banners.save({
-      ...banner,
-      imageUrl: request.image.publicUrl,
-      imageObjectKey: request.image.objectKey,
-      title: request.title ?? null,
-      targetType: request.targetType,
-      targetId,
-      sortOrder: request.sortOrder,
-      isActive: request.isActive,
+    return this.dataSource.transaction(async (manager) => {
+      const banners = manager.getRepository(Banner);
+      const banner = await this.requireBanner(id, banners);
+      await this.validateTarget(request.targetType, targetId, manager);
+      const previous = this.toAuditSummary(banner);
+      const saved = await banners.save({
+        ...banner,
+        imageUrl: request.image.publicUrl,
+        imageObjectKey: request.image.objectKey,
+        title: request.title ?? null,
+        targetType: request.targetType,
+        targetId,
+        sortOrder: request.sortOrder,
+        isActive: request.isActive,
+      });
+      await this.audit.record(
+        {
+          adminUserId,
+          targetEntity: 'banners',
+          targetId: saved.id,
+          action: 'BANNER_UPDATED',
+          changeSummary: {
+            before: previous,
+            after: this.toAuditSummary(saved),
+          },
+        },
+        manager,
+      );
+      return this.toAdminView(saved);
     });
-    await this.audit.record({
-      adminUserId,
-      targetEntity: 'banners',
-      targetId: saved.id,
-      action: 'BANNER_UPDATED',
-      changeSummary: {
-        before: previous,
-        after: this.toAuditSummary(saved),
-      },
-    });
-    return this.toAdminView(saved);
   }
 
   async remove(id: string, adminUserId: string): Promise<void> {
-    const banner = await this.requireBanner(id);
-    const result = await this.banners.delete(id);
-    if (!result.affected) throw new NotFoundException('Banner not found');
-    await this.audit.record({
-      adminUserId,
-      targetEntity: 'banners',
-      targetId: id,
-      action: 'BANNER_DELETED',
-      changeSummary: this.toAuditSummary(banner),
+    await this.dataSource.transaction(async (manager) => {
+      const banners = manager.getRepository(Banner);
+      const banner = await this.requireBanner(id, banners);
+      const result = await banners.delete(id);
+      if (!result.affected) throw new NotFoundException('Banner not found');
+      await this.audit.record(
+        {
+          adminUserId,
+          targetEntity: 'banners',
+          targetId: id,
+          action: 'BANNER_DELETED',
+          changeSummary: this.toAuditSummary(banner),
+        },
+        manager,
+      );
     });
   }
 
@@ -132,15 +151,18 @@ export class BannerService {
   private async validateTarget(
     targetType: BannerTargetType,
     targetId: string | null,
+    manager?: EntityManager,
   ): Promise<void> {
     if (targetType === BannerTargetType.NONE) return;
     if (!targetId) {
       throw new BadRequestException('Banner target ID is required');
     }
+    const products = manager?.getRepository(Product) ?? this.products;
+    const categories = manager?.getRepository(Category) ?? this.categories;
     const target =
       targetType === BannerTargetType.PRODUCT
-        ? await this.products.findOneBy({ id: targetId })
-        : await this.categories.findOneBy({ id: targetId });
+        ? await products.findOneBy({ id: targetId })
+        : await categories.findOneBy({ id: targetId });
     if (!target) throw new NotFoundException('Banner target not found');
   }
 
@@ -233,8 +255,11 @@ export class BannerService {
     };
   }
 
-  private async requireBanner(id: string): Promise<Banner> {
-    const banner = await this.banners.findOneBy({ id });
+  private async requireBanner(
+    id: string,
+    banners: Repository<Banner> = this.banners,
+  ): Promise<Banner> {
+    const banner = await banners.findOneBy({ id });
     if (!banner) throw new NotFoundException('Banner not found');
     return banner;
   }

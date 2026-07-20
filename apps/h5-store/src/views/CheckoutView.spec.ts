@@ -5,6 +5,7 @@ import { createMemoryHistory, createRouter, type Router } from 'vue-router';
 
 import CheckoutView from './CheckoutView.vue';
 import { useAuthStore } from '../stores/auth.js';
+import { useCartStore } from '../stores/cart.js';
 import { customerApi } from '../api/customer.js';
 import { ordersApi } from '../api/orders.js';
 import {
@@ -69,7 +70,9 @@ const savedAddresses: AddressView[] = [
   },
 ];
 
-function mountCheckout(): {
+function mountCheckout(
+  prepareStore: (pinia: Pinia) => void = () => undefined,
+): {
   wrapper: VueWrapper;
   pinia: Pinia;
   router: Router;
@@ -88,6 +91,7 @@ function mountCheckout(): {
   // resolves `useCartStore()` etc. against.
   setActivePinia(pinia);
   useAuthStore().profile = verifiedProfile();
+  prepareStore(pinia);
   const wrapper = mount(CheckoutView, {
     global: { plugins: [pinia, router] },
   });
@@ -182,6 +186,47 @@ describe('CheckoutView', () => {
     await deliveryRadio.setValue(true);
     await wrapper.get('form').trigger('submit.prevent');
     expect(wrapper.text()).toContain('请选择配送地址');
+  });
+
+  it('keeps the cart selection while refreshing and submits only selected items', async () => {
+    const secondItem: CartItemView = {
+      ...cart[0],
+      id: 'cart-2',
+      sku: { ...cart[0].sku, id: 'sku-2' },
+      product: { ...cart[0].product, id: 'product-2', name: '海盐可颂' },
+    };
+    const items = [cart[0], secondItem];
+    seedApis({ cart: items });
+    const { wrapper } = mountCheckout(() => {
+      const store = useCartStore();
+      store.applyItems(items);
+      store.setSelected('cart-2', false);
+    });
+    await flushPromises();
+    const createSpy = vi.spyOn(ordersApi, 'create').mockResolvedValue({
+      id: 'order-selected',
+      orderNo: 'BM2026071200000099',
+      status: OrderStatus.NEW,
+      fulfillmentType: FulfillmentType.PICKUP,
+      contactName: '小明',
+      contactPhone: '13800000000',
+      pickupTimeText: '明天上午十点',
+      goodsTotalCents: 6800,
+      items: [],
+      createdAt: '2026-07-12T10:00:00.000Z',
+      updatedAt: '2026-07-12T10:00:00.000Z',
+    });
+
+    expect(wrapper.text()).toContain('示例蛋糕');
+    expect(wrapper.text()).not.toContain('海盐可颂');
+    await wrapper.get('[data-testid="fulfillment-pickup"]').trigger('click');
+    await wrapper.get('[data-testid="contact-name"]').setValue('小明');
+    await wrapper.get('[data-testid="contact-phone"]').setValue('13800000000');
+    await wrapper.get('[data-testid="pickup-time"]').setValue('明天上午十点');
+    await wrapper.get('form').trigger('submit.prevent');
+    await flushPromises();
+
+    expect(createSpy.mock.calls[0][0].cartItemIds).toEqual(['cart-1']);
   });
 
   it('submits a valid PICKUP order with a stable Idempotency-Key', async () => {

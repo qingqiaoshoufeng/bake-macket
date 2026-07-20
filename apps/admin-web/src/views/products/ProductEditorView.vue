@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, shallowRef, watch } from 'vue';
 import { ElAlert, ElButton, ElMessage, ElSkeleton } from 'element-plus';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 
 import { ApiClientError } from '../../api/http.js';
 import SanitizedHtmlPreview from '../../components/SanitizedHtmlPreview.vue';
@@ -14,6 +14,7 @@ import {
 } from './hooks/useProductEditor.js';
 
 const route = useRoute();
+const router = useRouter();
 const editorMode = computed<ProductEditorMode>(() => {
   const productId = typeof route.params.id === 'string' ? route.params.id : '';
   return productId ? { mode: 'edit', productId } : { mode: 'new' };
@@ -23,7 +24,13 @@ const editorModeKey = computed(() =>
     ? `edit:${editorMode.value.productId}`
     : 'new',
 );
-const editor = shallowRef(useProductEditor(editorMode.value));
+const createdProductId = shallowRef<string | null>(null);
+const rememberCreatedProduct = (productId: string): void => {
+  createdProductId.value = productId;
+};
+const createEditor = () =>
+  useProductEditor(editorMode.value, rememberCreatedProduct);
+const editor = shallowRef(createEditor());
 const title = computed(() =>
   editorMode.value.mode === 'edit' ? '编辑商品' : '新增商品',
 );
@@ -34,7 +41,7 @@ const loadErrorMessage = computed(() =>
 watch(
   editorModeKey,
   () => {
-    editor.value = useProductEditor(editorMode.value);
+    editor.value = createEditor();
     void editor.value.load();
   },
   { immediate: true },
@@ -44,6 +51,14 @@ async function save(): Promise<void> {
   try {
     await editor.value.save();
     ElMessage.success('商品保存成功');
+    if (createdProductId.value) {
+      const productId = createdProductId.value;
+      createdProductId.value = null;
+      await router.replace({
+        name: 'admin-product-edit',
+        params: { id: productId },
+      });
+    }
   } catch (error) {
     if (!editor.value.stockConflict.value) {
       ElMessage.error(

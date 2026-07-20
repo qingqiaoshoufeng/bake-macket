@@ -82,14 +82,18 @@ function navigate(path: string): void {
         :key="item.id"
         :item="item"
         :invalid-label="CART_COPY.invalid"
+        :selected="cart.data.selectedItemIds.value.includes(item.id)"
+        @select="cart.methods.setSelected"
         @quantity="setQuantity"
         @remove="remove"
       />
     </ul>
     <CartCheckoutBar
       :total-cents="cart.data.totalCents.value"
-      :disabled="!cart.data.availableItems.value.length"
+      :disabled="!cart.data.selectedItems.value.length"
       :label="CART_COPY.checkout"
+      :all-selected="cart.data.allAvailableSelected.value"
+      @select-all="cart.methods.setAllSelected"
       @checkout="navigate('/checkout')"
     />
     <StoreTabbar :active-path="route.path" @navigate="navigate" />
@@ -101,7 +105,7 @@ function navigate(path: string): void {
   display: grid;
   gap: var(--mall-space-3);
   margin: 0;
-  padding: 0;
+  padding: 0 0 calc(var(--mall-space-8) + var(--mall-space-5));
   list-style: none;
 }
 .cart-view__browse {

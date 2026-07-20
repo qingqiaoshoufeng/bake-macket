@@ -18,6 +18,17 @@ vi.mock('../api/index.js', () => ({
 }));
 
 const api = vi.mocked(ordersApi);
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((nextResolve, nextReject) => {
+    resolve = nextResolve;
+    reject = nextReject;
+  });
+  return { promise, resolve, reject };
+}
+
 const row: AdminOrderListItem = {
   id: 'order-1',
   orderNo: 'BM2026071800000001',
@@ -113,6 +124,84 @@ describe('useOrders', () => {
         description: '取消订单不会回补库存,请确认后再操作。',
       },
     ]);
+  });
+
+  it('keeps the latest list response and loading state when requests settle out of order', async () => {
+    const oldRequest = deferred<Awaited<ReturnType<typeof ordersApi.list>>>();
+    const newRequest = deferred<Awaited<ReturnType<typeof ordersApi.list>>>();
+    api.list
+      .mockReturnValueOnce(oldRequest.promise)
+      .mockReturnValueOnce(newRequest.promise);
+    const state = useOrders();
+
+    const oldLoad = state.setPage(2);
+    const newLoad = state.setPage(3);
+    newRequest.resolve({
+      items: [{ ...row, id: 'order-new' }],
+      page: 3,
+      pageSize: 20,
+      total: 1,
+    });
+    await newLoad;
+
+    expect(state.orders.value.map(({ id }) => id)).toEqual(['order-new']);
+    expect(state.page.value).toBe(3);
+    expect(state.loading.value).toBe(false);
+
+    oldRequest.resolve({
+      items: [{ ...row, id: 'order-old' }],
+      page: 2,
+      pageSize: 20,
+      total: 1,
+    });
+    await oldLoad;
+
+    expect(state.orders.value.map(({ id }) => id)).toEqual(['order-new']);
+    expect(state.page.value).toBe(3);
+    expect(state.lastError.value).toBeNull();
+  });
+
+  it('ignores an obsolete list failure after a newer request succeeds', async () => {
+    const oldRequest = deferred<Awaited<ReturnType<typeof ordersApi.list>>>();
+    api.list
+      .mockReturnValueOnce(oldRequest.promise)
+      .mockResolvedValueOnce({ items: [row], page: 1, pageSize: 20, total: 1 });
+    const state = useOrders();
+
+    const oldLoad = state.load();
+    await state.search();
+    oldRequest.reject(new Error('旧请求失败'));
+    await oldLoad;
+
+    expect(state.orders.value).toEqual([row]);
+    expect(state.lastError.value).toBeNull();
+    expect(state.loading.value).toBe(false);
+  });
+
+  it('clears stale detail, ignores obsolete detail responses, and exposes latest failures', async () => {
+    const oldRequest = deferred<OrderView>();
+    const latestFailure = deferred<OrderView>();
+    api.getOne
+      .mockReturnValueOnce(oldRequest.promise)
+      .mockReturnValueOnce(latestFailure.promise);
+    const state = useOrders();
+    state.detail.value = detail;
+
+    const oldOpen = state.openDetail('order-old');
+    expect(state.detail.value).toBeNull();
+    const latestOpen = state.openDetail('order-new');
+    latestFailure.reject(new Error('详情不可用'));
+    await latestOpen;
+
+    expect(state.detail.value).toBeNull();
+    expect(state.actions.value).toEqual([]);
+    expect(state.detailError.value).toBe('订单详情加载失败，请重试');
+    expect(state.detailLoading.value).toBe(false);
+
+    oldRequest.resolve(detail);
+    await oldOpen;
+    expect(state.detail.value).toBeNull();
+    expect(state.detailError.value).toBe('订单详情加载失败，请重试');
   });
 
   it('updates status, preserves the no-restock result, and refreshes only the list', async () => {

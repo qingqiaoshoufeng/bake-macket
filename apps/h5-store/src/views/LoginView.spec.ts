@@ -1,5 +1,6 @@
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
+import type { CustomerProfileView } from '@bake-mall/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryHistory, createRouter } from 'vue-router';
 
@@ -8,10 +9,11 @@ import {
   installMiniappBridge,
 } from '../bridge/miniapp.js';
 import LoginView from './LoginView.vue';
+import { useAuthStore } from '../stores/auth.js';
 import { loginFeatureApi } from './login/api/index.js';
 
 vi.mock('./login/api/index.js', () => ({
-  loginFeatureApi: { login: vi.fn() },
+  loginFeatureApi: { login: vi.fn(), getProfile: vi.fn() },
 }));
 
 vi.mock('vant', async (importOriginal) => {
@@ -80,11 +82,18 @@ describe('LoginView', () => {
     );
   });
 
-  it('submits the rendered credentials through the login feature API', async () => {
+  it('submits the rendered credentials and applies the real customer profile', async () => {
+    const profile = {
+      id: 'customer-1',
+      nickname: '烘焙客',
+      avatarUrl: null,
+      phone: '138****0000',
+    } satisfies CustomerProfileView;
     vi.mocked(loginFeatureApi.login).mockResolvedValue({
       accessToken: 'user-token-1',
       expiresAt: '2026-07-12T01:00:00.000Z',
     });
+    vi.mocked(loginFeatureApi.getProfile).mockResolvedValue(profile);
     const { wrapper } = await mountLogin();
 
     await wrapper.get('form').trigger('submit.prevent');
@@ -93,6 +102,30 @@ describe('LoginView', () => {
       DEVELOPMENT_LOGIN_HINT.phone,
       DEVELOPMENT_LOGIN_HINT.code,
     );
+    expect(loginFeatureApi.getProfile).toHaveBeenCalledWith('user-token-1');
+    expect(useAuthStore().profile).toEqual({
+      id: profile.id,
+      nickname: profile.nickname,
+      avatarUrl: undefined,
+      phone: profile.phone,
+      phoneVerified: true,
+    });
+  });
+
+  it('does not retain an authenticated session when loading /me fails', async () => {
+    vi.mocked(loginFeatureApi.login).mockResolvedValue({
+      accessToken: 'user-token-1',
+      expiresAt: '2026-07-12T01:00:00.000Z',
+    });
+    vi.mocked(loginFeatureApi.getProfile).mockRejectedValue(
+      new Error('资料加载失败'),
+    );
+    const { wrapper } = await mountLogin();
+
+    await wrapper.get('form').trigger('submit.prevent');
+
+    expect(useAuthStore().accessToken).toBeNull();
+    expect(useAuthStore().profile).toBeNull();
   });
 
   it('keeps the development quick-fill action', async () => {

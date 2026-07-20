@@ -171,6 +171,21 @@ describe('MediaAssetPolicyService', () => {
     ).toBe(true);
   });
 
+  it('accepts a URL issued from an object storage base with multiple trailing slashes', () => {
+    const envWithTrailingSlashes = {
+      ...productionEnv,
+      OBJECT_STORAGE_PUBLIC_BASE_URL: 'https://cos.example.com/bake-mall///',
+    } as AppEnv;
+
+    expect(
+      isAllowedProductAssetUrl(
+        'https://cos.example.com/bake-mall/products/cover.webp',
+        'products/cover.webp',
+        envWithTrailingSlashes,
+      ),
+    ).toBe(true);
+  });
+
   it('maps the object storage pathname base to the exact object key', () => {
     expect(
       isAllowedProductAssetUrl(

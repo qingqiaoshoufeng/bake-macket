@@ -4,6 +4,8 @@ type CreateOrderRequestCommon = {
   cartItemIds: string[];
   contactName: string;
   contactPhone: string;
+  requestedCreditCents?: number;
+  quoteToken?: string;
   remark?: string;
 };
 
@@ -29,6 +31,9 @@ export type OrderItemView = {
   imageUrl?: string;
   unitPriceCents: number;
   quantity: number;
+  lineGoodsTotalCents?: number;
+  lineMembershipDiscountCents?: number;
+  linePayableCents?: number;
 };
 
 export type OrderView = {
@@ -41,6 +46,13 @@ export type OrderView = {
   pickupTimeText?: string;
   deliveryAddressText?: string;
   goodsTotalCents: number;
+  membershipDiscountCents?: number;
+  creditAppliedCents?: number;
+  payableTotalCents?: number;
+  membershipCode?: string;
+  membershipName?: string;
+  membershipDiscountBasisPoints?: number;
+  pricingVersion?: number;
   remark?: string;
   items: OrderItemView[];
   createdAt: string;

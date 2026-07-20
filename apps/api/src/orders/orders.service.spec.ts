@@ -2,7 +2,7 @@ import {
   ConflictException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   ApiErrorCode,
@@ -69,7 +69,13 @@ describe('OrdersService', () => {
     };
     let nextId = 1;
     const repoFor = (list: Array<Record<string, unknown>>) => {
+      const orderBy = vi.fn();
+      const addOrderBy = vi.fn();
+      const andWhere = vi.fn();
       const repo: Record<string, unknown> = {
+        orderBy,
+        addOrderBy,
+        andWhere,
         findOneBy: async (where: Record<string, unknown>) =>
           list.find((record) =>
             Object.entries(where).every(([k, v]) => record[k] === v),
@@ -135,6 +141,7 @@ describe('OrdersService', () => {
               return builder;
             },
             andWhere: (clause: string, parameters: Record<string, unknown>) => {
+              andWhere(clause, parameters);
               const predicate = clause.includes('orderNo')
                 ? (record: Record<string, unknown>) =>
                     String(record.orderNo).includes(
@@ -156,7 +163,14 @@ describe('OrdersService', () => {
               predicates.push(predicate);
               return builder;
             },
-            orderBy: () => builder,
+            orderBy: (...args: unknown[]) => {
+              orderBy(...args);
+              return builder;
+            },
+            addOrderBy: (...args: unknown[]) => {
+              addOrderBy(...args);
+              return builder;
+            },
             skip: (value: number) => {
               offset = value;
               return builder;
@@ -248,11 +262,12 @@ describe('OrdersService', () => {
         records.audit.push({ id: String(nextId++), ...entry });
       },
     };
+    const orderRepository = repoFor(records.orders);
     return {
       service: new OrdersService(
         dataSource as never,
         repoFor(records.users) as never,
-        repoFor(records.orders) as never,
+        orderRepository as never,
         repoFor(records.orderItems) as never,
         repoFor(records.cartItems) as never,
         repoFor(records.skus) as never,
@@ -266,6 +281,11 @@ describe('OrdersService', () => {
       cartRecords: records.cartItems,
       auditRecords: records.audit,
       idempotencyRecords: records.idempotency,
+      orderQuerySpies: {
+        orderBy: orderRepository.orderBy,
+        addOrderBy: orderRepository.addOrderBy,
+        andWhere: orderRepository.andWhere,
+      },
     };
   }
 
@@ -461,6 +481,37 @@ describe('OrdersService', () => {
       total: 1,
     });
   });
+
+  it('orders admin pagination by createdAt DESC and id DESC', async () => {
+    const { service, orderQuerySpies } = buildService({ orders: [] });
+
+    await service.listAll({ page: 1, pageSize: 20 });
+
+    expect(orderQuerySpies.orderBy).toHaveBeenCalledWith(
+      'order.createdAt',
+      'DESC',
+    );
+    expect(orderQuerySpies.addOrderBy).toHaveBeenCalledWith('order.id', 'DESC');
+  });
+
+  it.each([
+    ['percent', '%', '%\\%%'],
+    ['underscore', '_', '%\\_%'],
+    ['backslash', '\\', '%\\\\%'],
+    ['mixed', 'A%_\\B', '%A\\%\\_\\\\B%'],
+  ])(
+    'escapes %s in literal order number substring searches',
+    async (_name, orderNo, expectedPattern) => {
+      const { service, orderQuerySpies } = buildService({ orders: [] });
+
+      await service.listAll({ orderNo, page: 1, pageSize: 20 });
+
+      expect(orderQuerySpies.andWhere).toHaveBeenCalledWith(
+        "order.orderNo LIKE :orderNo ESCAPE '\\\\'",
+        { orderNo: expectedPattern },
+      );
+    },
+  );
 
   it('rejects an illegal order status transition with INVALID_ORDER_TRANSITION', async () => {
     const { service } = buildService({

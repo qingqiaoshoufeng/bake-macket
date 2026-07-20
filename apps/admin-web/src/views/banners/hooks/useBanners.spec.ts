@@ -129,6 +129,49 @@ describe('useBanners', () => {
     });
   });
 
+  it('keeps a successful create locally and resolves when the best-effort refresh fails', async () => {
+    const saved = { ...banner, id: 'banner-new' };
+    api.create.mockResolvedValueOnce(saved);
+    api.list.mockRejectedValueOnce(new Error('刷新失败'));
+    const state = useBanners();
+    state.openCreate();
+    state.form.image = banner.image;
+    state.form.title = banner.title ?? '';
+    state.form.targetType = banner.targetType;
+    state.form.targetId = banner.targetId;
+
+    await expect(state.save()).resolves.toEqual(saved);
+
+    expect(state.banners.value).toEqual([saved]);
+    expect(state.lastError.value).toBe('Banner 已保存，但列表刷新失败');
+    expect(state.dialogVisible.value).toBe(false);
+  });
+
+  it('applies update, toggle, and delete mutations locally even when refresh fails', async () => {
+    const state = useBanners();
+    state.banners.value = [banner];
+
+    const edited = { ...banner, title: '已更新' };
+    api.update.mockResolvedValueOnce(edited);
+    api.list.mockRejectedValueOnce(new Error('刷新失败'));
+    state.startEdit(banner);
+    state.form.title = '已更新';
+    await state.save();
+    expect(state.banners.value).toEqual([edited]);
+
+    const toggled = { ...edited, isActive: false };
+    api.update.mockResolvedValueOnce(toggled);
+    api.list.mockRejectedValueOnce(new Error('刷新失败'));
+    await state.toggleActive(edited);
+    expect(state.banners.value).toEqual([toggled]);
+
+    api.remove.mockResolvedValueOnce(undefined);
+    api.list.mockRejectedValueOnce(new Error('刷新失败'));
+    await state.remove(toggled.id);
+    expect(state.banners.value).toEqual([]);
+    expect(state.lastError.value).toBe('Banner 已删除，但列表刷新失败');
+  });
+
   it('rejects saving while the image is missing or uploading', async () => {
     const state = useBanners();
     state.openCreate();

@@ -9,6 +9,7 @@ import {
 import { getDefaultDevelopmentLogin } from '../config/default-development-login.js';
 import { useAuthStore } from '../../../stores/auth.js';
 import { loginFeatureApi } from '../api/index.js';
+import { mapProfile } from '../../profile/hooks/useProfile.js';
 
 export type LoginNotification =
   { type: 'success'; message: string } | { type: 'error'; message: string };
@@ -63,13 +64,11 @@ export function useLogin(
         normalizedPhone,
         code.value.trim(),
       );
-      auth.applySession(session, {
-        id: '',
-        phone: normalizedPhone,
-        phoneVerified: true,
-        nickname: undefined,
-        avatarUrl: undefined,
-      });
+      const profile = mapProfile(
+        await loginFeatureApi.getProfile(session.accessToken),
+        true,
+      );
+      auth.applySession(session, profile);
       notify({ type: 'success', message: '登录成功' });
       return true;
     } catch (error) {

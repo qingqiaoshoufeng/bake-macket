@@ -225,6 +225,7 @@ function isStockConflict(error: unknown): boolean {
 
 export function useProductEditor(
   mode: ProductEditorMode,
+  onCreated: (productId: string) => void = () => undefined,
 ): UseProductEditorResult {
   const form = ref<ProductFormShape>(createDefaultProductForm());
   const categories = ref<Awaited<ReturnType<typeof categoriesApi.list>>>([]);
@@ -237,6 +238,7 @@ export function useProductEditor(
   const savedPreviewHtml = ref('');
   let currentLoad = 0;
   let currentSave = 0;
+  let persistedProductId = mode.mode === 'edit' ? mode.productId : null;
 
   function replaceForm(nextForm: ProductFormShape): void {
     form.value = cloneForm(nextForm);
@@ -318,11 +320,16 @@ export function useProductEditor(
     stockConflict.value = false;
     try {
       const request = mapFormToRequest(form.value);
-      const response =
-        mode.mode === 'edit'
-          ? await productsApi.replace(mode.productId, request)
-          : await productsApi.create(request);
-      if (saveId === currentSave) applySavedDetail(response);
+      const response = persistedProductId
+        ? await productsApi.replace(persistedProductId, request)
+        : await productsApi.create(request);
+      if (saveId === currentSave) {
+        applySavedDetail(response);
+        if (!persistedProductId) {
+          persistedProductId = response.id;
+          onCreated(response.id);
+        }
+      }
       return response;
     } catch (caughtError) {
       if (saveId === currentSave) {

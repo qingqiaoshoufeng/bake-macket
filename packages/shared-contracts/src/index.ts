@@ -7,4 +7,5 @@ export * from './customer.js';
 export * from './enums.js';
 export * from './errors.js';
 export * from './media.js';
+export * from './membership.js';
 export * from './order.js';

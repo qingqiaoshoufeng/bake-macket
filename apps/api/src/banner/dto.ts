@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import {
   IsBoolean,
+  IsDefined,
   IsEnum,
   IsInt,
   IsOptional,
@@ -25,6 +26,7 @@ class BannerMediaAssetDto {
 }
 
 export class SaveBannerDto {
+  @IsDefined()
   @ValidateNested()
   @Type(() => BannerMediaAssetDto)
   image!: BannerMediaAssetDto;

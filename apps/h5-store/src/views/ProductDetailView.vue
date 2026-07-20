@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ActionSheet, showSuccessToast, showToast } from 'vant';
 
@@ -32,13 +32,18 @@ const images = computed(() => {
       : [];
 });
 
-onMounted(async () => {
-  try {
-    await catalog.loadProduct(String(route.params.id));
-  } catch {
-    showToast(catalog.lastError.value ?? '商品详情加载失败');
-  }
-});
+watch(
+  () => String(route.params.id),
+  async (productId) => {
+    skuSheetOpen.value = false;
+    try {
+      await catalog.loadProduct(productId);
+    } catch {
+      showToast(catalog.lastError.value ?? '商品详情加载失败');
+    }
+  },
+  { immediate: true },
+);
 
 async function addToCart(payload: {
   skuId: string;
@@ -109,6 +114,7 @@ async function addToCart(payload: {
     />
 
     <ActionSheet
+      v-if="skuSheetOpen"
       v-model:show="skuSheetOpen"
       title="选择规格"
       data-testid="sku-sheet"

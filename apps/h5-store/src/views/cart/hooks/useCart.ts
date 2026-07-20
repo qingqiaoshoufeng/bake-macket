@@ -3,11 +3,13 @@ import type { CartItemView, UpsertCartItemRequest } from '@bake-mall/contracts';
 
 import { useCartStore } from '../../../stores/cart.js';
 import { captureSession, isCurrentSession } from '../../../stores/session.js';
+import { generateIdempotencyKey } from '../../../utils/idempotency.js';
 import { cartFeatureApi } from '../api/index.js';
 
 const MIN_QUANTITY = 1;
 const MAX_QUANTITY = 99;
 const addQueues = new WeakMap<object, Promise<unknown>>();
+const quantityQueues = new WeakMap<object, Map<string, Promise<unknown>>>();
 
 function clampQuantity(value: number): number {
   if (!Number.isFinite(value) || value < MIN_QUANTITY) return MIN_QUANTITY;
@@ -23,15 +25,18 @@ export function useCart() {
   const cart = useCartStore();
   const items = computed(() => cart.items);
   const availableItems = computed(() => cart.availableItems);
+  const selectedItems = computed(() => cart.selectedItems);
+  const selectedItemIds = computed(() => cart.selectedItemIds);
+  const allAvailableSelected = computed(() => cart.allAvailableSelected);
   const loading = computed(() => cart.loading);
   const totalCents = computed(() =>
-    availableItems.value.reduce(
+    selectedItems.value.reduce(
       (sum, item) => sum + item.sku.priceCents * item.quantity,
       0,
     ),
   );
   const itemCount = computed(() =>
-    availableItems.value.reduce((sum, item) => sum + item.quantity, 0),
+    selectedItems.value.reduce((sum, item) => sum + item.quantity, 0),
   );
 
   async function refresh(): Promise<CartItemView[]> {
@@ -85,24 +90,49 @@ export function useCart() {
     return operation;
   }
 
-  async function setQuantity(
+  async function setLatestQuantity(
     id: string,
-    quantity: number,
+    target: number,
   ): Promise<CartItemView> {
-    const target = clampQuantity(quantity);
     const cached = cart.items.find((item) => item.id === id);
     const current = cached ?? (await refresh()).find((item) => item.id === id);
     if (!current) throw new Error('Cart item not found');
-
     if (target === current.quantity) return current;
 
     const session = captureSession();
-    const updated = await cartFeatureApi.upsert({
-      skuId: current.sku.id,
-      quantity: target,
-    });
+    const updated = await cartFeatureApi.upsert(
+      {
+        skuId: current.sku.id,
+        quantity: target,
+      },
+      generateIdempotencyKey(),
+    );
     if (isCurrentSession(session)) cart.applyItem(updated);
     return updated;
+  }
+
+  function setQuantity(id: string, quantity: number): Promise<CartItemView> {
+    const queues =
+      quantityQueues.get(cart) ?? new Map<string, Promise<unknown>>();
+    quantityQueues.set(cart, queues);
+    const queue = queues.get(id);
+    const run = (): Promise<CartItemView> =>
+      setLatestQuantity(id, clampQuantity(quantity));
+    const operation = queue ? queue.then(run, run) : run();
+    queues.set(id, operation);
+    const clearCompletedOperation = (): void => {
+      if (queues.get(id) === operation) queues.delete(id);
+    };
+    void operation.then(clearCompletedOperation, clearCompletedOperation);
+    return operation;
+  }
+
+  function setSelected(id: string, selected: boolean): void {
+    cart.setSelected(id, selected);
+  }
+
+  function setAllSelected(selected: boolean): void {
+    cart.setAllSelected(selected);
   }
 
   async function remove(id: string): Promise<void> {
@@ -112,9 +142,24 @@ export function useCart() {
   }
 
   return {
-    data: { items, availableItems, totalCents, itemCount },
+    data: {
+      items,
+      availableItems,
+      selectedItems,
+      selectedItemIds,
+      allAvailableSelected,
+      totalCents,
+      itemCount,
+    },
     loading,
     error: computed(() => cart.lastError),
-    methods: { refresh, add, setQuantity, remove },
+    methods: {
+      refresh,
+      add,
+      setQuantity,
+      setSelected,
+      setAllSelected,
+      remove,
+    },
   };
 }

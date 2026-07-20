@@ -5,6 +5,7 @@ import {
   IsISO8601,
   IsOptional,
   IsString,
+  Matches,
   Max,
   Min,
 } from 'class-validator';
@@ -14,6 +15,9 @@ import {
   OrderStatus,
   type AdminOrderListQuery,
 } from '@bake-mall/contracts';
+
+const COMPLETE_DATETIME_WITH_TIMEZONE =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
 
 export class AdminOrderListQueryDto implements AdminOrderListQuery {
   @IsOptional()
@@ -29,11 +33,13 @@ export class AdminOrderListQueryDto implements AdminOrderListQuery {
   fulfillmentType?: FulfillmentType;
 
   @IsOptional()
-  @IsISO8601({ strict: true })
+  @Matches(COMPLETE_DATETIME_WITH_TIMEZONE)
+  @IsISO8601({ strict: true, strictSeparator: true })
   createdAtFrom?: string;
 
   @IsOptional()
-  @IsISO8601({ strict: true })
+  @Matches(COMPLETE_DATETIME_WITH_TIMEZONE)
+  @IsISO8601({ strict: true, strictSeparator: true })
   createdAtBefore?: string;
 
   @Type(() => Number)

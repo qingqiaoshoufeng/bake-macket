@@ -32,14 +32,29 @@ const env: AppEnv = {
   OBJECT_STORAGE_FORCE_PATH_STYLE: true,
 };
 
-function createService(): UploadService {
+function createService(overrides: Partial<AppEnv> = {}): UploadService {
   const config = {
-    get: vi.fn().mockReturnValue(env),
+    get: vi.fn().mockReturnValue({ ...env, ...overrides }),
   } as unknown as ConfigService<AppConfig, true>;
   return new UploadService(config);
 }
 
 describe('UploadService', () => {
+  it('normalizes every trailing slash before issuing a public URL', async () => {
+    const result = await createService({
+      OBJECT_STORAGE_PUBLIC_BASE_URL: 'http://127.0.0.1:9000/bake-mall///',
+    }).presign({
+      scope: 'products',
+      fileName: 'cake.webp',
+      contentType: 'image/webp',
+      sizeBytes: 1024,
+    });
+
+    expect(result.publicUrl).toBe(
+      `http://127.0.0.1:9000/bake-mall/${result.objectKey}`,
+    );
+  });
+
   it('returns distinct upload and public URLs with the generated object key', async () => {
     const result = await createService().presign({
       scope: 'products',

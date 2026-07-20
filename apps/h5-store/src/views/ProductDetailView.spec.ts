@@ -42,7 +42,7 @@ const detail: PublicProductDetailView = {
   ],
 };
 
-async function mountDetail() {
+async function mountDetail(path = '/products/product-1') {
   const pinia = createPinia();
   setActivePinia(pinia);
   const router = createRouter({
@@ -53,9 +53,12 @@ async function mountDetail() {
       { path: '/cart', component: { template: '<div />' } },
     ],
   });
-  await router.push('/products/product-1');
+  await router.push(path);
   await router.isReady();
-  return mount(ProductDetailView, { global: { plugins: [pinia, router] } });
+  return {
+    router,
+    wrapper: mount(ProductDetailView, { global: { plugins: [pinia, router] } }),
+  };
 }
 
 describe('ProductDetailView', () => {
@@ -65,7 +68,7 @@ describe('ProductDetailView', () => {
   });
 
   it('renders the saved HTML and opens the SKU action sheet', async () => {
-    const wrapper = await mountDetail();
+    const { wrapper } = await mountDetail();
     await vi.waitFor(() => expect(wrapper.text()).toContain('草莓云朵蛋糕'));
 
     expect(wrapper.html()).toContain('服务端清洗后的商品详情');
@@ -85,5 +88,34 @@ describe('ProductDetailView', () => {
       (wrapper.get('[data-testid="sku-sku-zero"]').element as HTMLButtonElement)
         .disabled,
     ).toBe(true);
+  });
+
+  it('clears the old product and SKU sheet before loading a reused route id', async () => {
+    const nextDetail = {
+      ...detail,
+      id: 'product-2',
+      name: '蓝莓云朵蛋糕',
+    };
+    let resolveNext!: (value: PublicProductDetailView) => void;
+    vi.mocked(catalogFeatureApi.getProduct)
+      .mockResolvedValueOnce(detail)
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveNext = resolve;
+        }),
+      );
+    const { router, wrapper } = await mountDetail();
+    await vi.waitFor(() => expect(wrapper.text()).toContain(detail.name));
+    await wrapper.get('[data-testid="choose-sku"]').trigger('click');
+
+    await router.push('/products/product-2');
+    await vi.waitFor(() =>
+      expect(catalogFeatureApi.getProduct).toHaveBeenLastCalledWith('product-2'),
+    );
+
+    expect(wrapper.text()).not.toContain(detail.name);
+    expect(wrapper.find('[data-testid="sku-sheet"]').exists()).toBe(false);
+    resolveNext(nextDetail);
+    await vi.waitFor(() => expect(wrapper.text()).toContain(nextDetail.name));
   });
 });

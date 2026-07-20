@@ -124,8 +124,24 @@ export function useBanners() {
     }
   }
 
-  async function refreshBanners(): Promise<void> {
-    banners.value = [...(await bannersApi.list())];
+  function applyBanner(saved: AdminBannerView): void {
+    const exists = banners.value.some((banner) => banner.id === saved.id);
+    banners.value = exists
+      ? banners.value.map((banner) => (banner.id === saved.id ? saved : banner))
+      : [saved, ...banners.value];
+  }
+
+  function removeBanner(id: string): void {
+    banners.value = banners.value.filter((banner) => banner.id !== id);
+  }
+
+  async function refreshBanners(failureMessage: string): Promise<void> {
+    try {
+      banners.value = [...(await bannersApi.list())];
+      lastError.value = null;
+    } catch {
+      lastError.value = failureMessage;
+    }
   }
 
   function openCreate(): void {
@@ -161,8 +177,9 @@ export function useBanners() {
       const saved = editingId.value
         ? await bannersApi.update(editingId.value, request)
         : await bannersApi.create(request);
+      applyBanner(saved);
       dialogVisible.value = false;
-      await refreshBanners();
+      await refreshBanners('Banner 已保存，但列表刷新失败');
       return saved;
     } finally {
       saving.value = false;
@@ -173,7 +190,7 @@ export function useBanners() {
     if (!banner.image) {
       throw new Error('历史 Banner 需要重新上传图片后才能切换状态');
     }
-    await bannersApi.update(banner.id, {
+    const saved = await bannersApi.update(banner.id, {
       image: banner.image,
       ...(banner.title ? { title: banner.title } : {}),
       targetType: banner.targetType,
@@ -183,12 +200,14 @@ export function useBanners() {
       sortOrder: banner.sortOrder,
       isActive: !banner.isActive,
     } as SaveBannerRequest);
-    await refreshBanners();
+    applyBanner(saved);
+    await refreshBanners('Banner 状态已更新，但列表刷新失败');
   }
 
   async function remove(id: string): Promise<void> {
     await bannersApi.remove(id);
-    await refreshBanners();
+    removeBanner(id);
+    await refreshBanners('Banner 已删除，但列表刷新失败');
   }
 
   function getTargetLabel(banner: AdminBannerView): string {

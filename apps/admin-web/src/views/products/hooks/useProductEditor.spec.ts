@@ -161,6 +161,36 @@ describe('useProductEditor', () => {
     expect(editor.form.value.name).toBe(PRODUCT_DETAIL_MOCK.name);
   });
 
+  it('switches a new editor to persistent edit mode after create so the next save replaces', async () => {
+    const navigate = vi.fn();
+    const editor = useProductEditor({ mode: 'new' }, navigate);
+    categories.list.mockResolvedValue(categoryListMock);
+    await editor.load();
+    editor.replaceForm({
+      ...mapDetailToForm(PRODUCT_DETAIL_MOCK),
+      name: '新品',
+      categoryId: 'category-1',
+      isActive: false,
+    });
+    api.create.mockResolvedValueOnce(PRODUCT_DETAIL_MOCK);
+    api.replace.mockResolvedValueOnce({
+      ...PRODUCT_DETAIL_MOCK,
+      detailHtml: '<p>second save</p>',
+    });
+
+    await editor.save();
+    await editor.save();
+
+    expect(api.create).toHaveBeenCalledTimes(1);
+    expect(api.replace).toHaveBeenCalledWith(
+      PRODUCT_DETAIL_MOCK.id,
+      expect.anything(),
+    );
+    expect(navigate).toHaveBeenCalledOnce();
+    expect(navigate).toHaveBeenCalledWith(PRODUCT_DETAIL_MOCK.id);
+    expect(editor.savedPreviewHtml.value).toBe('<p>second save</p>');
+  });
+
   it('uses the server response as form and sanitized preview', async () => {
     const { editor, load } = newEditor();
     await load;

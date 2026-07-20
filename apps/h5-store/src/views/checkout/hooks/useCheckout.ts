@@ -22,34 +22,10 @@ import {
   PHONE_PATTERN,
   REMARK_MAX_LENGTH,
 } from '../config/defaults.js';
+import { generateIdempotencyKey } from '../../../utils/idempotency.js';
 import type { CheckoutFormValues, CheckoutValidation } from '../type/index.js';
 
-function randomByte(): number {
-  return Math.floor(Math.random() * 256);
-}
-
-function createUuidBytes(webCrypto?: Crypto): Uint8Array {
-  const bytes = webCrypto?.getRandomValues
-    ? webCrypto.getRandomValues(new Uint8Array(16))
-    : Uint8Array.from({ length: 16 }, randomByte);
-  return Uint8Array.from(bytes, (byte, index) =>
-    index === 6
-      ? (byte & 0x0f) | 0x40
-      : index === 8
-        ? (byte & 0x3f) | 0x80
-        : byte,
-  );
-}
-
-export function generateIdempotencyKey(): string {
-  const webCrypto = (globalThis as { crypto?: Crypto }).crypto;
-  if (typeof webCrypto?.randomUUID === 'function')
-    return webCrypto.randomUUID();
-  const hex = Array.from(createUuidBytes(webCrypto), (byte) =>
-    byte.toString(16).padStart(2, '0'),
-  );
-  return `${hex.slice(0, 4).join('')}-${hex.slice(4, 6).join('')}-${hex.slice(6, 8).join('')}-${hex.slice(8, 10).join('')}-${hex.slice(10, 16).join('')}`;
-}
+export { generateIdempotencyKey } from '../../../utils/idempotency.js';
 
 export function validateCheckout(
   values: Readonly<CheckoutFormValues>,
@@ -119,11 +95,9 @@ export function useCheckout(profile: UserProfileView | null) {
   const formError = ref<string | null>(null);
   const submitError = ref<string | null>(null);
 
-  const cartItemIds = computed(() =>
-    cart.availableItems.map((item) => item.id),
-  );
+  const cartItemIds = computed(() => cart.selectedItems.map((item) => item.id));
   const cartTotalCents = computed(() =>
-    cart.availableItems.reduce(
+    cart.selectedItems.reduce(
       (sum, item) => sum + item.sku.priceCents * item.quantity,
       0,
     ),
@@ -239,7 +213,7 @@ export function useCheckout(profile: UserProfileView | null) {
     data: {
       values: readonly(values),
       cartItems: computed(() => cart.items),
-      availableItems: computed(() => cart.availableItems),
+      availableItems: computed(() => cart.selectedItems),
       addresses: computed(() => addresses.items),
       cartTotalCents,
       formError: readonly(formError),

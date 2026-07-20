@@ -1,8 +1,13 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import {
+  Global,
+  INestApplication,
+  Module,
+  ValidationPipe,
+} from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
+import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -24,6 +29,20 @@ import { Category } from '../src/database/entities/category.entity.js';
 import { Product } from '../src/database/entities/product.entity.js';
 import { Sku } from '../src/database/entities/sku.entity.js';
 import { User } from '../src/database/entities/user.entity.js';
+
+let fakeDataSourceRef: unknown;
+
+@Global()
+@Module({
+  providers: [
+    {
+      provide: getDataSourceToken(),
+      useFactory: () => fakeDataSourceRef,
+    },
+  ],
+  exports: [getDataSourceToken()],
+})
+class FakeDatabaseModule {}
 
 function memoryRepository<T extends { id?: string }>() {
   const records: T[] = [];
@@ -139,6 +158,7 @@ describe('Customer domain (e2e)', () => {
   let adminHeaders: Record<string, string>;
   let productRepo: ReturnType<typeof memoryRepository<Product>>;
   let bannerRepo: ReturnType<typeof memoryRepository<Banner>>;
+  let auditRepo: ReturnType<typeof memoryRepository<AuditLog>>;
 
   beforeAll(async () => {
     process.env.NODE_ENV = 'test';
@@ -151,7 +171,7 @@ describe('Customer domain (e2e)', () => {
     const userRepo = memoryRepository<User>();
     const adminRepo = memoryRepository<AdminUser>();
     const addressRepo = memoryRepository<Address>();
-    const auditRepo = memoryRepository<AuditLog>();
+    auditRepo = memoryRepository<AuditLog>();
     const cartRepo = memoryRepository<CartItem>();
     const skuRepo = memoryRepository<Sku>();
     const categoryRepo = memoryRepository<Category>();
@@ -190,10 +210,25 @@ describe('Customer domain (e2e)', () => {
       isActive: true,
     } as Sku);
 
+    const repositories = new Map<unknown, object>([
+      [Address, addressRepo],
+      [AuditLog, auditRepo],
+      [Banner, bannerRepo],
+      [Category, categoryRepo],
+      [Product, productRepo],
+    ]);
     const dataSource = {
-      transaction: async <T>(callback: (manager: unknown) => Promise<T>) =>
-        callback({ getRepository: () => addressRepo }),
+      transaction: async <T>(
+        callback: (manager: {
+          getRepository: (entity: unknown) => object;
+        }) => Promise<T>,
+      ) =>
+        callback({
+          getRepository: (entity: unknown) =>
+            repositories.get(entity) as object,
+        }),
     };
+    fakeDataSourceRef = dataSource;
     const addressService = new AddressService(
       dataSource as never,
       addressRepo as never,
@@ -212,10 +247,13 @@ describe('Customer domain (e2e)', () => {
           },
         }),
         AuthModule,
+        FakeDatabaseModule,
         CustomerModule,
         BannerModule,
       ],
     })
+      .overrideProvider(getDataSourceToken())
+      .useValue(dataSource)
       .overrideProvider(AddressService)
       .useValue(addressService)
       .overrideProvider(getRepositoryToken(User))
@@ -337,6 +375,17 @@ describe('Customer domain (e2e)', () => {
       }),
     ]);
 
+    const bannerWithoutImage = {
+      targetType: 'NONE',
+      sortOrder: 1,
+      isActive: true,
+    };
+    await request(app.getHttpServer())
+      .post('/api/v1/admin/banners')
+      .set(adminHeaders)
+      .send(bannerWithoutImage)
+      .expect(400);
+
     const validBanner = await request(app.getHttpServer())
       .post('/api/v1/admin/banners')
       .set(adminHeaders)
@@ -374,6 +423,11 @@ describe('Customer domain (e2e)', () => {
       .expect(200);
     expect(clearedBanner.body).not.toHaveProperty('targetId');
     expect(clearedBanner.body).not.toHaveProperty('title');
+    await request(app.getHttpServer())
+      .patch(`/api/v1/admin/banners/${validBanner.body.id}`)
+      .set(adminHeaders)
+      .send(bannerWithoutImage)
+      .expect(400);
     expect(
       bannerRepo.records.find((banner) => banner.id === validBanner.body.id),
     ).toEqual(expect.objectContaining({ targetType: 'NONE', targetId: null }));

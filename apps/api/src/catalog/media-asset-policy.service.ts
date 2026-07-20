@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { ApiErrorCode, type MediaAsset } from '@bake-mall/contracts';
 
 import type { AppConfig, AppEnv } from '../config/env.schema.js';
+import { joinMediaUrl, normalizeMediaBaseUrl } from '../media-url.js';
 
 export type ProductMediaEnv = Pick<
   AppEnv,
@@ -22,12 +23,6 @@ const parseUrl = (rawUrl: string): URL | null => {
 
 const toOrigin = (rawUrl: string): string | null =>
   parseUrl(rawUrl)?.origin ?? null;
-
-const normalizeBasePathname = (pathname: string): string =>
-  pathname === '/' ? '' : pathname.replace(/\/+$/, '');
-
-const joinBasePathname = (basePathname: string, objectKey: string): string =>
-  `${normalizeBasePathname(basePathname)}/${objectKey}`;
 
 const hasUnambiguousObjectKeyPath = (objectKey: string): boolean =>
   !objectKey.includes('\\') &&
@@ -113,6 +108,7 @@ const isExplicitLocalHttpOrigin = (
 
 const getProductMediaBases = (env: ProductMediaEnv): URL[] =>
   [env.OBJECT_STORAGE_PUBLIC_BASE_URL, ...env.PRODUCT_MEDIA_ALLOWED_ORIGINS]
+    .map(normalizeMediaBaseUrl)
     .map(parseUrl)
     .filter((base): base is URL => base !== null);
 
@@ -165,7 +161,7 @@ export function isAllowedProductAssetUrl(
   return getProductMediaBases(env).some(
     (base) =>
       base.origin === url.origin &&
-      url.pathname === joinBasePathname(base.pathname, objectKey),
+      url.pathname === joinMediaUrl(base.pathname, objectKey),
   );
 }
 

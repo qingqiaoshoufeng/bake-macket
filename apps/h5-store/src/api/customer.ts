@@ -14,16 +14,23 @@ export const customerApi = {
     return apiClient.get<CartItemView[]>('/me/cart/items');
   },
 
-  upsertCartItem(body: UpsertCartItemRequest): Promise<CartItemView> {
-    return apiClient.post<CartItemView>('/me/cart/items', body);
+  upsertCartItem(
+    body: UpsertCartItemRequest,
+    idempotencyKey?: string,
+  ): Promise<CartItemView> {
+    return apiClient.post<CartItemView>('/me/cart/items', body, {
+      ...(idempotencyKey
+        ? { headers: { 'Idempotency-Key': idempotencyKey } }
+        : {}),
+    });
   },
 
   removeCartItem(id: string): Promise<void> {
     return apiClient.delete<void>(`/me/cart/items/${id}`);
   },
 
-  getMe(): Promise<CustomerProfileView> {
-    return apiClient.get<CustomerProfileView>('/me');
+  getMe(token?: string): Promise<CustomerProfileView> {
+    return apiClient.get<CustomerProfileView>('/me', { token });
   },
 
   listAddresses(): Promise<AddressView[]> {

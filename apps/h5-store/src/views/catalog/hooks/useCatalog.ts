@@ -32,6 +32,7 @@ export function useCatalog(): UseCatalogResult {
   const product = shallowRef<CatalogProductDetail | null>(null);
   const loading = ref(false);
   const lastError = ref<string | null>(null);
+  let detailSequence = 0;
 
   async function withLoading<T>(operation: () => Promise<T>): Promise<T> {
     loading.value = true;
@@ -70,11 +71,21 @@ export function useCatalog(): UseCatalogResult {
   }
 
   async function loadProduct(id: string): Promise<CatalogProductDetail> {
-    return withLoading(async () => {
+    const sequence = detailSequence + 1;
+    detailSequence = sequence;
+    product.value = null;
+    loading.value = true;
+    lastError.value = null;
+    try {
       const detail = await catalogFeatureApi.getProduct(id);
-      product.value = detail;
+      if (sequence === detailSequence) product.value = detail;
       return detail;
-    });
+    } catch (error) {
+      if (sequence === detailSequence) lastError.value = errorMessage(error);
+      throw error;
+    } finally {
+      if (sequence === detailSequence) loading.value = false;
+    }
   }
 
   return {

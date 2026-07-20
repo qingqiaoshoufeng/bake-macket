@@ -31,7 +31,10 @@ export function useProfile() {
         await profileFeatureApi.get(),
         Boolean(auth.profile?.phoneVerified),
       );
-      if (isCurrentSession(session)) profile.value = next;
+      if (isCurrentSession(session)) {
+        profile.value = next;
+        auth.setProfile(next);
+      }
       return next;
     } finally {
       if (isCurrentSession(session)) loading.value = false;
