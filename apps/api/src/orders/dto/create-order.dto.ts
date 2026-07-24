@@ -3,10 +3,12 @@ import {
   ArrayMinSize,
   IsArray,
   IsEnum,
+  IsInt,
   IsOptional,
   IsString,
   Length,
   Matches,
+  Min,
   MaxLength,
   ValidateIf,
 } from 'class-validator';
@@ -48,6 +50,17 @@ export class CreateOrderDto {
   )
   @IsString()
   addressId?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  requestedCreditCents?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(4096)
+  quoteToken?: string;
 
   @IsOptional()
   @IsString()

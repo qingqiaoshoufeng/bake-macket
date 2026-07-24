@@ -26,11 +26,19 @@ import { AuditLog } from '../src/database/entities/audit-log.entity.js';
 import { CartItem } from '../src/database/entities/cart-item.entity.js';
 import { Category } from '../src/database/entities/category.entity.js';
 import { IdempotencyRecord } from '../src/database/entities/idempotency-record.entity.js';
+import { MemberAccount } from '../src/database/entities/member-account.entity.js';
+import { MemberCreditAllocation } from '../src/database/entities/member-credit-allocation.entity.js';
+import { MemberCreditEntry } from '../src/database/entities/member-credit-entry.entity.js';
+import { MemberCreditGrant } from '../src/database/entities/member-credit-grant.entity.js';
+import { MembershipEntitlementSegment } from '../src/database/entities/membership-entitlement-segment.entity.js';
+import { MembershipLevel } from '../src/database/entities/membership-level.entity.js';
+import { MembershipPurchaseOrder } from '../src/database/entities/membership-purchase-order.entity.js';
 import { Order } from '../src/database/entities/order.entity.js';
 import { OrderItem } from '../src/database/entities/order-item.entity.js';
 import { Product } from '../src/database/entities/product.entity.js';
 import { Sku } from '../src/database/entities/sku.entity.js';
 import { User } from '../src/database/entities/user.entity.js';
+import { UserMembership } from '../src/database/entities/user-membership.entity.js';
 import { OrdersModule } from '../src/orders/orders.module.js';
 
 /** Translate a TypeORM find operator (e.g. `In([...])`) into a matcher. */
@@ -471,6 +479,22 @@ describe('Orders domain (e2e)', () => {
       .useValue(stubs.products)
       .overrideProvider(getRepositoryToken(Category))
       .useValue(stubs.categories)
+      .overrideProvider(getRepositoryToken(MemberAccount))
+      .useValue({})
+      .overrideProvider(getRepositoryToken(UserMembership))
+      .useValue({})
+      .overrideProvider(getRepositoryToken(MemberCreditGrant))
+      .useValue({})
+      .overrideProvider(getRepositoryToken(MemberCreditEntry))
+      .useValue({})
+      .overrideProvider(getRepositoryToken(MemberCreditAllocation))
+      .useValue({})
+      .overrideProvider(getRepositoryToken(MembershipLevel))
+      .useValue({})
+      .overrideProvider(getRepositoryToken(MembershipPurchaseOrder))
+      .useValue({})
+      .overrideProvider(getRepositoryToken(MembershipEntitlementSegment))
+      .useValue({})
       .compile();
 
     app = moduleRef.createNestApplication();
