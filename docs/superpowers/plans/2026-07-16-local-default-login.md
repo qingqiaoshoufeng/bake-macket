@@ -37,10 +37,12 @@
 ### Task 1: Admin Login Default Configuration
 
 **Files:**
+
 - Create: `apps/admin-web/src/views/login/config/default-admin-login.ts`
 - Create: `apps/admin-web/src/views/login/config/default-admin-login.spec.ts`
 
 **Interfaces:**
+
 - Consumes: explicit `isDevelopment: boolean`, optional email, and optional password.
 - Produces: `getDefaultAdminLogin(input): Readonly<{ email: string; password: string }>`.
 
@@ -146,10 +148,12 @@ Expected: 3 tests PASS.
 ### Task 2: Admin Login View Integration
 
 **Files:**
+
 - Modify: `apps/admin-web/src/views/LoginView.vue:1-17,90-96`
 - Create: `apps/admin-web/src/views/LoginView.spec.ts`
 
 **Interfaces:**
+
 - Consumes: `getDefaultAdminLogin(...)` from Task 1 and the existing `useAdminAuthStore()` action `loginAsAdmin(email: string, password: string)`.
 - Produces: development form defaults while preserving current submission and redirect behavior.
 
@@ -210,8 +214,10 @@ describe('LoginView', () => {
     const { wrapper } = await mountLogin();
 
     expect(
-      (wrapper.get('[data-testid="admin-email"] input').element as HTMLInputElement)
-        .value,
+      (
+        wrapper.get('[data-testid="admin-email"] input')
+          .element as HTMLInputElement
+      ).value,
     ).toBe('admin@example.com');
     expect(
       (
@@ -294,10 +300,12 @@ Expected: all tests PASS.
 ### Task 3: H5 Login Default Configuration
 
 **Files:**
+
 - Create: `apps/h5-store/src/views/login/config/default-development-login.ts`
 - Create: `apps/h5-store/src/views/login/config/default-development-login.spec.ts`
 
 **Interfaces:**
+
 - Consumes: `DEVELOPMENT_LOGIN_HINT` from `apps/h5-store/src/bridge/miniapp.ts`.
 - Produces: `getDefaultDevelopmentLogin(isDevelopment: boolean): Readonly<{ phone: string; code: string }>`.
 
@@ -367,10 +375,12 @@ Expected: 2 tests PASS.
 ### Task 4: H5 Login View Integration
 
 **Files:**
+
 - Modify: `apps/h5-store/src/views/LoginView.vue:6-23`
 - Create: `apps/h5-store/src/views/LoginView.spec.ts`
 
 **Interfaces:**
+
 - Consumes: `getDefaultDevelopmentLogin(...)` from Task 3 and existing `loginWithDevelopmentCode(phone: string, code: string)`.
 - Produces: H5 development defaults, with the existing quick-fill button and submission behavior intact.
 
@@ -518,10 +528,12 @@ Expected: all tests PASS.
 ### Task 5: Local Ignored Environment Configuration
 
 **Files:**
+
 - Modify without replacing unrelated keys: `.env` (Git ignored)
 - Create or update: `apps/admin-web/.env.local` (Git ignored)
 
 **Interfaces:**
+
 - API consumes: `PORT`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`.
 - admin-web consumes: `VITE_ADMIN_EMAIL`, `VITE_ADMIN_PASSWORD`.
 
@@ -586,9 +598,11 @@ Expected: neither environment file appears in `git status`; both remain ignored.
 ### Task 6: Static Verification
 
 **Files:**
+
 - Verify all files changed in Tasks 1–5.
 
 **Interfaces:**
+
 - Consumes: both completed login implementations.
 - Produces: evidence that tests, lint, type checking, and production builds pass.
 
@@ -646,9 +660,11 @@ Expected: no whitespace errors; the category file retains its pre-existing diff;
 ### Task 7: Start Infrastructure and Apply Migrations
 
 **Files:**
+
 - Runtime only; no tracked file modifications.
 
 **Interfaces:**
+
 - Consumes: ignored root `.env` and existing Compose/TypeORM configuration.
 - Produces: healthy MySQL/MinIO and migrated local schema.
 
@@ -694,9 +710,11 @@ Expected: HTTP 200. If the health route has a different response body, status 20
 ### Task 8: Start Frontends and Verify Real Login Flows
 
 **Files:**
+
 - Runtime only; no tracked file modifications.
 
 **Interfaces:**
+
 - Consumes: API on `3015`, H5 on `5173`, admin-web on `5174`.
 - Produces: observed end-to-end evidence for both credential sets.
 

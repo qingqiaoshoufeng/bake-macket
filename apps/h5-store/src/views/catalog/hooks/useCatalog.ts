@@ -1,4 +1,4 @@
-import { ref, type Ref } from 'vue';
+import { shallowRef, ref, type Ref, type ShallowRef } from 'vue';
 
 import { catalogFeatureApi } from '../api/index.js';
 import type {
@@ -13,7 +13,7 @@ export type UseCatalogResult = {
   readonly banners: Ref<readonly CatalogBanner[]>;
   readonly categories: Ref<readonly CatalogCategory[]>;
   readonly products: Ref<readonly CatalogProduct[]>;
-  readonly product: Ref<CatalogProductDetail | null>;
+  readonly product: ShallowRef<CatalogProductDetail | null>;
   readonly loading: Ref<boolean>;
   readonly lastError: Ref<string | null>;
   readonly loadHome: () => Promise<void>;
@@ -29,9 +29,10 @@ export function useCatalog(): UseCatalogResult {
   const banners = ref<readonly CatalogBanner[]>([]);
   const categories = ref<readonly CatalogCategory[]>([]);
   const products = ref<readonly CatalogProduct[]>([]);
-  const product = ref<CatalogProductDetail | null>(null);
+  const product = shallowRef<CatalogProductDetail | null>(null);
   const loading = ref(false);
   const lastError = ref<string | null>(null);
+  let detailSequence = 0;
 
   async function withLoading<T>(operation: () => Promise<T>): Promise<T> {
     loading.value = true;
@@ -70,11 +71,21 @@ export function useCatalog(): UseCatalogResult {
   }
 
   async function loadProduct(id: string): Promise<CatalogProductDetail> {
-    return withLoading(async () => {
-      const detail = await catalogFeatureApi.getProduct(id) as CatalogProductDetail;
-      product.value = detail;
+    const sequence = detailSequence + 1;
+    detailSequence = sequence;
+    product.value = null;
+    loading.value = true;
+    lastError.value = null;
+    try {
+      const detail = await catalogFeatureApi.getProduct(id);
+      if (sequence === detailSequence) product.value = detail;
       return detail;
-    });
+    } catch (error) {
+      if (sequence === detailSequence) lastError.value = errorMessage(error);
+      throw error;
+    } finally {
+      if (sequence === detailSequence) loading.value = false;
+    }
   }
 
   return {

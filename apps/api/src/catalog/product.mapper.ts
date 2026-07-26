@@ -26,11 +26,7 @@ const toAdminSkuView = (sku: Sku): AdminSkuView => ({
       : null,
 });
 
-export function toAdminProductSummaryView(
-  product: Product,
-  category: Category,
-  skus: Sku[],
-): AdminProductSummaryView {
+function toAdminProductBaseView(product: Product, category: Category) {
   return {
     id: product.id,
     categoryId: product.categoryId,
@@ -46,9 +42,19 @@ export function toAdminProductSummaryView(
         : null,
     sortOrder: product.sortOrder,
     isActive: product.isActive,
-    activeSkuCount: skus.filter(({ isActive }) => isActive).length,
     createdAt: product.createdAt.toISOString(),
     updatedAt: product.updatedAt.toISOString(),
+  };
+}
+
+export function toAdminProductSummaryView(
+  product: Product,
+  category: Category,
+  skus: Sku[],
+): AdminProductSummaryView {
+  return {
+    ...toAdminProductBaseView(product, category),
+    activeSkuCount: skus.filter(({ isActive }) => isActive).length,
   };
 }
 
@@ -58,11 +64,8 @@ export function toAdminProductDetailView(
   images: ProductImage[],
   skus: Sku[],
 ): AdminProductDetailView {
-  const { activeSkuCount: _activeSkuCount, ...summary } =
-    toAdminProductSummaryView(product, category, skus);
-
   return {
-    ...summary,
+    ...toAdminProductBaseView(product, category),
     detailHtml: product.detailHtml,
     images: [...images]
       .sort((left, right) => left.sortOrder - right.sortOrder)

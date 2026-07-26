@@ -1,8 +1,13 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import {
+  Global,
+  INestApplication,
+  Module,
+  ValidationPipe,
+} from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
+import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -17,12 +22,27 @@ import { AddressService } from '../src/customer/address.service.js';
 import { CustomerModule } from '../src/customer/customer.module.js';
 import { Address } from '../src/database/entities/address.entity.js';
 import { AdminUser } from '../src/database/entities/admin-user.entity.js';
+import { AuditLog } from '../src/database/entities/audit-log.entity.js';
 import { Banner } from '../src/database/entities/banner.entity.js';
 import { CartItem } from '../src/database/entities/cart-item.entity.js';
 import { Category } from '../src/database/entities/category.entity.js';
 import { Product } from '../src/database/entities/product.entity.js';
 import { Sku } from '../src/database/entities/sku.entity.js';
 import { User } from '../src/database/entities/user.entity.js';
+
+let fakeDataSourceRef: unknown;
+
+@Global()
+@Module({
+  providers: [
+    {
+      provide: getDataSourceToken(),
+      useFactory: () => fakeDataSourceRef,
+    },
+  ],
+  exports: [getDataSourceToken()],
+})
+class FakeDatabaseModule {}
 
 function memoryRepository<T extends { id?: string }>() {
   const records: T[] = [];
@@ -106,10 +126,7 @@ function memoryRepository<T extends { id?: string }>() {
           record['skuId' as keyof T] === skuId,
       );
       if (existing) {
-        existing['quantity' as keyof T] = Math.min(
-          99,
-          (existing['quantity' as keyof T] as number) + quantity,
-        ) as T[keyof T];
+        existing['quantity' as keyof T] = quantity as T[keyof T];
       } else {
         records.push({
           id: String(nextId++),
@@ -141,6 +158,7 @@ describe('Customer domain (e2e)', () => {
   let adminHeaders: Record<string, string>;
   let productRepo: ReturnType<typeof memoryRepository<Product>>;
   let bannerRepo: ReturnType<typeof memoryRepository<Banner>>;
+  let auditRepo: ReturnType<typeof memoryRepository<AuditLog>>;
 
   beforeAll(async () => {
     process.env.NODE_ENV = 'test';
@@ -153,6 +171,7 @@ describe('Customer domain (e2e)', () => {
     const userRepo = memoryRepository<User>();
     const adminRepo = memoryRepository<AdminUser>();
     const addressRepo = memoryRepository<Address>();
+    auditRepo = memoryRepository<AuditLog>();
     const cartRepo = memoryRepository<CartItem>();
     const skuRepo = memoryRepository<Sku>();
     const categoryRepo = memoryRepository<Category>();
@@ -191,10 +210,25 @@ describe('Customer domain (e2e)', () => {
       isActive: true,
     } as Sku);
 
+    const repositories = new Map<unknown, object>([
+      [Address, addressRepo],
+      [AuditLog, auditRepo],
+      [Banner, bannerRepo],
+      [Category, categoryRepo],
+      [Product, productRepo],
+    ]);
     const dataSource = {
-      transaction: async <T>(callback: (manager: unknown) => Promise<T>) =>
-        callback({ getRepository: () => addressRepo }),
+      transaction: async <T>(
+        callback: (manager: {
+          getRepository: (entity: unknown) => object;
+        }) => Promise<T>,
+      ) =>
+        callback({
+          getRepository: (entity: unknown) =>
+            repositories.get(entity) as object,
+        }),
     };
+    fakeDataSourceRef = dataSource;
     const addressService = new AddressService(
       dataSource as never,
       addressRepo as never,
@@ -213,10 +247,13 @@ describe('Customer domain (e2e)', () => {
           },
         }),
         AuthModule,
+        FakeDatabaseModule,
         CustomerModule,
         BannerModule,
       ],
     })
+      .overrideProvider(getDataSourceToken())
+      .useValue(dataSource)
       .overrideProvider(AddressService)
       .useValue(addressService)
       .overrideProvider(getRepositoryToken(User))
@@ -225,6 +262,8 @@ describe('Customer domain (e2e)', () => {
       .useValue(adminRepo)
       .overrideProvider(getRepositoryToken(Address))
       .useValue(addressRepo)
+      .overrideProvider(getRepositoryToken(AuditLog))
+      .useValue(auditRepo)
       .overrideProvider(getRepositoryToken(CartItem))
       .useValue(cartRepo)
       .overrideProvider(getRepositoryToken(Sku))
@@ -271,7 +310,7 @@ describe('Customer domain (e2e)', () => {
     await app?.close();
   });
 
-  it('keeps only the second default address, merges repeated SKU additions, and filters disabled or invalid banners', async () => {
+  it('keeps only the second default address, replaces repeated SKU quantities, and filters disabled or invalid banners', async () => {
     const firstAddress = {
       receiverName: 'A',
       phone: '13800000000',
@@ -306,32 +345,92 @@ describe('Customer domain (e2e)', () => {
       .set(userHeaders)
       .send({ skuId: 'sku-1', quantity: 1 })
       .expect(201);
-    await request(app.getHttpServer())
+    const replacedCartItem = await request(app.getHttpServer())
       .post('/api/v1/me/cart/items')
       .set(userHeaders)
       .send({ skuId: 'sku-1', quantity: 2 })
       .expect(201);
+    expect(replacedCartItem.body).toEqual(
+      expect.objectContaining({ quantity: 2 }),
+    );
+    await request(app.getHttpServer())
+      .post('/api/v1/me/cart/items')
+      .set(userHeaders)
+      .send({ skuId: 'sku-1', quantity: 0 })
+      .expect(400);
+    await request(app.getHttpServer())
+      .post('/api/v1/me/cart/items')
+      .set(userHeaders)
+      .send({ skuId: 'sku-1', quantity: 100 })
+      .expect(400);
     const cart = await request(app.getHttpServer())
       .get('/api/v1/me/cart/items')
       .set(userHeaders)
       .expect(200);
     expect(cart.body).toEqual([
       expect.objectContaining({
-        quantity: 3,
+        quantity: 2,
         available: true,
         sku: expect.objectContaining({ priceCents: 6800, stock: 2 }),
       }),
     ]);
 
+    const bannerWithoutImage = {
+      targetType: 'NONE',
+      sortOrder: 1,
+      isActive: true,
+    };
+    await request(app.getHttpServer())
+      .post('/api/v1/admin/banners')
+      .set(adminHeaders)
+      .send(bannerWithoutImage)
+      .expect(400);
+
     const validBanner = await request(app.getHttpServer())
       .post('/api/v1/admin/banners')
       .set(adminHeaders)
       .send({
-        imageUrl: 'https://cdn.example.test/valid.jpg',
+        image: {
+          objectKey: 'banners/valid.jpg',
+          publicUrl: 'http://127.0.0.1:9000/bake-mall/banners/valid.jpg',
+        },
+        title: 'Valid product Banner',
         targetType: 'PRODUCT',
         targetId: 'product-1',
+        sortOrder: 1,
+        isActive: true,
       })
       .expect(201);
+    expect(validBanner.body).toEqual(
+      expect.objectContaining({
+        image: {
+          objectKey: 'banners/valid.jpg',
+          publicUrl: 'http://127.0.0.1:9000/bake-mall/banners/valid.jpg',
+        },
+        targetType: 'PRODUCT',
+        targetId: 'product-1',
+      }),
+    );
+    const clearedBanner = await request(app.getHttpServer())
+      .patch(`/api/v1/admin/banners/${validBanner.body.id}`)
+      .set(adminHeaders)
+      .send({
+        image: validBanner.body.image,
+        targetType: 'NONE',
+        sortOrder: 1,
+        isActive: true,
+      })
+      .expect(200);
+    expect(clearedBanner.body).not.toHaveProperty('targetId');
+    expect(clearedBanner.body).not.toHaveProperty('title');
+    await request(app.getHttpServer())
+      .patch(`/api/v1/admin/banners/${validBanner.body.id}`)
+      .set(adminHeaders)
+      .send(bannerWithoutImage)
+      .expect(400);
+    expect(
+      bannerRepo.records.find((banner) => banner.id === validBanner.body.id),
+    ).toEqual(expect.objectContaining({ targetType: 'NONE', targetId: null }));
     await bannerRepo.save({
       imageUrl: 'https://cdn.example.test/disabled.jpg',
       targetType: 'NONE',
@@ -350,10 +449,11 @@ describe('Customer domain (e2e)', () => {
       .get('/api/v1/public/banners')
       .expect(200);
     expect(banners.body).toEqual([
-      expect.objectContaining({
+      {
         id: validBanner.body.id,
-        targetId: 'product-1',
-      }),
+        imageUrl: validBanner.body.image.publicUrl,
+        targetType: 'NONE',
+      },
     ]);
   });
 });

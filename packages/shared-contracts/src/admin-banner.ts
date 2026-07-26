@@ -24,8 +24,22 @@ export type SaveBannerRequest = SaveBannerCommon &
       }
   );
 
-export type AdminBannerView = SaveBannerRequest & {
+export type AdminBannerView = Omit<SaveBannerCommon, 'image'> & {
   id: string;
+  image: MediaAsset | null;
   createdAt: string;
   updatedAt: string;
-};
+} & (
+    | {
+        targetType: BannerTargetType.NONE;
+        targetId?: never;
+      }
+    | {
+        targetType: BannerTargetType.PRODUCT;
+        targetId: string;
+      }
+    | {
+        targetType: BannerTargetType.CATEGORY;
+        targetId: string;
+      }
+  );

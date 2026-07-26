@@ -373,8 +373,8 @@ image: MediaAsset | null;
 `CosImageUploader` 的持久化接口统一为：
 
 ```ts
-modelValue: MediaAsset | null
-update:modelValue: [MediaAsset | null]
+modelValue: MediaAsset | null;
+update: modelValue: [MediaAsset | null];
 ```
 
 用途：

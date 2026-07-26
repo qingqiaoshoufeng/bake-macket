@@ -3,6 +3,9 @@ import { onMounted } from 'vue';
 import { ElAlert, ElButton, ElMessage, ElMessageBox } from 'element-plus';
 import { useRouter } from 'vue-router';
 
+import AdminDataPanel from '../../components/layout/AdminDataPanel.vue';
+import AdminPage from '../../components/layout/AdminPage.vue';
+import AdminPageHeader from '../../components/layout/AdminPageHeader.vue';
 import ProductTable from './components/ProductTable.vue';
 import { useProductsList } from './hooks/useProductsList.js';
 
@@ -50,20 +53,22 @@ async function removeProduct(id: string): Promise<void> {
 </script>
 
 <template>
-  <section class="products">
-    <header class="products__head">
-      <div>
-        <h1>商品管理</h1>
-        <p>管理商品、SKU 和上架状态。</p>
-      </div>
-      <ElButton
-        type="primary"
-        :data-testid="'create-product'"
-        @click="createProduct"
-      >
-        新增商品
-      </ElButton>
-    </header>
+  <AdminPage>
+    <AdminPageHeader
+      eyebrow="CATALOG"
+      title="商品管理"
+      description="管理商品信息、SKU 库存与上架状态。"
+    >
+      <template #actions>
+        <ElButton
+          type="primary"
+          :data-testid="'create-product'"
+          @click="createProduct"
+        >
+          新增商品
+        </ElButton>
+      </template>
+    </AdminPageHeader>
 
     <ElAlert
       v-if="lastError"
@@ -79,38 +84,14 @@ async function removeProduct(id: string): Promise<void> {
       </template>
     </ElAlert>
 
-    <ProductTable
-      :products="products"
-      :loading="loading"
-      :deleting-id="deletingId"
-      @edit="editProduct"
-      @remove="removeProduct"
-    />
-  </section>
+    <AdminDataPanel>
+      <ProductTable
+        :products="products"
+        :loading="loading"
+        :deleting-id="deletingId"
+        @edit="editProduct"
+        @remove="removeProduct"
+      />
+    </AdminDataPanel>
+  </AdminPage>
 </template>
-
-<style scoped>
-.products {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.products__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.products__head h1 {
-  margin: 0;
-  color: #2f2a3d;
-  font-size: 22px;
-}
-
-.products__head p {
-  margin: 4px 0 0;
-  color: #8a83a3;
-  font-size: 13px;
-}
-</style>

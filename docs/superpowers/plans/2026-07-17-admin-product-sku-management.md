@@ -69,12 +69,14 @@
 ### 任务 1：固定共享商品契约与错误码
 
 **文件：**
+
 - 修改：`packages/shared-contracts/src/admin-catalog.ts`
 - 修改：`packages/shared-contracts/src/catalog.ts`
 - 修改：`packages/shared-contracts/src/enums.ts`
 - 修改：`packages/shared-contracts/src/admin-contracts.type-test.ts`
 
 **接口：**
+
 - 消费：既有 `MediaAsset`、`ProductImageView`、`SkuView`、`ApiErrorCode` 导出约定。
 - 产出：`AdminSkuView.stockVersion: number`；`SaveProductSkuInput` 的新建/已有可辨识联合；`PublicProductSummaryView`、`PublicProductDetailView`；`ApiErrorCode.PRODUCT_STOCK_CONFLICT` 与 `ApiErrorCode.PRODUCT_ASSET_OWNERSHIP_INVALID`。
 
@@ -177,10 +179,7 @@ type SaveProductSkuFields = {
 };
 
 export type SaveProductSkuInput = SaveProductSkuFields &
-  (
-    | { id?: never; stockVersion?: never }
-    | { id: string; stockVersion: number }
-  );
+  ({ id?: never; stockVersion?: never } | { id: string; stockVersion: number });
 ```
 
 在 `catalog.ts` 中保留 `SkuView` 和 `ProductImageView`，新增：
@@ -237,6 +236,7 @@ git diff -- packages/shared-contracts/src/admin-catalog.ts packages/shared-contr
 ### 任务 2：增加 `stockVersion` 迁移与实体映射
 
 **文件：**
+
 - 新建：`apps/api/src/database/migrations/0004-sku-stock-version.ts`
 - 新建：`apps/api/src/database/migrations/0004-sku-stock-version.spec.ts`
 - 修改：`apps/api/src/database/entities/sku.entity.ts`
@@ -244,6 +244,7 @@ git diff -- packages/shared-contracts/src/admin-catalog.ts packages/shared-contr
 - 修改：`apps/api/src/database/database.module.ts`
 
 **接口：**
+
 - 消费：前三个迁移的顺序、`Sku` 的 MySQL 命名约定。
 - 产出：`Sku.stockVersion: number` 映射到 `stock_version INT UNSIGNED NOT NULL DEFAULT 1`；CLI 与 Nest runtime 使用相同迁移列表。
 
@@ -301,9 +302,7 @@ export class SkuStockVersion1718000000003 implements MigrationInterface {
   }
 
   async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(
-      'ALTER TABLE `skus` DROP COLUMN `stock_version`',
-    );
+    await queryRunner.query('ALTER TABLE `skus` DROP COLUMN `stock_version`');
   }
 }
 ```
@@ -344,10 +343,12 @@ git diff --check -- apps/api/src/database/migrations/0004-sku-stock-version.ts a
 ### 任务 3：订单条件扣库存时递增版本
 
 **文件：**
+
 - 修改：`apps/api/src/orders/orders.service.spec.ts`
 - 修改：`apps/api/src/orders/orders.service.ts`
 
 **接口：**
+
 - 消费：任务 2 的 `Sku.stockVersion`。
 - 产出：下单成功的每个条件更新原子执行 `stock = stock - :quantity, stock_version = stock_version + 1`；库存不足与下架错误保持原样。
 
@@ -358,12 +359,12 @@ git diff --check -- apps/api/src/database/migrations/0004-sku-stock-version.ts a
 ```ts
 let setValues: Record<string, unknown> = {};
 // builder 内：
-set: (values: Record<string, unknown>) => {
+set: ((values: Record<string, unknown>) => {
   setValues = values;
   return builder;
 },
-// 成功扣减后：
-sku.stock = (sku.stock as number) - quantity;
+  // 成功扣减后：
+  (sku.stock = (sku.stock as number) - quantity));
 if (typeof setValues.stockVersion === 'function') {
   sku.stockVersion = Number(sku.stockVersion ?? 1) + 1;
 }
@@ -376,15 +377,17 @@ it('increments stockVersion exactly once with a successful stock decrement', asy
   const records = buildService({
     users: [{ id: 'user-1', phone: '13800000000', phoneVerified: true }],
     products: [{ id: 'product-1', isActive: true }],
-    skus: [{
-      id: 'sku-1',
-      productId: 'product-1',
-      name: '6寸',
-      priceCents: 6800,
-      stock: 3,
-      stockVersion: 7,
-      isActive: true,
-    }],
+    skus: [
+      {
+        id: 'sku-1',
+        productId: 'product-1',
+        name: '6寸',
+        priceCents: 6800,
+        stock: 3,
+        stockVersion: 7,
+        isActive: true,
+      },
+    ],
     cartItems: [
       { id: 'cart-1', userId: 'user-1', skuId: 'sku-1', quantity: 2 },
     ],
@@ -446,6 +449,7 @@ git diff -- apps/api/src/orders/orders.service.ts
 ### 任务 4：建立 Admin/Public 显式 DTO 映射
 
 **文件：**
+
 - 新建：`apps/api/src/catalog/product.mapper.ts`
 - 新建：`apps/api/src/catalog/product.mapper.spec.ts`
 - 修改：`apps/api/src/catalog/catalog.service.ts`
@@ -453,6 +457,7 @@ git diff -- apps/api/src/orders/orders.service.ts
 - 修改：`apps/api/src/catalog/public-catalog.controller.ts`
 
 **接口：**
+
 - 消费：任务 1 的共享 Admin/Public DTO，任务 2 的 `Sku.stockVersion`，既有 `Product`、`Category`、`ProductImage`、`Sku`。
 - 产出：`toAdminProductSummaryView`、`toAdminProductDetailView`、`toPublicProductSummaryView`、`toPublicProductDetailView`、`toPublicSkuView`；响应不直接序列化 Entity。
 
@@ -472,44 +477,70 @@ import {
 
 const category = { id: 'category-1', name: '蛋糕', isActive: true } as never;
 const product = {
-  id: 'product-1', categoryId: 'category-1', name: '草莓蛋糕',
-  summary: '当日制作', coverImageUrl: 'https://cdn.example.com/products/a.webp',
-  coverImageObjectKey: 'products/a.webp', detailHtml: '<p>clean</p>',
-  sortOrder: 2, isActive: true,
+  id: 'product-1',
+  categoryId: 'category-1',
+  name: '草莓蛋糕',
+  summary: '当日制作',
+  coverImageUrl: 'https://cdn.example.com/products/a.webp',
+  coverImageObjectKey: 'products/a.webp',
+  detailHtml: '<p>clean</p>',
+  sortOrder: 2,
+  isActive: true,
   createdAt: new Date('2026-07-17T01:00:00.000Z'),
-  updatedAt: new Date('2026-07-17T02:00:00.000Z'), category,
+  updatedAt: new Date('2026-07-17T02:00:00.000Z'),
+  category,
 } as never;
 const sku = {
-  id: 'sku-1', productId: 'product-1', name: '6寸', attributes: { size: '6寸' },
-  priceCents: 6800, stock: 2, stockVersion: 4, isActive: true,
-  imageUrl: null, imageObjectKey: null,
+  id: 'sku-1',
+  productId: 'product-1',
+  name: '6寸',
+  attributes: { size: '6寸' },
+  priceCents: 6800,
+  stock: 2,
+  stockVersion: 4,
+  isActive: true,
+  imageUrl: null,
+  imageObjectKey: null,
 } as never;
 const image = {
-  id: 'image-1', productId: 'product-1', url: 'https://cdn.example.com/products/b.webp',
-  objectKey: 'products/b.webp', sortOrder: 0,
+  id: 'image-1',
+  productId: 'product-1',
+  url: 'https://cdn.example.com/products/b.webp',
+  objectKey: 'products/b.webp',
+  sortOrder: 0,
 } as never;
 
 describe('product mappers', () => {
   it('maps Admin summary/detail including MediaAsset and stockVersion', () => {
     expect(toAdminProductSummaryView(product, category, [sku])).toMatchObject({
-      categoryName: '蛋糕', activeSkuCount: 1,
-      coverImage: { objectKey: 'products/a.webp', publicUrl: 'https://cdn.example.com/products/a.webp' },
+      categoryName: '蛋糕',
+      activeSkuCount: 1,
+      coverImage: {
+        objectKey: 'products/a.webp',
+        publicUrl: 'https://cdn.example.com/products/a.webp',
+      },
       createdAt: '2026-07-17T01:00:00.000Z',
     });
-    expect(toAdminProductDetailView(product, category, [image], [sku]).skus[0])
-      .toMatchObject({ id: 'sku-1', stockVersion: 4 });
+    expect(
+      toAdminProductDetailView(product, category, [image], [sku]).skus[0],
+    ).toMatchObject({ id: 'sku-1', stockVersion: 4 });
   });
 
   it('returns only Public fields and computes availability from all three states', () => {
     const summary = toPublicProductSummaryView(product, category, [sku]);
     const detail = toPublicProductDetailView(product, category, [image], [sku]);
     expect(summary.skus[0].isAvailable).toBe(true);
-    expect(detail.images).toEqual([{ id: 'image-1', url: image.url, sortOrder: 0 }]);
+    expect(detail.images).toEqual([
+      { id: 'image-1', url: image.url, sortOrder: 0 },
+    ]);
     expect(JSON.stringify(detail)).not.toMatch(
       /coverImageObjectKey|imageObjectKey|"isActive"|"category"/,
     );
-    expect(toPublicProductSummaryView(product, { ...category, isActive: false }, [sku])
-      .skus[0].isAvailable).toBe(false);
+    expect(
+      toPublicProductSummaryView(product, { ...category, isActive: false }, [
+        sku,
+      ]).skus[0].isAvailable,
+    ).toBe(false);
   });
 });
 ```
@@ -584,12 +615,14 @@ rg -n 'Object\.assign\(product|Promise<Product\[\]>|Promise<Product>' apps/api/s
 ### 任务 5：为聚合保存加入归属校验与 `409` 乐观锁
 
 **文件：**
+
 - 修改：`apps/api/src/catalog/dto/save-product.dto.ts`
 - 修改：`apps/api/src/catalog/catalog.service.ts`
 - 修改：`apps/api/src/catalog/catalog.service.spec.ts`
 - 修改：`apps/api/test/catalog.e2e-spec.ts`
 
 **接口：**
+
 - 消费：`SaveProductSkuInput` 联合、`Sku.stockVersion`、任务 4 mapper、`ApiErrorCode`。
 - 产出：运行时 `id`/`stockVersion` 组合校验；跨商品 SKU/图片返回 `422 PRODUCT_ASSET_OWNERSHIP_INVALID`；版本未命中返回 `409 PRODUCT_STOCK_CONFLICT`；任何失败回滚整笔事务。
 
@@ -605,10 +638,14 @@ it('rejects a SKU or image id owned by another product with 422', async () => {
     images: [{ id: 'image-other', productId: 'product-2' }],
   });
   const request = aggregateRequest({
-    images: [{
-      id: 'image-other', objectKey: 'products/x.webp',
-      publicUrl: 'https://cdn.example.com/products/x.webp', sortOrder: 0,
-    }],
+    images: [
+      {
+        id: 'image-other',
+        objectKey: 'products/x.webp',
+        publicUrl: 'https://cdn.example.com/products/x.webp',
+        sortOrder: 0,
+      },
+    ],
   });
 
   await expect(
@@ -623,16 +660,25 @@ it('rolls back with PRODUCT_STOCK_CONFLICT when stockVersion is stale', async ()
     conditionalAffected: 0,
   });
   const request = aggregateRequest({
-    skus: [{
-      id: 'sku-1', stockVersion: 4, name: '6寸', attributes: {},
-      priceCents: 6800, stock: 3, isActive: true, image: null,
-    }],
+    skus: [
+      {
+        id: 'sku-1',
+        stockVersion: 4,
+        name: '6寸',
+        attributes: {},
+        priceCents: 6800,
+        stock: 3,
+        isActive: true,
+        image: null,
+      },
+    ],
   });
 
   await expect(
     service.saveProductAggregate('product-1', request, 'admin-1'),
-  ).rejects.toSatisfy((error: ConflictException) =>
-    (error.getResponse() as { code: ApiErrorCode }).code ===
+  ).rejects.toSatisfy(
+    (error: ConflictException) =>
+      (error.getResponse() as { code: ApiErrorCode }).code ===
       ApiErrorCode.PRODUCT_STOCK_CONFLICT,
   );
   expect(transaction).toHaveBeenCalledTimes(1);
@@ -747,6 +793,7 @@ rg -n 'PRODUCT_STOCK_CONFLICT|PRODUCT_ASSET_OWNERSHIP_INVALID|stock_version = st
 ### 任务 6：配置媒体资产与富文本图片白名单
 
 **文件：**
+
 - 新建：`apps/api/src/catalog/media-asset-policy.service.ts`
 - 新建：`apps/api/src/catalog/media-asset-policy.service.spec.ts`
 - 新建：`apps/api/src/content/html-sanitizer.service.spec.ts`
@@ -757,6 +804,7 @@ rg -n 'PRODUCT_STOCK_CONFLICT|PRODUCT_ASSET_OWNERSHIP_INVALID|stock_version = st
 - 修改：`apps/api/src/catalog/catalog.service.spec.ts`
 
 **接口：**
+
 - 消费：`AppConfig.appEnv.OBJECT_STORAGE_PUBLIC_BASE_URL` 与聚合 `MediaAsset`。
 - 产出：`PRODUCT_MEDIA_ALLOWED_ORIGINS: string[]` 类型化配置；`MediaAssetPolicyService.assertProductAsset(asset)`；开发允许配置的 `http://127.0.0.1:*`，生产只接受配置的 HTTPS COS/CDN。
 
@@ -774,13 +822,15 @@ const service = buildSanitizer({
   ],
 });
 
-expect(service.sanitize(
-  '<img src="http://127.0.0.1:9000/bake-mall/products/a.webp">' +
-  '<img src="https://cdn.example.com/products/b.webp">' +
-  '<img src="https://evil.example/products/c.webp">',
-)).toBe(
+expect(
+  service.sanitize(
+    '<img src="http://127.0.0.1:9000/bake-mall/products/a.webp">' +
+      '<img src="https://cdn.example.com/products/b.webp">' +
+      '<img src="https://evil.example/products/c.webp">',
+  ),
+).toBe(
   '<img src="http://127.0.0.1:9000/bake-mall/products/a.webp" />' +
-  '<img src="https://cdn.example.com/products/b.webp" />',
+    '<img src="https://cdn.example.com/products/b.webp" />',
 );
 ```
 
@@ -811,8 +861,12 @@ Joi 字段把逗号分隔环境值正规化为去空白数组；缺省值为 `['
 ```ts
 export function isAllowedProductPublicUrl(
   rawUrl: string,
-  env: Pick<AppEnv, 'NODE_ENV' | 'OBJECT_STORAGE_PUBLIC_BASE_URL' |
-    'PRODUCT_MEDIA_ALLOWED_ORIGINS'>,
+  env: Pick<
+    AppEnv,
+    | 'NODE_ENV'
+    | 'OBJECT_STORAGE_PUBLIC_BASE_URL'
+    | 'PRODUCT_MEDIA_ALLOWED_ORIGINS'
+  >,
 ): boolean;
 ```
 
@@ -847,6 +901,7 @@ rg -n 'COS_HOSTNAME|myqcloud\.com' apps/api/src/content apps/api/src/catalog
 ### 任务 7：补齐 Admin `put` 与商品域 API
 
 **文件：**
+
 - 新建：`apps/admin-web/src/api/http.spec.ts`
 - 修改：`apps/admin-web/src/api/http.ts`
 - 新建：`apps/admin-web/src/views/products/api/index.ts`
@@ -854,6 +909,7 @@ rg -n 'COS_HOSTNAME|myqcloud\.com' apps/api/src/content apps/api/src/catalog
 - 修改：`apps/admin-web/src/api/catalog.ts`
 
 **接口：**
+
 - 消费：共享 `AdminProductSummaryView`、`AdminProductDetailView`、`SaveProductRequest`，全局 `apiClient`。
 - 产出：`ApiClient.put<T>(path, body?, init?)`；`productsApi.list/getOne/create/replace/remove` 精确签名；新商品页面不依赖旧 product/SKU wire types。
 
@@ -948,6 +1004,7 @@ rg -n 'type AdminProductView|type AdminSkuView|CreateProductRequest|CreateSkuReq
 ### 任务 8：重构上传、富文本、轮播图与 SKU 编辑组件
 
 **文件：**
+
 - 修改：`apps/admin-web/src/components/CosImageUploader.vue`
 - 新建：`apps/admin-web/src/components/CosImageUploader.spec.ts`
 - 修改：`apps/admin-web/src/components/RichTextEditor.vue`
@@ -961,6 +1018,7 @@ rg -n 'type AdminProductView|type AdminSkuView|CreateProductRequest|CreateSkuReq
 - 新建：`apps/admin-web/src/views/products/components/ProductImagesEditor.spec.ts`
 
 **接口：**
+
 - 消费：`MediaAsset`、`AdminProductImageView`、`SaveProductSkuInput`、`performUpload`、整数分 money helper。
 - 产出：上传器 `modelValue: MediaAsset | null`；富文本正确初始化 HTML；`ProductImageFormRow`；完整 `SkuFormRow`；已有 SKU 删除转下架；上传状态向父级汇总。
 
@@ -978,8 +1036,9 @@ await wrapper.get('[data-testid="clear-image"]').trigger('click');
 expect(wrapper.emitted('update:modelValue')?.at(-1)?.[0]).toBeNull();
 
 // RichTextEditor：不能把标签显示成文本节点。
-expect(wrapper.get('[data-testid="rich-editor-surface"]').element.innerHTML)
-  .toBe('<p><strong>已清洗内容</strong></p>');
+expect(
+  wrapper.get('[data-testid="rich-editor-surface"]').element.innerHTML,
+).toBe('<p><strong>已清洗内容</strong></p>');
 expect(wrapper.text()).toContain('已清洗内容');
 expect(wrapper.text()).not.toContain('<strong>');
 
@@ -996,13 +1055,20 @@ expect(editor.toInput()).toEqual([
     image: null,
   },
 ]);
-expect(() => editor.setPriceYuan(rowId, '68.501')).toThrow('价格最多保留两位小数');
-expect(() => editor.setAttributes(rowId, [
-  { key: '口味', value: '草莓' }, { key: '口味', value: '巧克力' },
-])).toThrow('SKU 属性键不能重复');
+expect(() => editor.setPriceYuan(rowId, '68.501')).toThrow(
+  '价格最多保留两位小数',
+);
+expect(() =>
+  editor.setAttributes(rowId, [
+    { key: '口味', value: '草莓' },
+    { key: '口味', value: '巧克力' },
+  ]),
+).toThrow('SKU 属性键不能重复');
 editor.removeRow(existingRowId);
 expect(editor.toInput()?.[0]).toMatchObject({
-  id: 'sku-1', stockVersion: 3, isActive: false,
+  id: 'sku-1',
+  stockVersion: 3,
+  isActive: false,
 });
 ```
 
@@ -1092,6 +1158,7 @@ rg -n 'update:modelValue.*string|initialUrl|Math\.round\(Number\(.*\) \* 100\)|d
 ### 任务 9：实现 Admin 商品列表
 
 **文件：**
+
 - 新建：`apps/admin-web/src/views/products/config/columns.ts`
 - 新建：`apps/admin-web/src/views/products/mock/list.mock.ts`
 - 新建：`apps/admin-web/src/views/products/hooks/useProductsList.ts`
@@ -1103,6 +1170,7 @@ rg -n 'update:modelValue.*string|initialUrl|Math\.round\(Number\(.*\) \* 100\)|d
 - 新建：`apps/admin-web/src/views/products/index.ts`
 
 **接口：**
+
 - 消费：任务 7 `productsApi`、共享 `AdminProductSummaryView`、Element Plus。
 - 产出：真实列表、页面错误重试、删除确认与刷新、`create`/`edit` 导航事件；组件无 API。
 
@@ -1111,7 +1179,9 @@ rg -n 'update:modelValue.*string|initialUrl|Math\.round\(Number\(.*\) \* 100\)|d
 `useProductsList.spec.ts` mock `productsApi`，断言首次加载、错误保留、重试清错、删除成功刷新、删除失败不移除本地项。`ProductTable.spec.ts` 使用 `list.mock.ts`，断言列名严格为 `名称/分类/主图/启用 SKU 数/排序/上架状态/操作`，并断言 edit/remove 事件携带 id。`ProductsView.spec.ts` 断言：
 
 ```ts
-expect(wrapper.get('[data-testid="create-product"]').text()).toContain('新增商品');
+expect(wrapper.get('[data-testid="create-product"]').text()).toContain(
+  '新增商品',
+);
 await wrapper.get('[data-testid="retry-products"]').trigger('click');
 expect(api.list).toHaveBeenCalledTimes(2);
 await wrapper.get('[data-testid="edit-product-1"]').trigger('click');
@@ -1173,6 +1243,7 @@ rg -n 'fetch\(|productsApi' apps/admin-web/src/views/products/components
 ### 任务 10：实现商品编辑 hook、表单与页面
 
 **文件：**
+
 - 新建：`apps/admin-web/src/views/products/config/defaults.ts`
 - 修改：`apps/admin-web/src/views/products/type/form.ts`
 - 新建：`apps/admin-web/src/views/products/mock/detail.mock.ts`
@@ -1184,6 +1255,7 @@ rg -n 'fetch\(|productsApi' apps/admin-web/src/views/products/components
 - 新建：`apps/admin-web/src/views/products/ProductEditorView.spec.ts`
 
 **接口：**
+
 - 消费：`productsApi`、`categoriesApi`、任务 8 组件/表单类型、共享 `AdminProductDetailView`/`SaveProductRequest`、`ApiClientError`。
 - 产出：`mapDetailToForm`、`mapFormToRequest`、`validateProductForm`、`useProductEditor(mode)`；保存响应覆盖表单和 `savedPreviewHtml`；409 保留草稿并提供 reload。
 
@@ -1199,22 +1271,34 @@ it('maps detail to form and submits exact integer-cent aggregate input', async (
   await editor.load();
 
   expect(editor.form.skus[0]).toMatchObject({
-    id: 'sku-1', stockVersion: 4, priceYuan: '68.50', stock: 0,
+    id: 'sku-1',
+    stockVersion: 4,
+    priceYuan: '68.50',
+    stock: 0,
   });
   await editor.save();
-  expect(api.replace).toHaveBeenCalledWith('product-1', expect.objectContaining({
-    skus: [expect.objectContaining({
-      id: 'sku-1', stockVersion: 4, priceCents: 6850, stock: 0,
-    })],
-    deletedSkuIds: [],
-  }));
+  expect(api.replace).toHaveBeenCalledWith(
+    'product-1',
+    expect.objectContaining({
+      skus: [
+        expect.objectContaining({
+          id: 'sku-1',
+          stockVersion: 4,
+          priceCents: 6850,
+          stock: 0,
+        }),
+      ],
+      deletedSkuIds: [],
+    }),
+  );
 });
 
 it('keeps the draft on 409 and reloads only after explicit action', async () => {
-  api.replace.mockRejectedValueOnce(new ApiClientError(409,
-    '库存已发生变化，请重新加载后再保存',
-    { code: ApiErrorCode.PRODUCT_STOCK_CONFLICT },
-  ));
+  api.replace.mockRejectedValueOnce(
+    new ApiClientError(409, '库存已发生变化，请重新加载后再保存', {
+      code: ApiErrorCode.PRODUCT_STOCK_CONFLICT,
+    }),
+  );
   const editor = loadedEditor();
   editor.setName('未保存草稿');
   await expect(editor.save()).rejects.toThrow();
@@ -1313,12 +1397,14 @@ rg -n 'deleteSku|deletedSkuIds: \[[^\]]|updateProduct|createSku|Math\.round' app
 ### 任务 11：接通路由、鉴权与布局标题
 
 **文件：**
+
 - 修改：`apps/admin-web/src/router/index.ts`
 - 修改：`apps/admin-web/src/router/index.spec.ts`
 - 修改：`apps/admin-web/src/layouts/AdminLayout.vue`
 - 新建：`apps/admin-web/src/layouts/AdminLayout.spec.ts`
 
 **接口：**
+
 - 消费：任务 9 `ProductsView.vue`、任务 10 `ProductEditorView.vue`、既有父路由 `requiresAdminAuth` guard。
 - 产出：`/products`、`/products/new`、`/products/:id/edit` 三个受保护 route record；布局从 matched meta 读取中文标题。
 
@@ -1384,7 +1470,11 @@ const pageTitle = computed(() => {
     .reverse()
     .map((record) => record.meta.title)
     .find((title): title is string => typeof title === 'string');
-  return matchedTitle ?? NAV_ITEMS.find(({ path }) => path === route.path)?.label ?? '概览';
+  return (
+    matchedTitle ??
+    NAV_ITEMS.find(({ path }) => path === route.path)?.label ??
+    '概览'
+  );
 });
 ```
 
@@ -1412,6 +1502,7 @@ git diff --check -- apps/admin-web/src/router/index.ts apps/admin-web/src/router
 ### 任务 12：让 H5 精确消费 Public DTO
 
 **文件：**
+
 - 修改：`apps/h5-store/src/api/catalog.ts`
 - 修改：`apps/h5-store/src/views/catalog/type/index.ts`
 - 修改：`apps/h5-store/src/views/catalog/mock/catalog.mock.ts`
@@ -1424,6 +1515,7 @@ git diff --check -- apps/admin-web/src/router/index.ts apps/admin-web/src/router
 - 校验：`apps/h5-store/src/components/SkuPicker.spec.ts`
 
 **接口：**
+
 - 消费：任务 1 Public DTO、任务 4 后端显式响应。
 - 产出：H5 列表不再把 detail 字段标 optional 来适配 Entity；有库存且 `isAvailable=true` 的 SKU 可选；最低价只取可售 SKU；详情展示清洗 HTML。
 
@@ -1433,13 +1525,28 @@ git diff --check -- apps/admin-web/src/router/index.ts apps/admin-web/src/router
 
 ```ts
 const detail: PublicProductDetailView = {
-  id: 'product-1', categoryId: 'cake', name: '草莓云朵蛋糕',
-  detailHtml: '<p>服务端清洗后的商品详情</p>', images: [],
+  id: 'product-1',
+  categoryId: 'cake',
+  name: '草莓云朵蛋糕',
+  detailHtml: '<p>服务端清洗后的商品详情</p>',
+  images: [],
   skus: [
-    { id: 'sku-live', name: '6寸', attributes: {}, priceCents: 6800,
-      stock: 3, isAvailable: true },
-    { id: 'sku-zero', name: '8寸', attributes: {}, priceCents: 8800,
-      stock: 0, isAvailable: false },
+    {
+      id: 'sku-live',
+      name: '6寸',
+      attributes: {},
+      priceCents: 6800,
+      stock: 3,
+      isAvailable: true,
+    },
+    {
+      id: 'sku-zero',
+      name: '8寸',
+      attributes: {},
+      priceCents: 8800,
+      stock: 0,
+      isAvailable: false,
+    },
   ],
 };
 ```
@@ -1514,10 +1621,12 @@ rg -n 'ProductListItem|isActive|ObjectKey|category\.' apps/h5-store/src/api/cata
 ### 任务 13：执行全量质量门与真实验收
 
 **文件：**
+
 - 验证：任务 1 至任务 12 的全部变更文件。
 - 仅在检查暴露已确认缺陷时修改对应现有实现/测试文件；不得修改 `.claude/CLAUDE.md`，不得创建总结文档。
 
 **接口：**
+
 - 消费：完整共享契约、API、Admin、H5 垂直切片和本地 `pnpm dev` 基础设施。
 - 产出：全量静态/测试/build 证据、真实数据库迁移证据、浏览器/API 验收记录、环境清理结果。
 

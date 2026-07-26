@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router';
+import { ElButton } from 'element-plus';
+
+import AdminEmptyState from '../components/feedback/AdminEmptyState.vue';
 
 const router = useRouter();
 
@@ -9,67 +12,34 @@ function goHome(): void {
 </script>
 
 <template>
-  <main class="not-found">
-    <div class="not-found__card">
-      <span class="not-found__badge">404</span>
-      <h1>页面未找到</h1>
-      <p>请检查链接是否正确,或返回概览继续操作。</p>
-      <button type="button" class="not-found__cta" @click="goHome">
-        返回概览
-      </button>
-    </div>
-  </main>
+  <section class="admin-state-page">
+    <AdminEmptyState
+      title="页面走丢了"
+      description="这个地址暂时没有对应内容，请检查链接或返回经营概览继续工作。"
+      tone="pink"
+    >
+      <template #action>
+        <ElButton type="primary" data-testid="not-found-home" @click="goHome">
+          返回经营概览
+        </ElButton>
+      </template>
+    </AdminEmptyState>
+  </section>
 </template>
 
 <style scoped>
-.not-found {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 100vh;
-  background: #f6f4fb;
+.admin-state-page {
+  display: grid;
+  min-height: calc(100vh - var(--admin-topbar-height) - 64px);
+  place-items: center;
+  padding: 24px;
 }
 
-.not-found__card {
-  background: #fff;
-  border-radius: 16px;
-  padding: 32px 36px;
-  text-align: center;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  box-shadow: 0 12px 40px rgba(123, 97, 200, 0.12);
-}
-
-.not-found__badge {
-  align-self: center;
-  background: var(--admin-lilac);
-  color: #5e3fb2;
-  border-radius: 999px;
-  padding: 2px 10px;
-  font-weight: 500;
-}
-
-.not-found__card h1 {
-  margin: 0;
-  color: #2f2a3d;
-  font-size: 22px;
-}
-
-.not-found__card p {
-  margin: 0;
-  color: #6f5d80;
-  font-size: 14px;
-}
-
-.not-found__cta {
-  align-self: center;
-  border: 0;
-  background: var(--el-color-primary);
-  color: #fff;
-  border-radius: 10px;
-  padding: 8px 18px;
-  font-size: 14px;
-  cursor: pointer;
+.admin-state-page :deep(.admin-empty-state) {
+  width: min(100%, 620px);
+  background: var(--admin-surface);
+  border: 1px solid var(--admin-border);
+  border-radius: var(--admin-radius-feature);
+  box-shadow: var(--admin-shadow-card);
 }
 </style>

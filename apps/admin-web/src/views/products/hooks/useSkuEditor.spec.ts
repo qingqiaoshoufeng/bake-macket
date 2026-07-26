@@ -44,10 +44,15 @@ describe('useSkuEditor', () => {
   });
 
   it.each(['68.501', '-1', '', '01', '1.', '42949672.96', '90071992547409.92'])(
-    'rejects invalid yuan input %j without floating-point rounding',
+    'retains invalid yuan draft %j while refusing to serialize it',
     (value) => {
       const editor = useSkuEditor(() => [existingRow()]);
-      expect(() => editor.setPriceYuan('detail-sku-1', value)).toThrow();
+
+      editor.setPriceYuan('detail-sku-1', value);
+
+      expect(editor.rows.value[0]?.priceYuan).toBe(value);
+      expect(editor.hasInvalidRows.value).toBe(true);
+      expect(editor.toInput()).toBeNull();
     },
   );
 
@@ -62,18 +67,31 @@ describe('useSkuEditor', () => {
     expect(editor.toInput()?.[0]?.priceCents).toBe(priceCents);
   });
 
-  it('trims attributes and rejects duplicate trimmed keys', () => {
+  it('retains duplicate attribute-key drafts while refusing to serialize them', () => {
     const editor = useSkuEditor(() => [existingRow()]);
+    const invalidAttributes = [
+      { key: ' 口味 ', value: ' 草莓 ' },
+      { key: '口味', value: '巧克力' },
+    ];
 
-    expect(() =>
-      editor.setAttributes('detail-sku-1', [
-        { key: ' 口味 ', value: ' 草莓 ' },
-        { key: '口味', value: '巧克力' },
-      ]),
-    ).toThrow('SKU 属性键不能重复');
+    editor.setAttributes('detail-sku-1', invalidAttributes);
+
+    expect(editor.rows.value[0]?.attributes).toEqual(invalidAttributes);
+    expect(editor.hasInvalidRows.value).toBe(true);
+    expect(editor.toInput()).toBeNull();
 
     editor.setAttributes('detail-sku-1', [{ key: ' 口味 ', value: ' 草莓 ' }]);
     expect(editor.toInput()?.[0]?.attributes).toEqual({ 口味: '草莓' });
+  });
+
+  it('retains an invalid stock draft while refusing to serialize it', () => {
+    const editor = useSkuEditor(() => [existingRow()]);
+
+    editor.setStock('detail-sku-1', -1);
+
+    expect(editor.rows.value[0]?.stock).toBe(-1);
+    expect(editor.hasInvalidRows.value).toBe(true);
+    expect(editor.toInput()).toBeNull();
   });
 
   it('marks an existing row inactive and removes a new row', () => {

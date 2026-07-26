@@ -12,8 +12,12 @@ const TableStub = defineComponent({
   setup(props) {
     provide('tableRows', props.data);
   },
-  template:
-    '<div :data-product-ids="data.map((product) => product.id).join(\',\')"><slot /></div>',
+  template: `
+    <div class="el-table" :class="$attrs.class" :data-product-ids="data.map((product) => product.id).join(',')">
+      <slot />
+      <slot v-if="data.length === 0" name="empty" />
+    </div>
+  `,
 });
 const TableColumnStub = defineComponent({
   name: 'ElTableColumn',
@@ -40,10 +44,17 @@ const TagStub = defineComponent({
   template: '<span :data-tag-type="type"><slot /></span>',
 });
 
-function mountTable() {
+function mountTable(
+  props: {
+    products: typeof PRODUCT_LIST_MOCK;
+    loading: boolean;
+    deletingId: string | null;
+  } = { products: PRODUCT_LIST_MOCK, loading: false, deletingId: null },
+) {
   return mount(ProductTable, {
-    props: { products: PRODUCT_LIST_MOCK, loading: false, deletingId: null },
+    props,
     global: {
+      directives: { loading: {} },
       stubs: {
         ElTable: TableStub,
         ElTableColumn: TableColumnStub,
@@ -62,6 +73,7 @@ describe('ProductTable', () => {
     expect(
       wrapper.get('[data-product-ids]').attributes('data-product-ids'),
     ).toBe('product-1,product-2');
+    expect(wrapper.get('.el-table').classes()).toContain('admin-table');
     expect(
       wrapper
         .findAll('[data-column-label]')
@@ -80,6 +92,19 @@ describe('ProductTable', () => {
     ).toEqual(
       PRODUCT_LIST_MOCK.map((product) => product.coverImage?.publicUrl),
     );
+  });
+
+  it('shows loading feedback without rendering the empty-product prompt', () => {
+    const wrapper = mountTable({
+      products: [],
+      loading: true,
+      deletingId: null,
+    });
+
+    expect(wrapper.get('[data-testid="products-loading"]').text()).toContain(
+      '正在加载商品',
+    );
+    expect(wrapper.text()).not.toContain('暂无商品');
   });
 
   it('renders each product status from its own row data', () => {

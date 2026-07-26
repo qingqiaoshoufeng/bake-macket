@@ -67,6 +67,25 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true },
   },
   {
+    path: '/membership-cards',
+    name: 'membership-cards',
+    component: () => import('../views/membership/MembershipCenterView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/membership-cards/:id',
+    name: 'membership-card-detail',
+    component: () => import('../views/membership/MembershipDetailView.vue'),
+    meta: { requiresVerifiedPhone: true },
+  },
+  {
+    path: '/membership-purchases/:id',
+    name: 'membership-purchase-result',
+    component: () =>
+      import('../views/membership/MembershipPurchaseResultView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
     path: '/login',
     name: 'login',
     component: () => import('../views/LoginView.vue'),

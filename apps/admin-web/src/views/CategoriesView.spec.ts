@@ -1,4 +1,4 @@
-import { shallowMount } from '@vue/test-utils';
+import { mount } from '@vue/test-utils';
 import { ElMessage } from 'element-plus';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -22,11 +22,22 @@ describe('CategoriesView', () => {
     vi.resetAllMocks();
   });
 
+  it('uses the shared Admin page, header, and data panel hierarchy', async () => {
+    api.list.mockResolvedValueOnce([]);
+
+    const wrapper = mount(CategoriesView);
+    await vi.waitFor(() => expect(api.list).toHaveBeenCalledTimes(1));
+
+    expect(wrapper.find('.admin-page').exists()).toBe(true);
+    expect(wrapper.find('.admin-page-header').exists()).toBe(true);
+    expect(wrapper.find('.admin-data-panel').exists()).toBe(true);
+  });
+
   it('shows the initial category loading error to the merchant', async () => {
     api.list.mockRejectedValueOnce(new Error('分类接口不可用'));
     const errorMessage = vi.spyOn(ElMessage, 'error');
 
-    shallowMount(CategoriesView);
+    mount(CategoriesView);
 
     await vi.waitFor(() => {
       expect(errorMessage).toHaveBeenCalledWith('分类接口不可用');
@@ -37,7 +48,7 @@ describe('CategoriesView', () => {
     api.list.mockResolvedValueOnce([]);
     const errorMessage = vi.spyOn(ElMessage, 'error');
 
-    shallowMount(CategoriesView);
+    mount(CategoriesView);
 
     await vi.waitFor(() => {
       expect(api.list).toHaveBeenCalledTimes(1);

@@ -30,8 +30,13 @@ const ActionTableAdapter = defineComponent({
         'div',
         slots.default?.().flatMap((column) =>
           (props.data as (typeof categoryListMock)[number][]).map((row) =>
-            (column.children as { default?: (scope: { row: (typeof categoryListMock)[number] }) => VNode[] })
-              .default?.({ row }),
+            (
+              column.children as {
+                default?: (scope: {
+                  row: (typeof categoryListMock)[number];
+                }) => VNode[];
+              }
+            ).default?.({ row }),
           ),
         ),
       );
@@ -90,6 +95,7 @@ describe('CategoryTable', () => {
       .map((column) => column.props());
 
     expect(table.props('rowKey')).toBe('id');
+    expect(table.classes()).toContain('admin-table');
     expect(table.props('data')).toEqual(categoryListMock);
     expect(table.props('data')).not.toBe(categoryListMock);
     expect(columnProps).toHaveLength(CATEGORY_COLUMNS.length);

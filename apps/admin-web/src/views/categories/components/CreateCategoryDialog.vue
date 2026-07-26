@@ -50,10 +50,11 @@ void props;
     :model-value="open"
     title="新增分类"
     width="420px"
+    class="admin-form-dialog"
     :data-testid="'category-dialog'"
     @update:model-value="setOpen"
   >
-    <ElForm label-position="top">
+    <ElForm label-position="top" class="admin-dialog-form">
       <ElFormItem label="分类名称" required>
         <ElInput
           :model-value="form.name"
@@ -98,3 +99,10 @@ void props;
     </template>
   </ElDialog>
 </template>
+
+<style scoped>
+.admin-dialog-form {
+  display: grid;
+  gap: 4px;
+}
+</style>

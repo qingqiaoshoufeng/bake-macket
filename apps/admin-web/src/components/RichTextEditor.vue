@@ -115,7 +115,12 @@ function onImage(): void {
 
 <template>
   <div class="rich-editor">
-    <div v-if="!isFallback" class="rich-editor__toolbar" role="toolbar">
+    <div
+      v-if="!isFallback"
+      class="rich-editor__toolbar"
+      role="toolbar"
+      aria-label="富文本格式工具"
+    >
       <ElButton size="small" @click="exec('bold')">
         <span style="font-weight: 700">B</span>
       </ElButton>
@@ -152,38 +157,57 @@ function onImage(): void {
 
 <style scoped>
 .rich-editor {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  overflow: hidden;
+  border: 1px solid var(--admin-border);
+  border-radius: 14px;
+  background: var(--admin-surface);
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.rich-editor:focus-within {
+  border-color: var(--admin-primary);
+  box-shadow: 0 0 0 4px rgb(121 101 184 / 10%);
 }
 
 .rich-editor__toolbar {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  background: var(--admin-lilac);
-  padding: 6px 8px;
-  border-radius: var(--el-border-radius-base);
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--admin-border);
+  background: var(--admin-surface-soft);
+}
+
+.rich-editor__toolbar :deep(.el-button + .el-button) {
+  margin-left: 0;
+}
+
+.rich-editor__toolbar :deep(.el-button) {
+  min-width: 34px;
+  border-color: transparent;
+  background: var(--admin-surface);
 }
 
 .rich-editor__surface {
-  min-height: 200px;
-  border: 1px solid #ece6f7;
-  border-radius: var(--el-border-radius-base);
-  padding: 12px 14px;
-  background: #fff;
-  color: #2f2a3d;
+  min-height: 240px;
+  padding: 16px 18px;
+  background: var(--admin-surface);
+  color: var(--admin-text);
   font-size: 14px;
-  line-height: 1.6;
+  line-height: 1.75;
   outline: none;
-}
-
-.rich-editor__surface:focus {
-  border-color: var(--el-color-primary);
+  overflow-wrap: anywhere;
 }
 
 .rich-editor__surface:empty::before {
   content: attr(data-placeholder);
-  color: #b6aecf;
+  color: var(--admin-muted);
+}
+
+.rich-editor__surface :deep(img) {
+  max-width: 100%;
+  height: auto;
 }
 </style>

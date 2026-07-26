@@ -2,6 +2,9 @@
 import { computed } from 'vue';
 import { useRoute } from 'vue-router';
 
+import StoreStatePanel from '../components/feedback/StoreStatePanel.vue';
+import StorePage from '../components/layout/StorePage.vue';
+
 /**
  * Generic placeholder for routes whose feature implementation lands in a
  * later task (catalog, cart, checkout, orders, addresses, profile). The view
@@ -16,25 +19,24 @@ const title = computed(() => {
 </script>
 
 <template>
-  <section class="placeholder">
-    <h1>{{ title }}</h1>
-    <p>该模块将在后续任务中上线。</p>
-  </section>
+  <StorePage class="placeholder">
+    <StoreStatePanel
+      state="empty"
+      :title="title"
+      description="该模块将在后续任务中上线。"
+    />
+  </StorePage>
 </template>
 
 <style scoped>
 .placeholder {
-  padding: 24px 16px;
+  display: grid;
+  min-height: 100%;
+  place-items: center;
 }
-h1 {
-  color: var(--mall-apricot);
-  font-size: 20px;
-  margin: 0 0 8px;
+
+.placeholder :deep(.store-state-panel) {
+  width: 100%;
   text-transform: capitalize;
-}
-p {
-  color: var(--mall-muted);
-  font-size: 14px;
-  margin: 0;
 }
 </style>

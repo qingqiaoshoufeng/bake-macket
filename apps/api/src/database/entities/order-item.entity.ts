@@ -24,32 +24,56 @@ export class OrderItem {
   @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
   id!: string;
 
-  @Column({ type: 'bigint', unsigned: true })
+  @Column({ name: 'order_id', type: 'bigint', unsigned: true })
   orderId!: string;
 
   @ManyToOne(() => Order, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'order_id' })
   order!: Order;
 
-  @Column({ type: 'varchar', length: 128 })
+  @Column({ name: 'product_name', type: 'varchar', length: 128 })
   productName!: string;
 
-  @Column({ type: 'varchar', length: 128 })
+  @Column({ name: 'sku_name', type: 'varchar', length: 128 })
   skuName!: string;
 
   /** Spec attributes snapshotted from the SKU at order creation. */
-  @Column({ type: 'json' })
+  @Column({ name: 'sku_attributes', type: 'json' })
   skuAttributes!: Record<string, string>;
 
-  @Column({ type: 'varchar', length: 512, nullable: true })
+  @Column({ name: 'image_url', type: 'varchar', length: 512, nullable: true })
   imageUrl!: string | null;
 
-  @Column({ type: 'int', unsigned: true })
+  @Column({ name: 'unit_price_cents', type: 'int', unsigned: true })
   unitPriceCents!: number;
 
   @Column({ type: 'int', unsigned: true })
   quantity!: number;
 
-  @CreateDateColumn({ type: 'datetime', precision: 0 })
+  @Column({
+    name: 'line_goods_total_cents',
+    type: 'int',
+    unsigned: true,
+    default: 0,
+  })
+  lineGoodsTotalCents!: number;
+
+  @Column({
+    name: 'line_membership_discount_cents',
+    type: 'int',
+    unsigned: true,
+    default: 0,
+  })
+  lineMembershipDiscountCents!: number;
+
+  @Column({
+    name: 'line_payable_cents',
+    type: 'int',
+    unsigned: true,
+    default: 0,
+  })
+  linePayableCents!: number;
+
+  @CreateDateColumn({ name: 'created_at', type: 'datetime', precision: 0 })
   createdAt!: Date;
 }

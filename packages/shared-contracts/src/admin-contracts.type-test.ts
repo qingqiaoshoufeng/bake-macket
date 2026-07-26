@@ -35,6 +35,15 @@ const banner: SaveBannerRequest = {
   isActive: true,
 };
 const bannerView = {} as AdminBannerView;
+const legacyBannerView: AdminBannerView = {
+  id: 'banner-legacy',
+  image: null,
+  targetType: BannerTargetType.NONE,
+  sortOrder: 0,
+  isActive: false,
+  createdAt: '2026-07-18T00:00:00.000Z',
+  updatedAt: '2026-07-18T00:00:00.000Z',
+};
 
 // @ts-expect-error NONE banners forbid targetId.
 const invalidBanner: SaveBannerRequest = {
@@ -109,6 +118,7 @@ void [
   orderQuery,
   banner,
   bannerView,
+  legacyBannerView,
   invalidBanner,
   newSku,
   existingSku,

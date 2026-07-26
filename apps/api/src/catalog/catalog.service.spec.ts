@@ -172,6 +172,15 @@ describe('catalog safety', () => {
     ).rejects.toThrow(BadRequestException);
   });
 
+  it('allows saving an inactive draft without any SKU', async () => {
+    const { service, transaction } = buildAggregateService();
+
+    await expect(
+      service.saveProductAggregate(null, aggregateRequest(), 'admin-1'),
+    ).resolves.toEqual(expect.objectContaining({ isActive: false, skus: [] }));
+    expect(transaction).toHaveBeenCalledOnce();
+  });
+
   it('rejects publishing an aggregate without an active SKU', async () => {
     const service = new CatalogService(
       {} as never,

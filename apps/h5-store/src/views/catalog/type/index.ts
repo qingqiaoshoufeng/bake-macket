@@ -1,15 +1,14 @@
 import type {
   BannerView,
   CategoryView,
-  ProductView,
+  PublicProductDetailView,
+  PublicProductSummaryView,
 } from '@bake-mall/contracts';
-
-import type { ProductListItem } from '../../../api/catalog.js';
 
 export type CatalogBanner = BannerView;
 export type CatalogCategory = CategoryView;
-export type CatalogProduct = ProductListItem;
-export type CatalogProductDetail = ProductView;
+export type CatalogProduct = PublicProductSummaryView;
+export type CatalogProductDetail = PublicProductDetailView;
 
 export type CatalogFilter = {
   readonly categoryId?: string;

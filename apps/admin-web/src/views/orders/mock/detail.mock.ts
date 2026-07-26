@@ -1,0 +1,40 @@
+import {
+  FulfillmentType,
+  OrderStatus,
+  type OrderView,
+} from '@bake-mall/contracts';
+
+export const orderDetailMock: OrderView = {
+  id: 'order-preview',
+  orderNo: 'BM2026071800000001',
+  status: OrderStatus.NEW,
+  fulfillmentType: FulfillmentType.PICKUP,
+  contactName: '张三',
+  contactPhone: '13800000000',
+  pickupTimeText: '2026-07-19 10:00',
+  goodsTotalCents: 6800,
+  membershipDiscountCents: 680,
+  creditAppliedCents: 2000,
+  payableTotalCents: 4120,
+  membershipId: 'membership-preview',
+  membershipCode: 'GOLD',
+  membershipName: '金卡',
+  membershipDiscountBasisPoints: 9000,
+  pricingVersion: 1,
+  remark: '少糖',
+  items: [
+    {
+      id: 'item-preview',
+      productName: '草莓蛋糕',
+      skuName: '6 寸',
+      skuAttributes: { size: '6寸' },
+      unitPriceCents: 6800,
+      quantity: 1,
+      lineGoodsTotalCents: 6800,
+      lineMembershipDiscountCents: 680,
+      linePayableCents: 6120,
+    },
+  ],
+  createdAt: '2026-07-18T08:00:00.000Z',
+  updatedAt: '2026-07-18T08:00:00.000Z',
+};

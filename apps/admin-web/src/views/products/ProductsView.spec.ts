@@ -42,6 +42,16 @@ describe('ProductsView', () => {
     vi.resetAllMocks();
   });
 
+  it('uses the shared Admin page, header, and data panel hierarchy', async () => {
+    api.list.mockResolvedValueOnce([]);
+
+    const { wrapper } = await mountView();
+
+    expect(wrapper.find('.admin-page').exists()).toBe(true);
+    expect(wrapper.find('.admin-page-header').exists()).toBe(true);
+    expect(wrapper.find('.admin-data-panel').exists()).toBe(true);
+  });
+
   it('retries failed loading and navigates to product create and edit pages', async () => {
     api.list
       .mockRejectedValueOnce(new Error('网络不可用'))

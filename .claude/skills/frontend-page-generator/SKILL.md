@@ -49,22 +49,26 @@ src/views/<feature>/
 ```
 
 ### components/
+
 - Pure presentational Vue/React components.
 - Receive props; emit events.
 - **No** `fetch`, no Pinia store, no router navigation beyond `defineEmits`-driven parent feedback.
 - Subcomponent props **stay inside the subcomponent**; never lift them to the module barrel or `type/`.
 
 ### hooks/
+
 - Encapsulate **complex or cross-cutting logic** (filters, validation chains, async orchestration, computed state machines).
 - Component files stay short; everything else goes here.
 - Each hook returns a stable shape (`data`, `loading`, `methods`) so views stay declarative.
 
 ### mock/
+
 - Temporary fixtures used during scaffolding or e2e isolation.
 - Must mirror the contract types in `type/`.
 - Once the backend contract is stable, swap the consumer to the real api but keep the mock files for unit tests.
 
 ### config/
+
 - Pure-data files: column definitions, default sort, page size presets, palette tokens, validation regexes.
 - Anything that a designer or PM wants to tweak without touching component logic.
 - Examples:
@@ -73,11 +77,13 @@ src/views/<feature>/
   - `defaults.ts` returns form defaults for new entities.
 
 ### type/
+
 - View-layer types: list row, form shape, response shape.
 - **Do not export child-component props here** — those stay inside the child.
 - Re-use `@bake-mall/contracts` DTOs when one exists.
 
 ### api/
+
 - Composition layer over the **global** `ApiClient`.
 - Per-feature: `list(filter)`, `getOne(id)`, `create(payload)`, `update(id, payload)`, `remove(id)`.
 - **Must not** contain request/response data transformations or business mappings — leave those to `hooks/` or `type/`.

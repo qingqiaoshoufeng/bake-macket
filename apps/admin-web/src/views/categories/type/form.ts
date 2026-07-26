@@ -23,6 +23,4 @@ export type CategoryInlineEdit = CategoryFormShape;
 
 export type CategoryFormSubmit = CreateCategoryRequest;
 
-export type {
-  AdminCategoryView,
-};
+export type { AdminCategoryView };

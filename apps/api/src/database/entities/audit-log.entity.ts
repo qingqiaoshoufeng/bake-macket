@@ -22,25 +22,25 @@ export class AuditLog {
   @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
   id!: string;
 
-  @Column({ type: 'bigint', unsigned: true })
+  @Column({ name: 'admin_user_id', type: 'bigint', unsigned: true })
   adminUserId!: string;
 
   @ManyToOne(() => AdminUser, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'admin_user_id' })
   adminUser!: AdminUser;
 
-  @Column({ type: 'varchar', length: 64 })
+  @Column({ name: 'target_entity', type: 'varchar', length: 64 })
   targetEntity!: string;
 
-  @Column({ type: 'varchar', length: 64 })
+  @Column({ name: 'target_id', type: 'varchar', length: 64 })
   targetId!: string;
 
   @Column({ type: 'varchar', length: 64 })
   action!: string;
 
-  @Column({ type: 'json', nullable: true })
+  @Column({ name: 'change_summary', type: 'json', nullable: true })
   changeSummary!: Record<string, unknown> | null;
 
-  @CreateDateColumn({ type: 'datetime', precision: 0 })
+  @CreateDateColumn({ name: 'created_at', type: 'datetime', precision: 0 })
   createdAt!: Date;
 }

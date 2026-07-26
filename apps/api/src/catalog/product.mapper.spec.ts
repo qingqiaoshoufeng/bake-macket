@@ -65,12 +65,7 @@ describe('product mappers', () => {
       createdAt: '2026-07-17T01:00:00.000Z',
     });
     const images = [image, earlierImage];
-    const detail = toAdminProductDetailView(
-      product,
-      category,
-      images,
-      [sku],
-    );
+    const detail = toAdminProductDetailView(product, category, images, [sku]);
 
     expect(detail.skus[0]).toMatchObject({ id: 'sku-1', stockVersion: 4 });
     expect(detail.images.map(({ id }) => id)).toEqual(['image-2', 'image-1']);

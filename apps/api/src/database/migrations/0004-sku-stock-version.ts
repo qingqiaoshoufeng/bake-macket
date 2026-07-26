@@ -10,8 +10,6 @@ export class SkuStockVersion1718000000003 implements MigrationInterface {
   }
 
   async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(
-      'ALTER TABLE `skus` DROP COLUMN `stock_version`',
-    );
+    await queryRunner.query('ALTER TABLE `skus` DROP COLUMN `stock_version`');
   }
 }

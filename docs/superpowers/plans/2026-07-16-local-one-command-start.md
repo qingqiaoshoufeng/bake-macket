@@ -23,6 +23,7 @@
 ### 任务 1：锁定一键启动配置契约
 
 **文件：**
+
 - 新建：`scripts/dev-config.test.mjs`
 - 修改：`package.json`
 - 修改：`apps/api/package.json`
@@ -31,6 +32,7 @@
 - 修改：`apps/admin-web/vite.config.ts`
 
 **接口：**
+
 - 根 `pnpm dev` 依次执行 `services:up`、API migration、workspace 并行 `dev`。
 - API 暴露 `dev` script。
 - API build info 位于 `dist/tsconfig.build.tsbuildinfo`。
@@ -114,10 +116,12 @@ pnpm exec prettier --check package.json apps/api/package.json apps/api/tsconfig.
 ### 任务 2：配置被忽略的本地运行环境
 
 **文件：**
+
 - 新建或更新：`apps/api/.env`（Git ignored）
 - 更新：`apps/admin-web/.env.development.local`（Git ignored）
 
 **接口：**
+
 - API 读取 MySQL、MinIO、`PORT=3015` 和 `admin-local@example.com`。
 - Admin 开发构建预填同一管理员。
 
@@ -174,9 +178,11 @@ git check-ignore -v apps/api/.env apps/admin-web/.env.development.local
 ### 任务 3：验证 Nest 缓存修复和 API 构建
 
 **文件：**
+
 - 验证：`apps/api/tsconfig.build.json`
 
 **接口：**
+
 - Nest 删除 `dist` 时一并删除增量缓存。
 - 干净构建生成 `apps/api/dist/main.js`。
 
@@ -214,9 +220,11 @@ test ! -f apps/api/tsconfig.build.tsbuildinfo
 ### 任务 4：记录启动和任务可见性规范
 
 **文件：**
+
 - 修改：`.claude/CLAUDE.md`
 
 **接口：**
+
 - 后续 Claude 会话能直接获知启动命令、地址、账号和任务进度规范。
 
 - [ ] **步骤 1：在“常用命令”中加入本地启动说明**
@@ -249,9 +257,11 @@ git diff --check -- .claude/CLAUDE.md
 ### 任务 5：真实验证一键启动和停止
 
 **文件：**
+
 - 验证所有上述改动。
 
 **接口：**
+
 - 单条 `pnpm dev` 产生三个可访问应用。
 - `Ctrl-C` 后应用退出，Compose 服务保留。
 

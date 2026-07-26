@@ -54,6 +54,12 @@ describe('SkuPicker', () => {
 
     // Selecting an out-of-stock SKU keeps the add button disabled.
     await wrapper.get('[data-testid="sku-sku-empty"]').trigger('click');
+    expect(wrapper.get('[data-testid="qty"]').classes()).toContain(
+      'sku-picker__qty-input',
+    );
+    expect(
+      wrapper.get('[data-testid="add-cart"]').attributes('aria-disabled'),
+    ).toBe('true');
     expect(
       (wrapper.get('[data-testid="add-cart"]').element as HTMLButtonElement)
         .disabled,
@@ -88,6 +94,40 @@ describe('SkuPicker', () => {
     const events = wrapper.emitted('add');
     expect(events).toHaveLength(1);
     expect(events?.[0]).toEqual([{ skuId: 'sku-1', quantity: 1 }]);
+  });
+
+  it('clears a selection when refreshed props make its SKU unavailable', async () => {
+    const wrapper = mount(SkuPicker, {
+      props: { skus: [sellableSku] },
+    });
+
+    await wrapper.get('[data-testid="sku-sku-1"]').trigger('click');
+    expect(
+      (wrapper.get('[data-testid="add-cart"]').element as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+
+    await wrapper.setProps({
+      skus: [{ ...sellableSku, stock: 0 }],
+    });
+
+    expect(
+      (wrapper.get('[data-testid="add-cart"]').element as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(wrapper.get('[data-testid="sku-sku-1"]').classes()).not.toContain(
+      'sku-picker__item--selected',
+    );
+
+    await wrapper.setProps({ skus: [sellableSku] });
+
+    expect(
+      (wrapper.get('[data-testid="add-cart"]').element as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(wrapper.get('[data-testid="sku-sku-1"]').classes()).not.toContain(
+      'sku-picker__item--selected',
+    );
   });
 
   it('emits the picked quantity from the inline stepper', async () => {

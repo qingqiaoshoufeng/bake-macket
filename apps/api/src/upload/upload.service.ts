@@ -8,6 +8,7 @@ import { extname } from 'node:path';
 import type { PresignUploadResponse } from '@bake-mall/contracts';
 
 import { type AppConfig } from '../config/env.schema.js';
+import { joinMediaUrl } from '../media-url.js';
 import { PresignUploadDto } from './dto.js';
 
 @Injectable()
@@ -40,11 +41,10 @@ export class UploadService {
       ],
       Expires: 300,
     });
-    const publicBaseUrl = env.OBJECT_STORAGE_PUBLIC_BASE_URL.replace(/\/$/, '');
     const expiresAt = new Date(Date.now() + 300 * 1000).toISOString();
     return {
       objectKey,
-      publicUrl: `${publicBaseUrl}/${objectKey}`,
+      publicUrl: joinMediaUrl(env.OBJECT_STORAGE_PUBLIC_BASE_URL, objectKey),
       uploadUrl: signed.url,
       fields: signed.fields,
       expiresAt,

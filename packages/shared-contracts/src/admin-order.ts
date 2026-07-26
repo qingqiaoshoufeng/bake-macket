@@ -19,6 +19,9 @@ export type AdminOrderListItem = {
   contactName: string;
   contactPhone: string;
   goodsTotalCents: number;
+  membershipDiscountCents?: number;
+  creditAppliedCents?: number;
+  payableTotalCents?: number;
   createdAt: string;
   updatedAt: string;
 };
