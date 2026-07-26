@@ -15,11 +15,13 @@ import MembershipPurchaseDetailDrawer from './components/MembershipPurchaseDetai
 import MembershipPurchaseFilters from './components/MembershipPurchaseFilters.vue';
 import MembershipPurchaseTable from './components/MembershipPurchaseTable.vue';
 import { MEMBERSHIP_PURCHASE_PAGINATION } from './config/pagination.js';
+import { useMembershipLevelOptions } from './hooks/useMembershipLevelOptions.js';
 import { useMembershipPurchases } from './hooks/useMembershipPurchases.js';
 import type { MembershipPurchaseFilterForm } from './type/index.js';
 
 const state = useMembershipPurchases();
-onMounted(state.load);
+const levels = useMembershipLevelOptions();
+onMounted(() => Promise.all([state.load(), levels.load()]));
 
 function updateFilters(value: Partial<MembershipPurchaseFilterForm>): void {
   state.setFilters(value);
@@ -90,6 +92,7 @@ async function voidPurchase(): Promise<void> {
         <MembershipPurchaseFilters
           :filters="state.filters"
           :loading="state.loading.value"
+          :level-options="levels.options.value"
           @change="updateFilters"
           @search="state.search"
           @reset="state.reset"

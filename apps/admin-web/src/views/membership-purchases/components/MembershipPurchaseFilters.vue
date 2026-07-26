@@ -1,27 +1,33 @@
 <script setup lang="ts">
 import {
+  BooleanFilter,
   MembershipPaymentStatus,
   MembershipPurchaseStatus,
 } from '@bake-mall/contracts';
 import {
-  ElButton,
   ElDatePicker,
-  ElForm,
   ElFormItem,
   ElInput,
   ElOption,
   ElSelect,
 } from 'element-plus';
+import { computed } from 'vue';
 
+import AdminFilterPanel from '../../../components/filters/AdminFilterPanel.vue';
 import {
   MEMBERSHIP_PAYMENT_STATUS_LABELS,
   MEMBERSHIP_PURCHASE_STATUS_LABELS,
 } from '../../../constants/labels.js';
-import type { MembershipPurchaseFilterForm } from '../type/index.js';
+import { countActiveFilters } from '../../../utils/list-query.js';
+import type {
+  MembershipLevelOption,
+  MembershipPurchaseFilterForm,
+} from '../type/index.js';
 
 const props = defineProps<{
   filters: MembershipPurchaseFilterForm;
   loading: boolean;
+  levelOptions: readonly MembershipLevelOption[];
 }>();
 const emit = defineEmits<{
   change: [value: Partial<MembershipPurchaseFilterForm>];
@@ -29,25 +35,29 @@ const emit = defineEmits<{
   reset: [];
 }>();
 
-const STATUS_PAYMENT_PAIRS = [
-  [MembershipPurchaseStatus.PENDING, MembershipPaymentStatus.PENDING],
-  [MembershipPurchaseStatus.FULFILLED, MembershipPaymentStatus.SUCCEEDED],
-  [MembershipPurchaseStatus.VOIDED, MembershipPaymentStatus.REVERSED],
-] as const;
-
-function purchaseStatusOptionLabel(
-  status: MembershipPurchaseStatus,
-  paymentStatus: MembershipPaymentStatus,
-): string {
-  return `${MEMBERSHIP_PURCHASE_STATUS_LABELS[status]} / ${MEMBERSHIP_PAYMENT_STATUS_LABELS[paymentStatus]}`;
-}
+const advancedCount = computed(() =>
+  countActiveFilters({
+    paymentStatus: props.filters.paymentStatus,
+    minPriceYuan: props.filters.minPriceYuan,
+    maxPriceYuan: props.filters.maxPriceYuan,
+    voidable: props.filters.voidable,
+    createdAtRange: props.filters.createdAtRange,
+    paidAtRange: props.filters.paidAtRange,
+    voidedAtRange: props.filters.voidedAtRange,
+  }),
+);
 </script>
 
 <template>
-  <ElForm class="membership-purchase-filters" role="search">
+  <AdminFilterPanel
+    :loading="loading"
+    :advanced-count="advancedCount"
+    @search="emit('search')"
+    @reset="emit('reset')"
+  >
     <ElFormItem label="购卡单号">
       <ElInput
-        :model-value="props.filters.purchaseNo"
+        :model-value="filters.purchaseNo"
         clearable
         placeholder="输入购卡单号"
         aria-label="筛选购卡单号"
@@ -55,124 +65,129 @@ function purchaseStatusOptionLabel(
         @keyup.enter="emit('search')"
       />
     </ElFormItem>
-    <ElFormItem label="用户 ID">
+    <ElFormItem label="用户手机号">
       <ElInput
-        :model-value="props.filters.userId"
+        :model-value="filters.userPhone"
         clearable
-        placeholder="输入用户 ID"
-        aria-label="筛选用户"
-        @update:model-value="emit('change', { userId: String($event) })"
+        placeholder="输入手机号"
+        aria-label="筛选用户手机号"
+        @update:model-value="emit('change', { userPhone: String($event) })"
         @keyup.enter="emit('search')"
       />
     </ElFormItem>
-    <ElFormItem label="等级 ID">
-      <ElInput
-        :model-value="props.filters.levelId"
+    <ElFormItem label="会员等级">
+      <ElSelect
+        :model-value="filters.levelId"
         clearable
-        placeholder="输入等级 ID"
+        filterable
+        placeholder="全部等级"
         aria-label="筛选会员等级"
-        @update:model-value="emit('change', { levelId: String($event) })"
-        @keyup.enter="emit('search')"
-      />
+        @update:model-value="emit('change', { levelId: $event || '' })"
+      >
+        <ElOption
+          v-for="option in levelOptions"
+          :key="option.value"
+          :label="option.label"
+          :value="option.value"
+        />
+      </ElSelect>
     </ElFormItem>
     <ElFormItem label="购卡状态">
       <ElSelect
-        :model-value="props.filters.status"
+        :model-value="filters.status"
         clearable
         placeholder="全部购卡状态"
         aria-label="筛选购卡状态"
         @update:model-value="emit('change', { status: $event || '' })"
       >
         <ElOption
-          v-for="[status, paymentStatus] in STATUS_PAYMENT_PAIRS"
+          v-for="status in Object.values(MembershipPurchaseStatus)"
           :key="status"
-          :label="purchaseStatusOptionLabel(status, paymentStatus)"
+          :label="MEMBERSHIP_PURCHASE_STATUS_LABELS[status]"
           :value="status"
         />
       </ElSelect>
-      <span class="membership-purchase-filters__status-help">
-        待履约 / 待支付 · 已履约 / 支付成功 · 已作废 / 已冲正
-      </span>
     </ElFormItem>
-    <ElFormItem label="创建时间" class="membership-purchase-filters__date">
-      <ElDatePicker
-        :model-value="
-          props.filters.createdAtRange
-            ? [...props.filters.createdAtRange]
-            : null
-        "
-        type="datetimerange"
-        range-separator="至"
-        start-placeholder="开始时间"
-        end-placeholder="结束时间"
-        aria-label="筛选购卡创建时间"
-        @update:model-value="emit('change', { createdAtRange: $event })"
-      />
-    </ElFormItem>
-    <ElFormItem class="membership-purchase-filters__actions">
-      <ElButton type="primary" :loading="loading" @click="emit('search')">
-        查询
-      </ElButton>
-      <ElButton :disabled="loading" @click="emit('reset')">重置</ElButton>
-    </ElFormItem>
-  </ElForm>
+
+    <template #advanced>
+      <ElFormItem label="支付状态">
+        <ElSelect
+          :model-value="filters.paymentStatus"
+          clearable
+          placeholder="全部支付状态"
+          aria-label="筛选支付状态"
+          @update:model-value="emit('change', { paymentStatus: $event || '' })"
+        >
+          <ElOption
+            v-for="status in Object.values(MembershipPaymentStatus)"
+            :key="status"
+            :label="MEMBERSHIP_PAYMENT_STATUS_LABELS[status]"
+            :value="status"
+          />
+        </ElSelect>
+      </ElFormItem>
+      <ElFormItem label="最低价格（元）">
+        <ElInput
+          :model-value="filters.minPriceYuan"
+          placeholder="如 99.00"
+          @update:model-value="emit('change', { minPriceYuan: String($event) })"
+        />
+      </ElFormItem>
+      <ElFormItem label="最高价格（元）">
+        <ElInput
+          :model-value="filters.maxPriceYuan"
+          placeholder="如 299.00"
+          @update:model-value="emit('change', { maxPriceYuan: String($event) })"
+        />
+      </ElFormItem>
+      <ElFormItem label="可作废">
+        <ElSelect
+          :model-value="filters.voidable"
+          clearable
+          placeholder="全部"
+          @update:model-value="emit('change', { voidable: $event || '' })"
+        >
+          <ElOption label="可作废" :value="BooleanFilter.YES" />
+          <ElOption label="不可作废" :value="BooleanFilter.NO" />
+        </ElSelect>
+      </ElFormItem>
+      <ElFormItem label="创建时间">
+        <ElDatePicker
+          :model-value="
+            filters.createdAtRange ? [...filters.createdAtRange] : null
+          "
+          type="datetimerange"
+          range-separator="至"
+          start-placeholder="开始时间"
+          end-placeholder="结束时间"
+          aria-label="筛选购卡创建时间"
+          @update:model-value="emit('change', { createdAtRange: $event })"
+        />
+      </ElFormItem>
+      <ElFormItem label="支付时间">
+        <ElDatePicker
+          :model-value="filters.paidAtRange ? [...filters.paidAtRange] : null"
+          type="datetimerange"
+          range-separator="至"
+          start-placeholder="开始时间"
+          end-placeholder="结束时间"
+          aria-label="筛选购卡支付时间"
+          @update:model-value="emit('change', { paidAtRange: $event })"
+        />
+      </ElFormItem>
+      <ElFormItem label="作废时间">
+        <ElDatePicker
+          :model-value="
+            filters.voidedAtRange ? [...filters.voidedAtRange] : null
+          "
+          type="datetimerange"
+          range-separator="至"
+          start-placeholder="开始时间"
+          end-placeholder="结束时间"
+          aria-label="筛选购卡作废时间"
+          @update:model-value="emit('change', { voidedAtRange: $event })"
+        />
+      </ElFormItem>
+    </template>
+  </AdminFilterPanel>
 </template>
-
-<style scoped>
-.membership-purchase-filters {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(140px, 1fr));
-  gap: 14px 16px;
-  width: 100%;
-}
-
-.membership-purchase-filters :deep(.el-form-item) {
-  display: grid;
-  gap: 7px;
-  margin: 0;
-}
-
-.membership-purchase-filters :deep(.el-form-item__label) {
-  height: auto;
-  line-height: 1.4;
-}
-
-.membership-purchase-filters :deep(.el-input),
-.membership-purchase-filters :deep(.el-select),
-.membership-purchase-filters :deep(.el-date-editor) {
-  width: 100%;
-}
-
-.membership-purchase-filters__date {
-  grid-column: span 2;
-}
-
-.membership-purchase-filters__status-help {
-  display: block;
-  max-width: 220px;
-  margin-top: 4px;
-  color: var(--admin-text-muted);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.membership-purchase-filters__actions {
-  align-content: end;
-}
-
-.membership-purchase-filters__actions :deep(.el-form-item__content) {
-  flex-wrap: nowrap;
-}
-
-@media (max-width: 1240px) {
-  .membership-purchase-filters {
-    grid-template-columns: repeat(3, minmax(160px, 1fr));
-  }
-}
-
-@media (max-width: 1024px) {
-  .membership-purchase-filters {
-    grid-template-columns: repeat(2, minmax(180px, 1fr));
-  }
-}
-</style>

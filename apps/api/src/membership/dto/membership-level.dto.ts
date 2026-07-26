@@ -16,7 +16,6 @@ import {
 import {
   MembershipLevelStatus,
   MembershipTheme,
-  type AdminMembershipLevelListQuery,
   type MembershipBenefit,
   type MembershipCardThemeView,
   type SaveMembershipLevelRequest,
@@ -128,16 +127,6 @@ export class SaveMembershipLevelDto implements SaveMembershipLevelRequest {
   @IsInt()
   @Min(1)
   version?: number;
-}
-
-export class AdminMembershipLevelListQueryDto implements AdminMembershipLevelListQuery {
-  @IsOptional()
-  @IsString()
-  q?: string;
-
-  @IsOptional()
-  @IsEnum(MembershipLevelStatus)
-  status?: MembershipLevelStatus;
 }
 
 export class UpdateMembershipLevelStatusDto {

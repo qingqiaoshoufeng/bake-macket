@@ -11,27 +11,46 @@
  */
 
 import { onMounted, reactive, ref, watch } from 'vue';
-import { ElAlert, ElButton, ElMessage, ElMessageBox } from 'element-plus';
+import {
+  ElAlert,
+  ElButton,
+  ElMessage,
+  ElMessageBox,
+  ElPagination,
+} from 'element-plus';
 
 import AdminDataPanel from '../components/layout/AdminDataPanel.vue';
 import AdminPage from '../components/layout/AdminPage.vue';
 import AdminPageHeader from '../components/layout/AdminPageHeader.vue';
+import CategoryFilters from './categories/components/CategoryFilters.vue';
 import CategoryTable from './categories/components/CategoryTable.vue';
 import CreateCategoryDialog from './categories/components/CreateCategoryDialog.vue';
+import { CATEGORY_PAGINATION } from './categories/config/pagination.js';
 import { useCategories } from './categories/hooks/useCategories.js';
 import type { AdminCategoryView } from '../api/catalog.js';
 import type {
   CategoryFormShape,
   CategoryInlineEdit,
 } from './categories/type/form.js';
+import type { CategoryFilterForm } from './categories/type/list.js';
 
 const {
   categories,
+  draftFilters,
+  advancedCount,
+  hasAppliedFilters,
+  page,
+  pageSize,
+  total,
   loading,
   lastError,
   editingId,
   editingDraft,
   refresh,
+  search,
+  reset,
+  setPage,
+  setPageSize,
   blankForm,
   startEdit,
   cancelEdit,
@@ -62,6 +81,10 @@ watch(lastError, showLoadError);
 
 function patchDraft(patch: Partial<CategoryInlineEdit>): void {
   Object.assign(editingDraft, patch);
+}
+
+function patchFilters(patch: Partial<CategoryFilterForm>): void {
+  Object.assign(draftFilters, patch);
 }
 
 function patchForm(patch: Partial<CategoryFormShape>): void {
@@ -166,11 +189,23 @@ async function onRemove(category: AdminCategoryView): Promise<void> {
     />
 
     <AdminDataPanel>
+      <template #toolbar>
+        <CategoryFilters
+          :filters="draftFilters"
+          :loading="loading"
+          :advanced-count="advancedCount"
+          @change="patchFilters"
+          @search="search"
+          @reset="reset"
+        />
+      </template>
+
       <CategoryTable
         :categories="categories"
         :loading="loading"
         :editing-id="editingId"
         :draft="editingDraft"
+        :has-applied-filters="hasAppliedFilters"
         @update:draft="patchDraft"
         @start-edit="startEdit"
         @cancel-edit="cancelEdit"
@@ -178,6 +213,19 @@ async function onRemove(category: AdminCategoryView): Promise<void> {
         @toggle-active="onToggleActive"
         @remove="onRemove"
       />
+
+      <template v-if="total > 0" #footer>
+        <ElPagination
+          background
+          layout="total, sizes, prev, pager, next"
+          :total="total"
+          :current-page="page"
+          :page-size="pageSize"
+          :page-sizes="[...CATEGORY_PAGINATION.pageSizes]"
+          @update:current-page="setPage"
+          @update:page-size="setPageSize"
+        />
+      </template>
     </AdminDataPanel>
 
     <CreateCategoryDialog

@@ -24,7 +24,19 @@ export function createMembershipCardDefaults(): MembershipCardForm {
   };
 }
 
-export const DEFAULT_MEMBERSHIP_CARD_FILTERS: MembershipCardFilters = {
-  q: '',
-  status: '',
-};
+export function createMembershipCardFilterDefaults(): MembershipCardFilters {
+  return {
+    q: '',
+    status: '',
+    rank: null,
+    minPriceYuan: '',
+    maxPriceYuan: '',
+    minDiscountText: '',
+    maxDiscountText: '',
+    hasPurchases: '',
+    theme: '',
+    minValidDays: null,
+    maxValidDays: null,
+    updatedAtRange: null,
+  };
+}

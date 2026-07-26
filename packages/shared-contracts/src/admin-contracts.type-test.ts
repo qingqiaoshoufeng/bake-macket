@@ -1,8 +1,10 @@
 import {
   ApiErrorCode,
   BannerTargetType,
+  ProductStockFilter,
   type AdminBannerView,
   type AdminOrderListQuery,
+  type AdminProductListQuery,
   type AdminProductDetailView,
   type MediaAsset,
   type PresignUploadResponse,
@@ -28,6 +30,21 @@ const upload: PresignUploadResponse = {
 const saveProduct = {} as SaveProductRequest;
 const product = {} as AdminProductDetailView;
 const orderQuery = {} as AdminOrderListQuery;
+const productQuery: AdminProductListQuery = {
+  q: '蛋糕',
+  stock: ProductStockFilter.LOW_STOCK,
+  lowStockThreshold: 10,
+  minPriceCents: 1000,
+  maxPriceCents: 5000,
+  page: 1,
+  pageSize: 20,
+};
+const invalidProductQuery: AdminProductListQuery = {
+  // @ts-expect-error stock 只接受 ProductStockFilter。
+  stock: 'LOW',
+  page: 1,
+  pageSize: 20,
+};
 const banner: SaveBannerRequest = {
   image,
   targetType: BannerTargetType.NONE,
@@ -116,6 +133,8 @@ void [
   saveProduct,
   product,
   orderQuery,
+  productQuery,
+  invalidProductQuery,
   banner,
   bannerView,
   legacyBannerView,

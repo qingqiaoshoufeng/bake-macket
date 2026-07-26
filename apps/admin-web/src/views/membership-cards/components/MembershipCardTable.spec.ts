@@ -69,6 +69,12 @@ function mountTable(levels: readonly AdminMembershipLevelListItem[]) {
 }
 
 describe('MembershipCardTable', () => {
+  it('由外层数据面板统一管理横向滚动', () => {
+    const wrapper = mountTable([draft]);
+
+    expect(wrapper.find('.admin-horizontal-scroll').exists()).toBe(false);
+  });
+
   it('不用颜色单独表达状态，并仅给未售下架草稿删除操作', () => {
     const wrapper = mountTable([
       draft,

@@ -1,6 +1,7 @@
 import { ConflictException, ForbiddenException } from '@nestjs/common';
 import {
   ApiErrorCode,
+  BooleanFilter,
   MemberCreditGrantStatus,
   MembershipEntitlementSegmentKind,
   MembershipPaymentStatus,
@@ -73,9 +74,22 @@ const buildService = ({
     findOneBy: vi.fn().mockResolvedValue(level),
     find: vi.fn().mockResolvedValue(level ? [level] : []),
   };
+  const purchaseQueryBuilder = {
+    innerJoin: vi.fn().mockReturnThis(),
+    andWhere: vi.fn().mockReturnThis(),
+    orderBy: vi.fn().mockReturnThis(),
+    addOrderBy: vi.fn().mockReturnThis(),
+    skip: vi.fn().mockReturnThis(),
+    take: vi.fn().mockReturnThis(),
+    getMany: vi.fn().mockResolvedValue(purchase ? [purchase] : []),
+    getManyAndCount: vi
+      .fn()
+      .mockResolvedValue([purchase ? [purchase] : [], purchase ? 1 : 0]),
+  };
   const purchaseRepository = {
     find: vi.fn().mockResolvedValue(purchase ? [purchase] : []),
     findOne: vi.fn().mockResolvedValue(purchase),
+    createQueryBuilder: vi.fn().mockReturnValue(purchaseQueryBuilder),
     findOneBy: vi.fn().mockResolvedValue(purchase),
     create: vi.fn((value: Record<string, unknown>) => value),
     save: vi.fn(async (value: Record<string, unknown>) => {
@@ -259,6 +273,7 @@ const buildService = ({
   return {
     service,
     purchaseRepository,
+    purchaseQueryBuilder,
     orderRepository,
     savedPurchases,
     savedMemberships,
@@ -272,6 +287,156 @@ const buildService = ({
 };
 
 describe('MembershipPurchaseService', () => {
+  it('pushes purchase filters, user phone JOIN, stable paging, and exclusive time bounds into SQL', async () => {
+    const purchase = {
+      id: 'purchase-1',
+      userId: 'user-1',
+      purchaseNo: 'MP202607210001',
+      membershipLevelId: 'level-gold',
+      levelCode: 'GOLD',
+      levelName: '鎏金会员',
+      levelRank: 20,
+      priceCents: 50_000,
+      grantCreditCents: 60_000,
+      discountBasisPoints: 9_500,
+      validDays: 365,
+      theme: MembershipTheme.CHAMPAGNE,
+      badgeText: 'GOLD',
+      status: MembershipPurchaseStatus.PENDING,
+      paymentStatus: MembershipPaymentStatus.PENDING,
+      paidAt: null,
+      voidedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    } as MembershipPurchaseOrder;
+    const { service, purchaseQueryBuilder } = buildService({ purchase });
+    purchaseQueryBuilder.getManyAndCount.mockResolvedValueOnce([[purchase], 4]);
+
+    await expect(
+      service.listAdminPurchases({
+        purchaseNo: '  001%_  ',
+        userPhone: '  138%  ',
+        userId: ' user-1 ',
+        levelId: ' level-gold ',
+        status: MembershipPurchaseStatus.PENDING,
+        paymentStatus: MembershipPaymentStatus.PENDING,
+        minPriceCents: 40_000,
+        maxPriceCents: 50_000,
+        createdAtFrom: '2026-07-01T00:00:00.000Z',
+        createdAtBefore: '2026-08-01T00:00:00.000Z',
+        paidAtFrom: '2026-07-02T00:00:00.000Z',
+        paidAtBefore: '2026-08-02T00:00:00.000Z',
+        voidedAtFrom: '2026-07-03T00:00:00.000Z',
+        voidedAtBefore: '2026-08-03T00:00:00.000Z',
+        page: 2,
+        pageSize: 10,
+      }),
+    ).resolves.toEqual({
+      items: [expect.objectContaining({ id: purchase.id, userId: 'user-1' })],
+      total: 4,
+      page: 2,
+      pageSize: 10,
+    });
+    expect(purchaseQueryBuilder.innerJoin).toHaveBeenCalledWith(
+      User,
+      'user',
+      'user.id = purchase.userId',
+    );
+    expect(purchaseQueryBuilder.andWhere).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "purchase.purchaseNo LIKE :purchaseNo ESCAPE '\\\\'",
+      ),
+      { purchaseNo: '%001\\%\\_%' },
+    );
+    expect(purchaseQueryBuilder.andWhere).toHaveBeenCalledWith(
+      'purchase.createdAt < :createdAtBefore',
+      { createdAtBefore: new Date('2026-08-01T00:00:00.000Z') },
+    );
+    expect(purchaseQueryBuilder.andWhere).toHaveBeenCalledWith(
+      'purchase.paidAt < :paidAtBefore',
+      { paidAtBefore: new Date('2026-08-02T00:00:00.000Z') },
+    );
+    expect(purchaseQueryBuilder.andWhere).toHaveBeenCalledWith(
+      'purchase.voidedAt < :voidedAtBefore',
+      { voidedAtBefore: new Date('2026-08-03T00:00:00.000Z') },
+    );
+    expect(purchaseQueryBuilder.orderBy).toHaveBeenCalledWith(
+      'purchase.createdAt',
+      'DESC',
+    );
+    expect(purchaseQueryBuilder.addOrderBy).toHaveBeenCalledWith(
+      'purchase.id',
+      'DESC',
+    );
+    expect(purchaseQueryBuilder.skip).toHaveBeenCalledWith(10);
+    expect(purchaseQueryBuilder.take).toHaveBeenCalledWith(10);
+  });
+
+  it('filters voidability before paging so total and page contents use business-rule results', async () => {
+    const purchases = ['purchase-3', 'purchase-2', 'purchase-1'].map(
+      (id) =>
+        ({
+          id,
+          userId: 'user-1',
+          purchaseNo: id,
+          membershipLevelId: 'level-gold',
+          levelCode: 'GOLD',
+          levelName: '鎏金会员',
+          levelRank: 20,
+          priceCents: 50_000,
+          grantCreditCents: 0,
+          discountBasisPoints: 9_500,
+          validDays: 365,
+          theme: MembershipTheme.CHAMPAGNE,
+          badgeText: 'GOLD',
+          status: MembershipPurchaseStatus.FULFILLED,
+          paymentStatus: MembershipPaymentStatus.SUCCEEDED,
+          paidAt: now,
+          voidedAt: null,
+          createdAt: now,
+          updatedAt: now,
+        }) as MembershipPurchaseOrder,
+    );
+    const { service, purchaseQueryBuilder } = buildService();
+    purchaseQueryBuilder.getMany.mockResolvedValueOnce(purchases);
+    const voidabilityOf = vi
+      .spyOn(
+        service as unknown as {
+          voidabilityOf: (purchase: MembershipPurchaseOrder) => Promise<{
+            allowed: boolean;
+            reasonCode?: never;
+            reason?: never;
+          }>;
+        },
+        'voidabilityOf',
+      )
+      .mockImplementation(async ({ id }) => ({ allowed: id !== 'purchase-2' }));
+
+    await expect(
+      service.listAdminPurchases({
+        voidable: BooleanFilter.YES,
+        page: 2,
+        pageSize: 1,
+      }),
+    ).resolves.toEqual({
+      items: [expect.objectContaining({ id: 'purchase-1' })],
+      total: 2,
+      page: 2,
+      pageSize: 1,
+    });
+    expect(purchaseQueryBuilder.andWhere).toHaveBeenCalledWith(
+      'purchase.status = :voidableStatus',
+      { voidableStatus: MembershipPurchaseStatus.FULFILLED },
+    );
+    expect(purchaseQueryBuilder.andWhere).toHaveBeenCalledWith(
+      'purchase.paymentStatus = :voidablePaymentStatus',
+      { voidablePaymentStatus: MembershipPaymentStatus.SUCCEEDED },
+    );
+    expect(purchaseQueryBuilder.skip).not.toHaveBeenCalled();
+    expect(purchaseQueryBuilder.take).not.toHaveBeenCalled();
+    expect(voidabilityOf).toHaveBeenCalledTimes(3);
+  });
+
   it('reports fulfilled purchases as voidable only when their grant and membership chain remain unused', async () => {
     const purchase = {
       id: 'purchase-1',

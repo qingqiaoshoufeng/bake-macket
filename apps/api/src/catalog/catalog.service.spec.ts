@@ -6,7 +6,12 @@ import {
 import { getMetadataArgsStorage } from 'typeorm';
 import { describe, expect, it, vi } from 'vitest';
 
-import { ApiErrorCode, type SaveProductRequest } from '@bake-mall/contracts';
+import {
+  ApiErrorCode,
+  BooleanFilter,
+  ProductStockFilter,
+  type SaveProductRequest,
+} from '@bake-mall/contracts';
 
 import { sanitizeProductHtml } from '../content/html-sanitizer.service.js';
 import type { AppEnv } from '../config/env.schema.js';
@@ -145,6 +150,210 @@ const sanitizerEnv = {
   OBJECT_STORAGE_PUBLIC_BASE_URL: 'https://cdn.example.com/bake-mall',
   PRODUCT_MEDIA_ALLOWED_ORIGINS: ['https://cdn.example.com'],
 } as AppEnv;
+
+const buildListQueryBuilder = <T>(rows: T[], total = rows.length) => ({
+  andWhere: vi.fn().mockReturnThis(),
+  innerJoinAndSelect: vi.fn().mockReturnThis(),
+  orderBy: vi.fn().mockReturnThis(),
+  addOrderBy: vi.fn().mockReturnThis(),
+  skip: vi.fn().mockReturnThis(),
+  take: vi.fn().mockReturnThis(),
+  getManyAndCount: vi.fn().mockResolvedValue([rows, total]),
+});
+
+describe('catalog admin lists', () => {
+  it('filters and stably paginates categories in the database', async () => {
+    const category = {
+      id: 'category-1',
+      name: '草莓蛋糕',
+      imageUrl: 'https://cdn.example.com/categories/cake.webp',
+      sortOrder: 2,
+      isActive: true,
+      createdAt: new Date('2026-07-20T08:00:00.000Z'),
+      updatedAt: new Date('2026-07-21T08:00:00.000Z'),
+    };
+    const builder = buildListQueryBuilder([category], 3);
+    const service = new CatalogService(
+      { createQueryBuilder: vi.fn().mockReturnValue(builder) } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    await expect(
+      service.listAdminCategories({
+        q: String.raw`  50%_off\today  `,
+        isActive: BooleanFilter.YES,
+        hasImage: BooleanFilter.YES,
+        hasProducts: BooleanFilter.NO,
+        createdAtFrom: '2026-07-01T00:00:00.000Z',
+        createdAtBefore: '2026-08-01T00:00:00.000Z',
+        page: 2,
+        pageSize: 20,
+      }),
+    ).resolves.toEqual({
+      items: [
+        {
+          id: 'category-1',
+          name: '草莓蛋糕',
+          imageUrl: 'https://cdn.example.com/categories/cake.webp',
+          sortOrder: 2,
+          isActive: true,
+          createdAt: '2026-07-20T08:00:00.000Z',
+          updatedAt: '2026-07-21T08:00:00.000Z',
+        },
+      ],
+      total: 3,
+      page: 2,
+      pageSize: 20,
+    });
+    expect(builder.andWhere.mock.calls).toEqual(
+      expect.arrayContaining([
+        [
+          "category.name LIKE :q ESCAPE '\\\\'",
+          { q: String.raw`%50\%\_off\\today%` },
+        ],
+        ['category.isActive = :isActive', { isActive: true }],
+        ['category.imageUrl IS NOT NULL'],
+        [expect.stringContaining('NOT EXISTS')],
+        [
+          'category.createdAt >= :createdAtFrom',
+          { createdAtFrom: new Date('2026-07-01T00:00:00.000Z') },
+        ],
+        [
+          'category.createdAt < :createdAtBefore',
+          { createdAtBefore: new Date('2026-08-01T00:00:00.000Z') },
+        ],
+      ]),
+    );
+    expect(builder.orderBy).toHaveBeenCalledWith('category.sortOrder', 'ASC');
+    expect(builder.addOrderBy).toHaveBeenNthCalledWith(
+      1,
+      'category.createdAt',
+      'DESC',
+    );
+    expect(builder.addOrderBy).toHaveBeenNthCalledWith(
+      2,
+      'category.id',
+      'DESC',
+    );
+    expect(builder.skip).toHaveBeenCalledWith(20);
+    expect(builder.take).toHaveBeenCalledWith(20);
+  });
+
+  it('filters products by aggregate SKU state without per-product queries', async () => {
+    const product = {
+      id: 'product-1',
+      categoryId: 'category-1',
+      category: { id: 'category-1', name: '面包' },
+      name: '售罄吐司',
+      summary: null,
+      coverImageUrl: null,
+      coverImageObjectKey: null,
+      sortOrder: 0,
+      isActive: false,
+      createdAt: new Date('2026-07-20T08:00:00.000Z'),
+      updatedAt: new Date('2026-07-21T08:00:00.000Z'),
+    };
+    const builder = buildListQueryBuilder([product]);
+    const skuRows = [{ productId: 'product-1', activeSkuCount: '0' }];
+    const skuBuilder = {
+      select: vi.fn().mockReturnThis(),
+      addSelect: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      groupBy: vi.fn().mockReturnThis(),
+      getRawMany: vi.fn().mockResolvedValue(skuRows),
+    };
+    const skus = { createQueryBuilder: vi.fn().mockReturnValue(skuBuilder) };
+    const service = new CatalogService(
+      {} as never,
+      { createQueryBuilder: vi.fn().mockReturnValue(builder) } as never,
+      skus as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    await expect(
+      service.listAdminProducts({
+        q: '吐司',
+        categoryId: 'category-1',
+        isActive: BooleanFilter.NO,
+        hasActiveSku: BooleanFilter.NO,
+        stock: ProductStockFilter.OUT_OF_STOCK,
+        lowStockThreshold: 10,
+        hasCoverImage: BooleanFilter.NO,
+        minPriceCents: 1000,
+        maxPriceCents: 5000,
+        createdAtFrom: '2026-07-01T00:00:00.000Z',
+        createdAtBefore: '2026-08-01T00:00:00.000Z',
+        page: 1,
+        pageSize: 20,
+      }),
+    ).resolves.toEqual({
+      items: [expect.objectContaining({ name: '售罄吐司', activeSkuCount: 0 })],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    });
+    expect(builder.andWhere.mock.calls).toEqual(
+      expect.arrayContaining([
+        [expect.stringContaining('NOT EXISTS')],
+        [
+          expect.stringContaining('COALESCE((SELECT MAX(sku_stock.stock)'),
+          undefined,
+        ],
+        [
+          expect.stringContaining('sku_price.price_cents >= :minPriceCents'),
+          { minPriceCents: 1000, maxPriceCents: 5000 },
+        ],
+      ]),
+    );
+    expect(skus.createQueryBuilder).toHaveBeenCalledTimes(1);
+    expect(skuBuilder.where).toHaveBeenCalledWith(
+      'sku.productId IN (:...productIds)',
+      {
+        productIds: ['product-1'],
+      },
+    );
+  });
+
+  it('uses the default low-stock threshold with inclusive stock and price boundaries', async () => {
+    const builder = buildListQueryBuilder([], 0);
+    const service = new CatalogService(
+      {} as never,
+      { createQueryBuilder: vi.fn().mockReturnValue(builder) } as never,
+      { createQueryBuilder: vi.fn() } as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    await service.listAdminProducts({
+      stock: ProductStockFilter.LOW_STOCK,
+      minPriceCents: 0,
+      maxPriceCents: 0,
+      page: 1,
+      pageSize: 20,
+    });
+
+    expect(builder.andWhere.mock.calls).toEqual(
+      expect.arrayContaining([
+        [
+          expect.stringContaining('COALESCE((SELECT MAX(sku_stock.stock)'),
+          { lowStockThreshold: 10 },
+        ],
+        [
+          expect.stringContaining('sku_price.price_cents >= :minPriceCents'),
+          { minPriceCents: 0, maxPriceCents: 0 },
+        ],
+      ]),
+    );
+    expect(builder.getManyAndCount).toHaveBeenCalledOnce();
+  });
+});
 
 describe('catalog safety', () => {
   it('removes scripts, event handlers, and unconfigured image URLs', () => {

@@ -32,13 +32,23 @@ const categories = vi.mocked(categoriesApi);
 function loadedEditor() {
   const editor = useProductEditor({ mode: 'edit', productId: 'product-1' });
   api.getOne.mockResolvedValue(PRODUCT_DETAIL_MOCK);
-  categories.list.mockResolvedValue(categoryListMock);
+  categories.list.mockResolvedValue({
+    items: categoryListMock,
+    total: categoryListMock.length,
+    page: 1,
+    pageSize: 100,
+  });
   return { editor, load: editor.load() };
 }
 
 function newEditor() {
   const editor = useProductEditor({ mode: 'new' });
-  categories.list.mockResolvedValue(categoryListMock);
+  categories.list.mockResolvedValue({
+    items: categoryListMock,
+    total: categoryListMock.length,
+    page: 1,
+    pageSize: 100,
+  });
   return { editor, load: editor.load() };
 }
 
@@ -123,7 +133,12 @@ describe('useProductEditor', () => {
     expect(editor.loadError.value).toEqual(new Error('分类加载失败'));
     expect(editor.saveError.value).toBeNull();
 
-    categories.list.mockResolvedValueOnce(categoryListMock);
+    categories.list.mockResolvedValueOnce({
+      items: categoryListMock,
+      total: categoryListMock.length,
+      page: 1,
+      pageSize: 100,
+    });
     await editor.load();
     editor.replaceForm({
       ...mapDetailToForm(PRODUCT_DETAIL_MOCK),
@@ -164,7 +179,12 @@ describe('useProductEditor', () => {
   it('switches a new editor to persistent edit mode after create so the next save replaces', async () => {
     const navigate = vi.fn();
     const editor = useProductEditor({ mode: 'new' }, navigate);
-    categories.list.mockResolvedValue(categoryListMock);
+    categories.list.mockResolvedValue({
+      items: categoryListMock,
+      total: categoryListMock.length,
+      page: 1,
+      pageSize: 100,
+    });
     await editor.load();
     editor.replaceForm({
       ...mapDetailToForm(PRODUCT_DETAIL_MOCK),

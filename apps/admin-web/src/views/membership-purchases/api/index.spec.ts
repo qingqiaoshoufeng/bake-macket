@@ -1,4 +1,6 @@
 import {
+  BooleanFilter,
+  MembershipPaymentStatus,
   MembershipPurchaseStatus,
   type AdminMembershipPurchaseListQuery,
 } from '@bake-mall/contracts';
@@ -17,9 +19,13 @@ vi.mock('../../../api/http.js', () => ({
 const client = vi.mocked(apiClient);
 const query: AdminMembershipPurchaseListQuery = {
   purchaseNo: 'MP2026',
-  userId: 'user-1',
+  userPhone: '13800000000',
   levelId: 'level-1',
   status: MembershipPurchaseStatus.FULFILLED,
+  paymentStatus: MembershipPaymentStatus.SUCCEEDED,
+  minPriceCents: 29,
+  maxPriceCents: 9990,
+  voidable: BooleanFilter.YES,
   createdAtFrom: '2026-07-01T00:00:00.000Z',
   createdAtBefore: '2026-08-01T00:00:00.000Z',
   page: 2,
@@ -36,7 +42,7 @@ describe('membershipPurchasesApi', () => {
 
     expect(client.get).toHaveBeenNthCalledWith(
       1,
-      '/admin/membership-purchases?purchaseNo=MP2026&userId=user-1&levelId=level-1&status=FULFILLED&createdAtFrom=2026-07-01T00%3A00%3A00.000Z&createdAtBefore=2026-08-01T00%3A00%3A00.000Z&page=2&pageSize=20',
+      '/admin/membership-purchases?purchaseNo=MP2026&userPhone=13800000000&levelId=level-1&status=FULFILLED&paymentStatus=SUCCEEDED&minPriceCents=29&maxPriceCents=9990&voidable=YES&createdAtFrom=2026-07-01T00%3A00%3A00.000Z&createdAtBefore=2026-08-01T00%3A00%3A00.000Z&page=2&pageSize=20',
     );
     expect(client.get).toHaveBeenNthCalledWith(
       2,

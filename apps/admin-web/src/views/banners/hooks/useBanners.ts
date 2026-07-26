@@ -1,5 +1,6 @@
 import {
   BannerTargetType,
+  type AdminBannerListQuery,
   type AdminBannerView,
   type AdminCategoryView,
   type AdminProductSummaryView,
@@ -7,11 +8,17 @@ import {
 } from '@bake-mall/contracts';
 import { computed, reactive, ref } from 'vue';
 
-import { adminCatalogApi } from '../../../api/catalog.js';
-import { productsApi } from '../../products/api/index.js';
+import { countActiveFilters } from '../../../utils/list-query.js';
+import { loadAllCategories } from '../../categories/hooks/loadAllCategories.js';
+import { loadAllProducts } from '../../products/hooks/loadAllProducts.js';
 import { bannersApi } from '../api/index.js';
-import { createBannerDefaults } from '../config/defaults.js';
+import {
+  createBannerDefaults,
+  createBannerFilterDefaults,
+} from '../config/defaults.js';
+import { BANNER_PAGINATION } from '../config/pagination.js';
 import type { BannerFormShape, BannerTargetOption } from '../type/form.js';
+import type { BannerFilterForm } from '../type/list.js';
 
 const toForm = (banner: AdminBannerView): BannerFormShape => ({
   image: banner.image ? { ...banner.image } : null,
@@ -26,6 +33,31 @@ const replaceForm = (form: BannerFormShape, next: BannerFormShape): void => {
   Object.assign(form, next);
 };
 
+const cloneFilters = (filters: BannerFilterForm): BannerFilterForm => ({
+  ...filters,
+  createdAtRange: filters.createdAtRange ? [...filters.createdAtRange] : null,
+});
+
+const toQuery = (
+  filters: BannerFilterForm,
+  page: number,
+  pageSize: number,
+): AdminBannerListQuery => ({
+  ...(filters.q.trim() ? { q: filters.q.trim() } : {}),
+  ...(filters.isActive ? { isActive: filters.isActive } : {}),
+  ...(filters.targetType ? { targetType: filters.targetType } : {}),
+  ...(filters.targetId ? { targetId: filters.targetId } : {}),
+  ...(filters.targetValid ? { targetValid: filters.targetValid } : {}),
+  ...(filters.createdAtRange
+    ? {
+        createdAtFrom: filters.createdAtRange[0],
+        createdAtBefore: filters.createdAtRange[1],
+      }
+    : {}),
+  page,
+  pageSize,
+});
+
 const toRequest = (form: BannerFormShape): SaveBannerRequest => {
   if (!form.image) throw new Error('请先上传 Banner 图片');
   const common = {
@@ -38,32 +70,30 @@ const toRequest = (form: BannerFormShape): SaveBannerRequest => {
     return { ...common, targetType: BannerTargetType.NONE };
   }
   if (!form.targetId) throw new Error('请选择跳转目标');
-  if (form.targetType === BannerTargetType.PRODUCT) {
-    return {
-      ...common,
-      targetType: BannerTargetType.PRODUCT,
-      targetId: form.targetId,
-    };
-  }
   return {
     ...common,
-    targetType: BannerTargetType.CATEGORY,
+    targetType: form.targetType,
     targetId: form.targetId,
-  };
+  } as SaveBannerRequest;
 };
 
 export function useBanners() {
   const banners = ref<readonly AdminBannerView[]>([]);
   const categories = ref<readonly AdminCategoryView[]>([]);
   const products = ref<readonly AdminProductSummaryView[]>([]);
+  const draftFilters = reactive<BannerFilterForm>(createBannerFilterDefaults());
+  const appliedFilters = ref<BannerFilterForm>(createBannerFilterDefaults());
+  const page = ref<number>(BANNER_PAGINATION.defaultPage);
+  const pageSize = ref<number>(BANNER_PAGINATION.defaultPageSize);
+  const total = ref(0);
   const loading = ref(false);
   const saving = ref(false);
   const uploading = ref(false);
   const lastError = ref<string | null>(null);
   const dialogVisible = ref(false);
   const editingId = ref<string | null>(null);
-  const refreshSequence = ref(0);
   const form = reactive<BannerFormShape>(createBannerDefaults());
+  let refreshSequence = 0;
 
   const validCategories = computed(() =>
     categories.value.filter((category) => category.isActive),
@@ -84,6 +114,23 @@ export function useBanners() {
     () =>
       new Map(categories.value.map((category) => [category.id, category.name])),
   );
+  const getOptions = (
+    targetType: '' | BannerTargetType,
+  ): readonly BannerTargetOption[] => {
+    if (targetType === BannerTargetType.PRODUCT) {
+      return products.value.map((product) => ({
+        id: product.id,
+        label: `${product.name} · ${product.categoryName}`,
+      }));
+    }
+    if (targetType === BannerTargetType.CATEGORY) {
+      return categories.value.map((category) => ({
+        id: category.id,
+        label: category.name,
+      }));
+    }
+    return [];
+  };
   const targetOptions = computed<readonly BannerTargetOption[]>(() => {
     if (form.targetType === BannerTargetType.PRODUCT) {
       return validProducts.value.map((product) => ({
@@ -99,29 +146,91 @@ export function useBanners() {
     }
     return [];
   });
+  const filterTargetOptions = computed(() =>
+    getOptions(draftFilters.targetType),
+  );
+  const advancedCount = computed(() =>
+    countActiveFilters({
+      targetId: appliedFilters.value.targetId,
+      targetValid: appliedFilters.value.targetValid,
+      createdAtRange: appliedFilters.value.createdAtRange,
+    }),
+  );
+  const hasAppliedFilters = computed(
+    () => countActiveFilters(appliedFilters.value) > 0,
+  );
 
   async function refresh(): Promise<void> {
-    const sequence = refreshSequence.value + 1;
-    refreshSequence.value = sequence;
+    const sequence = refreshSequence + 1;
+    refreshSequence = sequence;
     loading.value = true;
     lastError.value = null;
     try {
-      const [bannerRows, categoryRows, productRows] = await Promise.all([
-        bannersApi.list(),
-        adminCatalogApi.listCategories(),
-        productsApi.list(),
-      ]);
-      if (sequence !== refreshSequence.value) return;
-      banners.value = [...bannerRows];
-      categories.value = [...categoryRows];
-      products.value = [...productRows];
+      const result = await bannersApi.list(
+        toQuery(appliedFilters.value, page.value, pageSize.value),
+      );
+      if (sequence !== refreshSequence) return;
+      banners.value = [...result.items];
+      page.value = result.page;
+      pageSize.value = result.pageSize;
+      total.value = result.total;
     } catch {
-      if (sequence === refreshSequence.value) {
+      if (sequence === refreshSequence) {
         lastError.value = 'Banner 数据加载失败，请重试';
       }
     } finally {
-      if (sequence === refreshSequence.value) loading.value = false;
+      if (sequence === refreshSequence) loading.value = false;
     }
+  }
+
+  async function initialize(): Promise<void> {
+    const listPromise = refresh();
+    const [categoryResult, productResult] = await Promise.allSettled([
+      loadAllCategories(),
+      loadAllProducts(),
+    ]);
+    await listPromise;
+    if (categoryResult.status === 'fulfilled') {
+      categories.value = [...categoryResult.value];
+    }
+    if (productResult.status === 'fulfilled') {
+      products.value = [...productResult.value];
+    }
+    if (
+      categoryResult.status === 'rejected' ||
+      productResult.status === 'rejected'
+    ) {
+      lastError.value ??= 'Banner 跳转选项加载失败，请重试';
+    }
+  }
+
+  async function search(): Promise<void> {
+    appliedFilters.value = cloneFilters(draftFilters);
+    page.value = 1;
+    await refresh();
+  }
+
+  async function reset(): Promise<void> {
+    const defaults = createBannerFilterDefaults();
+    Object.assign(draftFilters, defaults);
+    appliedFilters.value = defaults;
+    page.value = 1;
+    await refresh();
+  }
+
+  async function setPage(value: number): Promise<void> {
+    page.value = value;
+    await refresh();
+  }
+
+  async function setPageSize(value: number): Promise<void> {
+    pageSize.value = value;
+    page.value = 1;
+    await refresh();
+  }
+
+  function setFilterTargetType(targetType: '' | BannerTargetType): void {
+    Object.assign(draftFilters, { targetType, targetId: '' });
   }
 
   function applyBanner(saved: AdminBannerView): void {
@@ -131,17 +240,11 @@ export function useBanners() {
       : [saved, ...banners.value];
   }
 
-  function removeBanner(id: string): void {
-    banners.value = banners.value.filter((banner) => banner.id !== id);
-  }
-
   async function refreshBanners(failureMessage: string): Promise<void> {
-    try {
-      banners.value = [...(await bannersApi.list())];
-      lastError.value = null;
-    } catch {
-      lastError.value = failureMessage;
-    }
+    const previousError = lastError.value;
+    await refresh();
+    if (lastError.value) lastError.value = failureMessage;
+    else if (previousError) lastError.value = null;
   }
 
   function openCreate(): void {
@@ -161,8 +264,7 @@ export function useBanners() {
   }
 
   function setTargetType(targetType: BannerTargetType): void {
-    form.targetType = targetType;
-    form.targetId = '';
+    Object.assign(form, { targetType, targetId: '' });
   }
 
   function setUploading(value: boolean): void {
@@ -206,7 +308,7 @@ export function useBanners() {
 
   async function remove(id: string): Promise<void> {
     await bannersApi.remove(id);
-    removeBanner(id);
+    banners.value = banners.value.filter((banner) => banner.id !== id);
     await refreshBanners('Banner 已删除，但列表刷新失败');
   }
 
@@ -223,6 +325,13 @@ export function useBanners() {
     banners,
     categories,
     products,
+    draftFilters,
+    advancedCount,
+    hasAppliedFilters,
+    filterTargetOptions,
+    page,
+    pageSize,
+    total,
     loading,
     saving,
     uploading,
@@ -231,7 +340,13 @@ export function useBanners() {
     editingId,
     form,
     targetOptions,
+    initialize,
     refresh,
+    search,
+    reset,
+    setPage,
+    setPageSize,
+    setFilterTargetType,
     openCreate,
     startEdit,
     closeDialog,

@@ -6,11 +6,9 @@ import {
 import {
   ElAlert,
   ElButton,
-  ElInput,
   ElMessage,
   ElMessageBox,
-  ElOption,
-  ElSelect,
+  ElPagination,
 } from 'element-plus';
 import { onMounted } from 'vue';
 import { useRouter } from 'vue-router';
@@ -19,8 +17,11 @@ import { ApiClientError } from '../../api/http.js';
 import AdminDataPanel from '../../components/layout/AdminDataPanel.vue';
 import AdminPage from '../../components/layout/AdminPage.vue';
 import AdminPageHeader from '../../components/layout/AdminPageHeader.vue';
+import { PAGE_SIZE_OPTIONS } from '../../config/pagination.js';
+import MembershipCardFilters from './components/MembershipCardFilters.vue';
 import MembershipCardTable from './components/MembershipCardTable.vue';
 import { useMembershipCards } from './hooks/useMembershipCards.js';
+import type { MembershipCardFilters as MembershipCardFilterForm } from './type/index.js';
 
 const router = useRouter();
 const cards = useMembershipCards();
@@ -31,6 +32,10 @@ function messageOf(error: unknown): string {
   return error instanceof ApiClientError || error instanceof Error
     ? error.message
     : '操作失败，请重试';
+}
+
+function updateFilters(value: Partial<MembershipCardFilterForm>): void {
+  cards.setFilters(value);
 }
 
 function createCard(): void {
@@ -111,31 +116,15 @@ async function removeDraft(level: AdminMembershipLevelListItem): Promise<void> {
     </ElAlert>
 
     <AdminDataPanel>
-      <div
-        class="membership-cards-view__toolbar"
-        role="search"
-        aria-label="筛选会员卡"
-      >
-        <ElInput
-          :model-value="cards.filters.q"
-          clearable
-          placeholder="搜索名称或 code"
-          aria-label="搜索会员卡"
-          @update:model-value="cards.setFilters({ q: String($event) })"
-          @keyup.enter="cards.refresh"
+      <template #toolbar>
+        <MembershipCardFilters
+          :filters="cards.filters"
+          :loading="cards.loading.value"
+          @change="updateFilters"
+          @search="cards.search"
+          @reset="cards.reset"
         />
-        <ElSelect
-          :model-value="cards.filters.status"
-          clearable
-          placeholder="全部状态"
-          aria-label="筛选会员卡状态"
-          @update:model-value="cards.setFilters({ status: $event || '' })"
-        >
-          <ElOption label="已上架" :value="MembershipLevelStatus.ACTIVE" />
-          <ElOption label="下架草稿" :value="MembershipLevelStatus.INACTIVE" />
-        </ElSelect>
-        <ElButton type="primary" plain @click="cards.refresh">筛选</ElButton>
-      </div>
+      </template>
 
       <MembershipCardTable
         :levels="cards.levels.value"
@@ -145,6 +134,20 @@ async function removeDraft(level: AdminMembershipLevelListItem): Promise<void> {
         @toggle="toggleCard"
         @remove="removeDraft"
       />
+
+      <template v-if="cards.total.value > 0" #footer>
+        <ElPagination
+          class="membership-cards-view__pagination"
+          background
+          layout="total, sizes, prev, pager, next"
+          :total="cards.total.value"
+          :current-page="cards.page.value"
+          :page-size="cards.pageSize.value"
+          :page-sizes="[...PAGE_SIZE_OPTIONS]"
+          @update:current-page="cards.setPage"
+          @update:page-size="cards.setPageSize"
+        />
+      </template>
     </AdminDataPanel>
   </AdminPage>
 </template>
@@ -154,18 +157,7 @@ async function removeDraft(level: AdminMembershipLevelListItem): Promise<void> {
   margin: 0 0 10px;
 }
 
-.membership-cards-view__toolbar {
-  display: grid;
-  grid-template-columns: minmax(220px, 1fr) 180px auto;
-  gap: 12px;
-  padding: 18px;
-  border-bottom: 1px solid var(--admin-border);
-  background: var(--admin-surface-soft);
-}
-
-@media (max-width: 720px) {
-  .membership-cards-view__toolbar {
-    grid-template-columns: 1fr;
-  }
+.membership-cards-view__pagination {
+  justify-content: flex-end;
 }
 </style>

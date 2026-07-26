@@ -1,4 +1,5 @@
 import type {
+  AdminCategoryView,
   AdminProductDetailView,
   SaveProductRequest,
   SaveProductSkuInput,
@@ -8,7 +9,7 @@ import { ref, type Ref } from 'vue';
 
 import { ApiClientError } from '../../../api/http.js';
 import { formatCentsToYuan } from '../../../utils/money.js';
-import { categoriesApi } from '../../categories/api/index.js';
+import { loadAllCategories } from '../../categories/hooks/loadAllCategories.js';
 import { productsApi } from '../api/index.js';
 import { createDefaultProductForm } from '../config/defaults.js';
 import type {
@@ -23,7 +24,7 @@ export type ProductEditorMode =
 
 export type UseProductEditorResult = {
   readonly form: Ref<ProductFormShape>;
-  readonly categories: Ref<Awaited<ReturnType<typeof categoriesApi.list>>>;
+  readonly categories: Ref<readonly AdminCategoryView[]>;
   readonly loading: Ref<boolean>;
   readonly saving: Ref<boolean>;
   readonly uploading: Ref<boolean>;
@@ -228,7 +229,7 @@ export function useProductEditor(
   onCreated: (productId: string) => void = () => undefined,
 ): UseProductEditorResult {
   const form = ref<ProductFormShape>(createDefaultProductForm());
-  const categories = ref<Awaited<ReturnType<typeof categoriesApi.list>>>([]);
+  const categories = ref<readonly AdminCategoryView[]>([]);
   const loading = ref(false);
   const saving = ref(false);
   const uploading = ref(false);
@@ -270,14 +271,14 @@ export function useProductEditor(
     try {
       if (mode.mode === 'edit') {
         const [nextCategories, detail] = await Promise.all([
-          categoriesApi.list(),
+          loadAllCategories(),
           productsApi.getOne(mode.productId),
         ]);
         if (loadId !== currentLoad) return;
         categories.value = [...nextCategories];
         applyLoadedDetail(detail);
       } else {
-        const nextCategories = await categoriesApi.list();
+        const nextCategories = await loadAllCategories();
         if (loadId !== currentLoad) return;
         categories.value = [...nextCategories];
       }

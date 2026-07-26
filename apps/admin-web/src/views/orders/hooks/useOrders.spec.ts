@@ -1,4 +1,5 @@
 import {
+  BooleanFilter,
   FulfillmentType,
   OrderStatus,
   type AdminOrderListItem,
@@ -28,6 +29,13 @@ function deferred<T>() {
   });
   return { promise, resolve, reject };
 }
+
+const emptyResult = {
+  items: [],
+  page: 1,
+  pageSize: 20,
+  total: 0,
+};
 
 const row: AdminOrderListItem = {
   id: 'order-1',
@@ -69,29 +77,102 @@ const detail: OrderView = {
 describe('useOrders', () => {
   afterEach(() => vi.resetAllMocks());
 
-  it('loads a paginated list with contract-defined filters', async () => {
-    api.list.mockResolvedValueOnce({
-      items: [row],
-      page: 1,
-      pageSize: 20,
-      total: 1,
-    });
+  it('converts all basic and advanced filters to the contract query', async () => {
+    api.list.mockResolvedValueOnce({ ...emptyResult });
     const state = useOrders();
-    state.filters.orderNo = ' BM2026 ';
-    state.filters.status = OrderStatus.NEW;
-    state.filters.fulfillmentType = FulfillmentType.PICKUP;
+    state.setFilters({
+      orderNo: ' BM2026 ',
+      contact: ' 张三 138 ',
+      status: OrderStatus.NEW,
+      fulfillmentType: FulfillmentType.PICKUP,
+      userId: ' user-1 ',
+      itemQ: ' 草莓 6寸 ',
+      usesMembership: BooleanFilter.YES,
+      usesCredit: BooleanFilter.NO,
+      hasRemark: BooleanFilter.YES,
+      minPayableYuan: '12.30',
+      maxPayableYuan: '100',
+      createdAtRange: [
+        new Date('2026-07-01T00:00:00.000Z'),
+        new Date('2026-08-01T00:00:00.000Z'),
+      ],
+    });
 
     await state.search();
 
     expect(api.list).toHaveBeenCalledWith({
       orderNo: 'BM2026',
+      contact: '张三 138',
       status: OrderStatus.NEW,
       fulfillmentType: FulfillmentType.PICKUP,
+      userId: 'user-1',
+      itemQ: '草莓 6寸',
+      usesMembership: BooleanFilter.YES,
+      usesCredit: BooleanFilter.NO,
+      hasRemark: BooleanFilter.YES,
+      minPayableCents: 1230,
+      maxPayableCents: 10000,
+      createdAtFrom: '2026-07-01T00:00:00.000Z',
+      createdAtBefore: '2026-08-01T00:00:00.000Z',
       page: 1,
       pageSize: 20,
     });
-    expect(state.orders.value).toEqual([row]);
-    expect(state.total.value).toBe(1);
+    expect(state.advancedCount.value).toBe(8);
+  });
+
+  it('uses applied filters for pagination while preserving unsent drafts', async () => {
+    api.list
+      .mockResolvedValueOnce({ ...emptyResult })
+      .mockResolvedValueOnce({ ...emptyResult, page: 2 });
+    const state = useOrders();
+    state.setFilters({ contact: '已应用联系人' });
+    await state.search();
+    state.setFilters({ contact: '尚未查询联系人' });
+
+    await state.setPage(2);
+
+    expect(api.list).toHaveBeenLastCalledWith({
+      contact: '已应用联系人',
+      page: 2,
+      pageSize: 20,
+    });
+    expect(state.filters.contact).toBe('尚未查询联系人');
+    expect(state.appliedFilters.value.contact).toBe('已应用联系人');
+  });
+
+  it('resets draft and applied filters before refreshing page one', async () => {
+    api.list
+      .mockResolvedValueOnce({ ...emptyResult })
+      .mockResolvedValueOnce({ ...emptyResult });
+    const state = useOrders();
+    state.setFilters({ orderNo: 'BM2026', hasRemark: BooleanFilter.YES });
+    await state.search();
+    state.setFilters({ contact: '未应用' });
+
+    await state.reset();
+
+    expect(api.list).toHaveBeenLastCalledWith({ page: 1, pageSize: 20 });
+    expect(state.filters).toMatchObject({
+      orderNo: '',
+      contact: '',
+      hasRemark: '',
+    });
+    expect(state.appliedFilters.value).toMatchObject({
+      orderNo: '',
+      contact: '',
+      hasRemark: '',
+    });
+  });
+
+  it('reports exact-money input errors without issuing a request', async () => {
+    const state = useOrders();
+    state.setFilters({ minPayableYuan: '1.001' });
+
+    await state.search();
+
+    expect(api.list).not.toHaveBeenCalled();
+    expect(state.lastError.value).toBe('金额最多保留两位小数');
+    expect(state.loading.value).toBe(false);
   });
 
   it('loads a read-only detail and exposes only legal actions', async () => {
@@ -223,12 +304,7 @@ describe('useOrders', () => {
       order: { ...detail, status: OrderStatus.CANCELLED },
       noRestock: true,
     });
-    api.list.mockResolvedValueOnce({
-      items: [],
-      page: 1,
-      pageSize: 20,
-      total: 0,
-    });
+    api.list.mockResolvedValueOnce({ ...emptyResult });
     const state = useOrders();
     await state.openDetail(row.id);
 

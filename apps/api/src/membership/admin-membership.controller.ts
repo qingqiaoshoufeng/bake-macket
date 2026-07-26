@@ -14,14 +14,14 @@ import {
 } from '@nestjs/common';
 import {
   type AdminMembershipLevelDetailView,
-  type AdminMembershipLevelListItem,
+  type AdminMembershipLevelListResult,
 } from '@bake-mall/contracts';
 
 import { JwtAdminGuard } from '../auth/admin-jwt.guard.js';
 import type { AuthenticatedAdmin } from '../auth/auth.types.js';
 import { CurrentAdmin } from '../auth/current-user.decorator.js';
+import { AdminMembershipLevelListQueryDto } from './dto/admin-membership-level-query.dto.js';
 import {
-  AdminMembershipLevelListQueryDto,
   SaveMembershipLevelDto,
   UpdateMembershipLevelStatusDto,
 } from './dto/membership-level.dto.js';
@@ -35,7 +35,7 @@ export class AdminMembershipController {
   @Get()
   list(
     @Query() query: AdminMembershipLevelListQueryDto,
-  ): Promise<AdminMembershipLevelListItem[]> {
+  ): Promise<AdminMembershipLevelListResult> {
     return this.membership.listAdminLevels(query);
   }
 

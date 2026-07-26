@@ -7,15 +7,14 @@ import type {
 } from '@bake-mall/contracts';
 
 import { apiClient } from '../../../api/http.js';
+import { compactQuery } from '../../../utils/list-query.js';
 
 const toSearchParams = (query: AdminOrderListQuery): URLSearchParams =>
   new URLSearchParams(
-    Object.entries(query)
-      .filter((entry): entry is [string, string | number] => {
-        const value = entry[1];
-        return value !== undefined && value !== '';
-      })
-      .map(([key, value]) => [key, String(value)]),
+    Object.entries(compactQuery({ ...query })).map(([key, value]) => [
+      key,
+      String(value),
+    ]),
   );
 
 export const ordersApi = {

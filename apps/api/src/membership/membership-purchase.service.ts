@@ -13,6 +13,7 @@ import { ConfigService } from '@nestjs/config';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import {
   ApiErrorCode,
+  BooleanFilter,
   MembershipEntitlementSegmentKind,
   MembershipPaymentStatus,
   MembershipPurchaseStatus,
@@ -32,9 +33,10 @@ import {
   type MembershipPurchaseVoidability,
   type PublicMembershipLevelView,
 } from '@bake-mall/contracts';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, Repository, SelectQueryBuilder } from 'typeorm';
 
 import { AuditService } from '../audit/audit.service.js';
+import { escapeLike } from '../common/query/admin-query.helpers.js';
 import { type AppConfig } from '../config/env.schema.js';
 import { IdempotencyRecord } from '../database/entities/idempotency-record.entity.js';
 import { MemberAccount } from '../database/entities/member-account.entity.js';
@@ -497,34 +499,147 @@ export class MembershipPurchaseService {
   async listAdminPurchases(
     query: AdminMembershipPurchaseListQuery,
   ): Promise<AdminMembershipPurchaseListResult> {
-    const purchases = await this.purchases.find({
-      order: { createdAt: 'DESC' },
-    });
-    const filtered = purchases.filter((purchase) => {
-      const createdAt = purchase.createdAt.toISOString();
-      return (
-        (!query.purchaseNo || purchase.purchaseNo.includes(query.purchaseNo)) &&
-        (!query.userId || purchase.userId === query.userId) &&
-        (!query.levelId || purchase.membershipLevelId === query.levelId) &&
-        (!query.status || purchase.status === query.status) &&
-        (!query.createdAtFrom || createdAt >= query.createdAtFrom) &&
-        (!query.createdAtBefore || createdAt <= query.createdAtBefore)
-      );
-    });
+    const builder = this.purchases.createQueryBuilder('purchase');
+    const purchaseNo = query.purchaseNo?.trim();
+    if (purchaseNo) {
+      builder.andWhere("purchase.purchaseNo LIKE :purchaseNo ESCAPE '\\\\'", {
+        purchaseNo: `%${escapeLike(purchaseNo)}%`,
+      });
+    }
+    const userPhone = query.userPhone?.trim();
+    if (userPhone) {
+      builder
+        .innerJoin(User, 'user', 'user.id = purchase.userId')
+        .andWhere("user.phone LIKE :userPhone ESCAPE '\\\\'", {
+          userPhone: `%${escapeLike(userPhone)}%`,
+        });
+    }
+    if (query.userId?.trim()) {
+      builder.andWhere('purchase.userId = :userId', {
+        userId: query.userId.trim(),
+      });
+    }
+    if (query.levelId?.trim()) {
+      builder.andWhere('purchase.membershipLevelId = :levelId', {
+        levelId: query.levelId.trim(),
+      });
+    }
+    if (query.status) {
+      builder.andWhere('purchase.status = :status', { status: query.status });
+    }
+    if (query.paymentStatus) {
+      builder.andWhere('purchase.paymentStatus = :paymentStatus', {
+        paymentStatus: query.paymentStatus,
+      });
+    }
+    if (query.minPriceCents !== undefined) {
+      builder.andWhere('purchase.priceCents >= :minPriceCents', {
+        minPriceCents: query.minPriceCents,
+      });
+    }
+    if (query.maxPriceCents !== undefined) {
+      builder.andWhere('purchase.priceCents <= :maxPriceCents', {
+        maxPriceCents: query.maxPriceCents,
+      });
+    }
+    this.applyPurchaseDateRange(
+      builder,
+      'createdAt',
+      query.createdAtFrom,
+      query.createdAtBefore,
+    );
+    this.applyPurchaseDateRange(
+      builder,
+      'paidAt',
+      query.paidAtFrom,
+      query.paidAtBefore,
+    );
+    this.applyPurchaseDateRange(
+      builder,
+      'voidedAt',
+      query.voidedAtFrom,
+      query.voidedAtBefore,
+    );
+    builder
+      .orderBy('purchase.createdAt', 'DESC')
+      .addOrderBy('purchase.id', 'DESC');
+
+    if (!query.voidable) {
+      const [purchases, total] = await builder
+        .skip((query.page - 1) * query.pageSize)
+        .take(query.pageSize)
+        .getManyAndCount();
+      return {
+        items: await this.toAdminPurchaseListItems(purchases),
+        total,
+        page: query.page,
+        pageSize: query.pageSize,
+      };
+    }
+
+    if (query.voidable === BooleanFilter.YES) {
+      builder
+        .andWhere('purchase.status = :voidableStatus', {
+          voidableStatus: MembershipPurchaseStatus.FULFILLED,
+        })
+        .andWhere('purchase.paymentStatus = :voidablePaymentStatus', {
+          voidablePaymentStatus: MembershipPaymentStatus.SUCCEEDED,
+        });
+    }
+    const purchases = await builder.getMany();
+    const candidates = await Promise.all(
+      purchases.map(async (purchase) => ({
+        purchase,
+        voidability: await this.voidabilityOf(purchase),
+      })),
+    );
+    const shouldBeVoidable = query.voidable === BooleanFilter.YES;
+    const filtered = candidates.filter(
+      ({ voidability }) => voidability.allowed === shouldBeVoidable,
+    );
     const start = (query.page - 1) * query.pageSize;
-    const items = await Promise.all(
-      filtered.slice(start, start + query.pageSize).map(async (purchase) => ({
+    return {
+      items: filtered
+        .slice(start, start + query.pageSize)
+        .map(({ purchase, voidability }) => ({
+          ...this.toView(purchase),
+          userId: purchase.userId,
+          voidability,
+        })),
+      total: filtered.length,
+      page: query.page,
+      pageSize: query.pageSize,
+    };
+  }
+
+  private applyPurchaseDateRange(
+    builder: SelectQueryBuilder<MembershipPurchaseOrder>,
+    field: 'createdAt' | 'paidAt' | 'voidedAt',
+    from?: string,
+    before?: string,
+  ): void {
+    if (from) {
+      builder.andWhere(`purchase.${field} >= :${field}From`, {
+        [`${field}From`]: new Date(from),
+      });
+    }
+    if (before) {
+      builder.andWhere(`purchase.${field} < :${field}Before`, {
+        [`${field}Before`]: new Date(before),
+      });
+    }
+  }
+
+  private async toAdminPurchaseListItems(
+    purchases: MembershipPurchaseOrder[],
+  ): Promise<AdminMembershipPurchaseListResult['items']> {
+    return Promise.all(
+      purchases.map(async (purchase) => ({
         ...this.toView(purchase),
         userId: purchase.userId,
         voidability: await this.voidabilityOf(purchase),
       })),
     );
-    return {
-      items,
-      page: query.page,
-      pageSize: query.pageSize,
-      total: filtered.length,
-    };
   }
 
   async listCreditEntries(userId: string): Promise<MemberCreditEntryView[]> {

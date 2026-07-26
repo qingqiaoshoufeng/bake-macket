@@ -4,6 +4,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiErrorCode,
+  BooleanFilter,
   MembershipLevelStatus,
   MembershipTheme,
   type SaveMembershipLevelRequest,
@@ -60,9 +61,25 @@ const buildService = (
     createdAt,
     updatedAt,
   }));
+  const queryBuilder = {
+    leftJoin: vi.fn().mockReturnThis(),
+    addSelect: vi.fn().mockReturnThis(),
+    andWhere: vi.fn().mockReturnThis(),
+    groupBy: vi.fn().mockReturnThis(),
+    orderBy: vi.fn().mockReturnThis(),
+    addOrderBy: vi.fn().mockReturnThis(),
+    skip: vi.fn().mockReturnThis(),
+    take: vi.fn().mockReturnThis(),
+    getCount: vi.fn().mockResolvedValue(level ? 1 : 0),
+    getRawAndEntities: vi.fn().mockResolvedValue({
+      entities: level ? [level] : [],
+      raw: level ? [{ level_id: level.id, purchaseCount: '0' }] : [],
+    }),
+  };
   const levelRepository = {
     find: vi.fn().mockResolvedValue(level ? [level] : []),
     findOne: vi.fn().mockResolvedValue(level),
+    createQueryBuilder: vi.fn().mockReturnValue(queryBuilder),
     findOneBy: vi.fn().mockResolvedValue(level),
     create: vi.fn((value: Record<string, unknown>) => value),
     save: saved,
@@ -95,6 +112,7 @@ const buildService = (
     service,
     levelRepository,
     purchaseRepository,
+    queryBuilder,
     audit,
     transaction,
     manager,
@@ -120,6 +138,71 @@ describe('MembershipService level management', () => {
       order: { sortOrder: 'ASC', createdAt: 'DESC' },
     });
     void inactive;
+  });
+
+  it('pushes combined membership-level filters, aggregate sales state, stable paging, and exclusive time bounds into SQL', async () => {
+    const level = storedLevel();
+    const { service, queryBuilder } = buildService(level);
+    queryBuilder.getCount.mockResolvedValueOnce(7);
+    queryBuilder.getRawAndEntities.mockResolvedValueOnce({
+      entities: [level],
+      raw: [{ level_id: level.id, purchaseCount: '3' }],
+    });
+
+    await expect(
+      service.listAdminLevels({
+        q: '  GOLD%_  ',
+        status: MembershipLevelStatus.ACTIVE,
+        rank: 20,
+        minPriceCents: 10_000,
+        maxPriceCents: 50_000,
+        minDiscountBasisPoints: 9_000,
+        maxDiscountBasisPoints: 9_500,
+        hasPurchases: BooleanFilter.YES,
+        theme: MembershipTheme.CHAMPAGNE,
+        minValidDays: 30,
+        maxValidDays: 365,
+        updatedAtFrom: '2026-07-01T00:00:00.000Z',
+        updatedAtBefore: '2026-08-01T00:00:00.000Z',
+        page: 2,
+        pageSize: 20,
+      }),
+    ).resolves.toEqual({
+      items: [expect.objectContaining({ id: level.id, purchaseCount: 3 })],
+      total: 7,
+      page: 2,
+      pageSize: 20,
+    });
+    expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+      expect.stringContaining("LIKE :q ESCAPE '\\\\'"),
+      { q: '%GOLD\\%\\_%' },
+    );
+    expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+      'level.updatedAt < :updatedAtBefore',
+      { updatedAtBefore: new Date('2026-08-01T00:00:00.000Z') },
+    );
+    expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+      'level.isActive = :isActive',
+      {
+        isActive: true,
+      },
+    );
+    expect(queryBuilder.andWhere).toHaveBeenCalledWith(
+      expect.stringContaining('EXISTS'),
+    );
+    expect(queryBuilder.orderBy).toHaveBeenCalledWith('level.sortOrder', 'ASC');
+    expect(queryBuilder.addOrderBy).toHaveBeenNthCalledWith(
+      1,
+      'level.createdAt',
+      'DESC',
+    );
+    expect(queryBuilder.addOrderBy).toHaveBeenNthCalledWith(
+      2,
+      'level.id',
+      'DESC',
+    );
+    expect(queryBuilder.skip).toHaveBeenCalledWith(20);
+    expect(queryBuilder.take).toHaveBeenCalledWith(20);
   });
 
   it('creates a level and its audit record in the same transaction', async () => {

@@ -11,6 +11,7 @@ import { Task12AdminMediaAndOrderIndexes1718000000002 } from './migrations/0003-
 import { SkuStockVersion1718000000003 } from './migrations/0004-sku-stock-version.js';
 import { MembershipAndOrderPricing1718000000004 } from './migrations/0005-membership-and-order-pricing.js';
 import { MembershipEntitlementSegments1718000000005 } from './migrations/0006-membership-entitlement-segments.js';
+import { DefaultMembershipLevels1718000000006 } from './migrations/0007-default-membership-levels.js';
 
 loadDotenv();
 
@@ -43,6 +44,7 @@ export const AppDataSource = new DataSource({
     SkuStockVersion1718000000003,
     MembershipAndOrderPricing1718000000004,
     MembershipEntitlementSegments1718000000005,
+    DefaultMembershipLevels1718000000006,
   ],
   migrationsTableName: 'migrations',
   // The CLI runs migrations; runtime uses migrationsRun: false to keep startup

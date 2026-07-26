@@ -23,6 +23,11 @@ const client = vi.mocked(apiClient);
 const query: AdminMembershipLevelListQuery = {
   q: 'GOLD',
   status: MembershipLevelStatus.ACTIVE,
+  rank: 2,
+  minPriceCents: 29,
+  maxPriceCents: 19900,
+  page: 2,
+  pageSize: 20,
 };
 const body: SaveMembershipLevelRequest = {
   code: 'GOLD',
@@ -58,7 +63,7 @@ describe('membershipCardsApi', () => {
 
     expect(client.get).toHaveBeenNthCalledWith(
       1,
-      '/admin/membership-levels?q=GOLD&status=ACTIVE',
+      '/admin/membership-levels?q=GOLD&status=ACTIVE&rank=2&minPriceCents=29&maxPriceCents=19900&page=2&pageSize=20',
     );
     expect(client.get).toHaveBeenNthCalledWith(
       2,

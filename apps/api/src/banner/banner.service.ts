@@ -6,6 +6,9 @@ import {
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import {
   BannerTargetType,
+  BooleanFilter,
+  type AdminBannerListQuery,
+  type AdminBannerListResult,
   type AdminBannerView,
   type BannerView,
   type SaveBannerRequest,
@@ -14,6 +17,10 @@ import { DataSource, EntityManager, Repository } from 'typeorm';
 
 import { AuditService } from '../audit/audit.service.js';
 import { MediaAssetPolicyService } from '../catalog/media-asset-policy.service.js';
+import {
+  escapeLike,
+  toPaginatedView,
+} from '../common/query/admin-query.helpers.js';
 import { Banner } from '../database/entities/banner.entity.js';
 import { Category } from '../database/entities/category.entity.js';
 import { Product } from '../database/entities/product.entity.js';
@@ -30,11 +37,74 @@ export class BannerService {
     @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
-  async list(): Promise<AdminBannerView[]> {
-    const banners = await this.banners.find({
-      order: { sortOrder: 'ASC', createdAt: 'DESC' },
-    });
-    return banners.map((banner) => this.toAdminView(banner));
+  async list(query: AdminBannerListQuery): Promise<AdminBannerListResult> {
+    const builder = this.banners.createQueryBuilder('banner');
+    if (query.q?.trim()) {
+      builder.andWhere("banner.title LIKE :q ESCAPE '\\\\'", {
+        q: `%${escapeLike(query.q.trim())}%`,
+      });
+    }
+    if (query.isActive) {
+      builder.andWhere('banner.isActive = :isActive', {
+        isActive: query.isActive === BooleanFilter.YES,
+      });
+    }
+    if (query.targetType) {
+      builder.andWhere('banner.targetType = :targetType', {
+        targetType: query.targetType,
+      });
+    }
+    if (query.targetId?.trim()) {
+      builder.andWhere('banner.targetId = :targetId', {
+        targetId: query.targetId.trim(),
+      });
+    }
+    if (query.targetValid) {
+      const targetIsValid = `(
+        (banner.target_type = '${BannerTargetType.NONE}' AND banner.target_id IS NULL)
+        OR (banner.target_type = '${BannerTargetType.CATEGORY}' AND EXISTS (
+          SELECT 1 FROM categories category_target
+          WHERE category_target.id = banner.target_id
+            AND category_target.is_active = TRUE
+        ))
+        OR (banner.target_type = '${BannerTargetType.PRODUCT}' AND EXISTS (
+          SELECT 1 FROM products product_target
+          INNER JOIN categories product_category
+            ON product_category.id = product_target.category_id
+          WHERE product_target.id = banner.target_id
+            AND product_target.is_active = TRUE
+            AND product_category.is_active = TRUE
+        ))
+      )`;
+      builder.andWhere(
+        query.targetValid === BooleanFilter.YES
+          ? targetIsValid
+          : `NOT ${targetIsValid}`,
+      );
+    }
+    if (query.createdAtFrom) {
+      builder.andWhere('banner.createdAt >= :createdAtFrom', {
+        createdAtFrom: new Date(query.createdAtFrom),
+      });
+    }
+    if (query.createdAtBefore) {
+      builder.andWhere('banner.createdAt < :createdAtBefore', {
+        createdAtBefore: new Date(query.createdAtBefore),
+      });
+    }
+    const [banners, total] = await builder
+      .orderBy('banner.sortOrder', 'ASC')
+      .addOrderBy('banner.createdAt', 'DESC')
+      .addOrderBy('banner.id', 'DESC')
+      .skip((query.page - 1) * query.pageSize)
+      .take(query.pageSize)
+      .getManyAndCount();
+    return toPaginatedView(
+      banners.map((banner) => this.toAdminView(banner)),
+      total,
+      query.page,
+      query.pageSize,
+    );
   }
 
   async create(

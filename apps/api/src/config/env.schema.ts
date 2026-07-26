@@ -168,6 +168,7 @@ export function buildDataSourceOptions(env: AppEnv) {
     timezone: 'Z' as const,
     synchronize: false,
     migrationsRun: false,
+    migrationsTransactionMode: 'each' as const,
   };
 
   if (url) {

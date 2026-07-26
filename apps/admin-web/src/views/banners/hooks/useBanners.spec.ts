@@ -1,18 +1,22 @@
 import {
   BannerTargetType,
+  BooleanFilter,
+  type AdminBannerListResult,
   type AdminBannerView,
+  type AdminCategoryListResult,
   type AdminCategoryView,
+  type AdminProductListResult,
   type AdminProductSummaryView,
 } from '@bake-mall/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { adminCatalogApi } from '../../../api/catalog.js';
+import { categoriesApi } from '../../categories/api/index.js';
 import { productsApi } from '../../products/api/index.js';
 import { bannersApi } from '../api/index.js';
 import { useBanners } from './useBanners.js';
 
-vi.mock('../../../api/catalog.js', () => ({
-  adminCatalogApi: { listCategories: vi.fn() },
+vi.mock('../../categories/api/index.js', () => ({
+  categoriesApi: { list: vi.fn() },
 }));
 vi.mock('../../products/api/index.js', () => ({
   productsApi: { list: vi.fn() },
@@ -27,7 +31,7 @@ vi.mock('../api/index.js', () => ({
 }));
 
 const api = vi.mocked(bannersApi);
-const catalogApi = vi.mocked(adminCatalogApi);
+const categoryApi = vi.mocked(categoriesApi);
 const productApi = vi.mocked(productsApi);
 const banner: AdminBannerView = {
   id: 'banner-1',
@@ -62,21 +66,152 @@ const product = {
   updatedAt: '2026-07-18T09:00:00.000Z',
 } as AdminProductSummaryView;
 
+const bannerResult = (
+  items: AdminBannerView[] = [banner],
+  page = 1,
+  pageSize = 20,
+): AdminBannerListResult => ({ items, total: items.length, page, pageSize });
+const categoryResult: AdminCategoryListResult = {
+  items: [category],
+  total: 1,
+  page: 1,
+  pageSize: 100,
+};
+const productResult: AdminProductListResult = {
+  items: [product],
+  total: 1,
+  page: 1,
+  pageSize: 100,
+};
+
+type Deferred<T> = {
+  readonly promise: Promise<T>;
+  readonly resolve: (value: T) => void;
+};
+
+function createDeferred<T>(): Deferred<T> {
+  const resolve = vi.fn<(value: T) => void>();
+  const promise = new Promise<T>((promiseResolve) => {
+    resolve.mockImplementation(promiseResolve);
+  });
+  return { promise, resolve };
+}
+
 describe('useBanners', () => {
   afterEach(() => vi.resetAllMocks());
 
-  it('loads banners and valid targets in parallel', async () => {
-    api.list.mockResolvedValueOnce([banner]);
-    catalogApi.listCategories.mockResolvedValueOnce([category]);
-    productApi.list.mockResolvedValueOnce([product]);
+  it('loads paginated banners and valid target options in parallel', async () => {
+    api.list.mockResolvedValueOnce(bannerResult());
+    categoryApi.list.mockResolvedValueOnce(categoryResult);
+    productApi.list.mockResolvedValueOnce(productResult);
     const state = useBanners();
 
-    await state.refresh();
+    await state.initialize();
 
+    expect(api.list).toHaveBeenCalledWith({ page: 1, pageSize: 20 });
+    expect(categoryApi.list).toHaveBeenCalledWith({ page: 1, pageSize: 100 });
+    expect(productApi.list).toHaveBeenCalledWith({ page: 1, pageSize: 100 });
     expect(state.banners.value).toEqual([banner]);
     expect(state.categories.value).toEqual([category]);
     expect(state.products.value).toEqual([product]);
-    expect(state.loading.value).toBe(false);
+  });
+
+  it('loads every option page and reports a partial option failure without hiding banners', async () => {
+    const secondProduct = { ...product, id: 'product-101' };
+    api.list.mockResolvedValueOnce(bannerResult());
+    categoryApi.list.mockResolvedValueOnce(categoryResult);
+    productApi.list
+      .mockResolvedValueOnce({ ...productResult, total: 101 })
+      .mockResolvedValueOnce({
+        items: [secondProduct],
+        total: 101,
+        page: 2,
+        pageSize: 100,
+      });
+    const success = useBanners();
+
+    await success.initialize();
+
+    expect(productApi.list).toHaveBeenNthCalledWith(2, {
+      page: 2,
+      pageSize: 100,
+    });
+    expect(success.products.value).toEqual([product, secondProduct]);
+
+    api.list.mockResolvedValueOnce(bannerResult());
+    categoryApi.list.mockRejectedValueOnce(new Error('分类失败'));
+    productApi.list.mockResolvedValueOnce(productResult);
+    const failure = useBanners();
+    await failure.initialize();
+
+    expect(failure.banners.value).toEqual([banner]);
+    expect(failure.products.value).toEqual([product]);
+    expect(failure.lastError.value).toBe('Banner 跳转选项加载失败，请重试');
+  });
+
+  it('applies target-dependent filters only on search and resets pagination consistently', async () => {
+    api.list.mockImplementation((query) =>
+      Promise.resolve(bannerResult([banner], query.page, query.pageSize)),
+    );
+    categoryApi.list.mockResolvedValue(categoryResult);
+    productApi.list.mockResolvedValue(productResult);
+    const state = useBanners();
+    await state.initialize();
+
+    state.draftFilters.q = '  夏日  ';
+    state.draftFilters.targetType = BannerTargetType.PRODUCT;
+    state.draftFilters.targetId = product.id;
+    state.draftFilters.targetValid = BooleanFilter.YES;
+    await state.setPage(3);
+    expect(api.list).toHaveBeenLastCalledWith({ page: 3, pageSize: 20 });
+
+    await state.search();
+    expect(api.list).toHaveBeenLastCalledWith({
+      q: '夏日',
+      targetType: BannerTargetType.PRODUCT,
+      targetId: product.id,
+      targetValid: BooleanFilter.YES,
+      page: 1,
+      pageSize: 20,
+    });
+    expect(state.advancedCount.value).toBe(2);
+
+    await state.setPageSize(50);
+    expect(api.list).toHaveBeenLastCalledWith({
+      q: '夏日',
+      targetType: BannerTargetType.PRODUCT,
+      targetId: product.id,
+      targetValid: BooleanFilter.YES,
+      page: 1,
+      pageSize: 50,
+    });
+
+    await state.reset();
+    expect(api.list).toHaveBeenLastCalledWith({ page: 1, pageSize: 50 });
+  });
+
+  it('ignores stale list responses and keeps rows when a query fails', async () => {
+    const stale = createDeferred<AdminBannerListResult>();
+    const current = createDeferred<AdminBannerListResult>();
+    api.list
+      .mockReturnValueOnce(stale.promise)
+      .mockReturnValueOnce(current.promise);
+    const state = useBanners();
+
+    const firstLoad = state.refresh();
+    const secondLoad = state.refresh();
+    current.resolve(bannerResult([banner], 2));
+    await secondLoad;
+    stale.resolve(bannerResult([], 1));
+    await firstLoad;
+
+    expect(state.banners.value).toEqual([banner]);
+    expect(state.page.value).toBe(2);
+
+    api.list.mockRejectedValueOnce(new Error('查询失败'));
+    await state.refresh();
+    expect(state.banners.value).toEqual([banner]);
+    expect(state.lastError.value).toBe('Banner 数据加载失败，请重试');
   });
 
   it('opens a legacy row without an owned image and requires re-upload before save', async () => {
@@ -108,9 +243,7 @@ describe('useBanners', () => {
       createdAt: banner.createdAt,
       updatedAt: banner.updatedAt,
     });
-    api.list.mockResolvedValueOnce([]);
-    catalogApi.listCategories.mockResolvedValueOnce([]);
-    productApi.list.mockResolvedValueOnce([]);
+    api.list.mockResolvedValueOnce(bannerResult([]));
     const state = useBanners();
     state.openCreate();
     state.form.image = banner.image;
@@ -119,8 +252,6 @@ describe('useBanners', () => {
 
     await state.save();
 
-    expect(catalogApi.listCategories).not.toHaveBeenCalled();
-    expect(productApi.list).not.toHaveBeenCalled();
     expect(api.create).toHaveBeenCalledWith({
       image: banner.image,
       targetType: BannerTargetType.NONE,
@@ -129,25 +260,7 @@ describe('useBanners', () => {
     });
   });
 
-  it('keeps a successful create locally and resolves when the best-effort refresh fails', async () => {
-    const saved = { ...banner, id: 'banner-new' };
-    api.create.mockResolvedValueOnce(saved);
-    api.list.mockRejectedValueOnce(new Error('刷新失败'));
-    const state = useBanners();
-    state.openCreate();
-    state.form.image = banner.image;
-    state.form.title = banner.title ?? '';
-    state.form.targetType = banner.targetType;
-    state.form.targetId = banner.targetId;
-
-    await expect(state.save()).resolves.toEqual(saved);
-
-    expect(state.banners.value).toEqual([saved]);
-    expect(state.lastError.value).toBe('Banner 已保存，但列表刷新失败');
-    expect(state.dialogVisible.value).toBe(false);
-  });
-
-  it('applies update, toggle, and delete mutations locally even when refresh fails', async () => {
+  it('keeps successful mutations locally when the best-effort refresh fails', async () => {
     const state = useBanners();
     state.banners.value = [banner];
 

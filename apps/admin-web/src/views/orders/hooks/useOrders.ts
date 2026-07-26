@@ -7,38 +7,78 @@ import {
 } from '@bake-mall/contracts';
 import { computed, reactive, ref } from 'vue';
 
+import { DEFAULT_PAGE_SIZE } from '../../../config/pagination.js';
+import { countActiveFilters } from '../../../utils/list-query.js';
+import { yuanTextToCents } from '../../../utils/money.js';
 import { ordersApi } from '../api/index.js';
 import { createOrderFilterDefaults } from '../config/defaults.js';
-import { ORDER_PAGINATION } from '../config/pagination.js';
 import type { OrderFilterForm } from '../type/index.js';
 import { deriveOrderActions, type OrderAction } from './useOrderActions.js';
 
-const toQuery = (
+const trimmed = (value: string): string | undefined =>
+  value.trim() || undefined;
+
+function optionalCents(value: string): number | undefined {
+  return value.trim() ? yuanTextToCents(value) : undefined;
+}
+
+function copyFilters(filters: OrderFilterForm): OrderFilterForm {
+  return {
+    ...filters,
+    createdAtRange: filters.createdAtRange ? [...filters.createdAtRange] : null,
+  };
+}
+
+function replaceFilters(target: OrderFilterForm, next: OrderFilterForm): void {
+  Object.assign(target, copyFilters(next));
+}
+
+export function toOrderQuery(
   filters: OrderFilterForm,
   page: number,
   pageSize: number,
-): AdminOrderListQuery => ({
-  ...(filters.orderNo.trim() ? { orderNo: filters.orderNo.trim() } : {}),
-  ...(filters.status ? { status: filters.status } : {}),
-  ...(filters.fulfillmentType
-    ? { fulfillmentType: filters.fulfillmentType }
-    : {}),
-  ...(filters.createdAtRange
-    ? {
-        createdAtFrom: filters.createdAtRange[0].toISOString(),
-        createdAtBefore: filters.createdAtRange[1].toISOString(),
-      }
-    : {}),
-  page,
-  pageSize,
-});
+): AdminOrderListQuery {
+  const orderNo = trimmed(filters.orderNo);
+  const contact = trimmed(filters.contact);
+  const userId = trimmed(filters.userId);
+  const itemQ = trimmed(filters.itemQ);
+  const minPayableCents = optionalCents(filters.minPayableYuan);
+  const maxPayableCents = optionalCents(filters.maxPayableYuan);
+
+  return {
+    ...(orderNo ? { orderNo } : {}),
+    ...(contact ? { contact } : {}),
+    ...(filters.status ? { status: filters.status } : {}),
+    ...(filters.fulfillmentType
+      ? { fulfillmentType: filters.fulfillmentType }
+      : {}),
+    ...(userId ? { userId } : {}),
+    ...(itemQ ? { itemQ } : {}),
+    ...(filters.usesMembership
+      ? { usesMembership: filters.usesMembership }
+      : {}),
+    ...(filters.usesCredit ? { usesCredit: filters.usesCredit } : {}),
+    ...(filters.hasRemark ? { hasRemark: filters.hasRemark } : {}),
+    ...(minPayableCents !== undefined ? { minPayableCents } : {}),
+    ...(maxPayableCents !== undefined ? { maxPayableCents } : {}),
+    ...(filters.createdAtRange
+      ? {
+          createdAtFrom: filters.createdAtRange[0].toISOString(),
+          createdAtBefore: filters.createdAtRange[1].toISOString(),
+        }
+      : {}),
+    page,
+    pageSize,
+  };
+}
 
 export function useOrders() {
   const orders = ref<readonly AdminOrderListItem[]>([]);
   const detail = ref<OrderView | null>(null);
   const filters = reactive<OrderFilterForm>(createOrderFilterDefaults());
-  const page = ref<number>(ORDER_PAGINATION.defaultPage);
-  const pageSize = ref<number>(ORDER_PAGINATION.defaultPageSize);
+  const appliedFilters = ref<OrderFilterForm>(createOrderFilterDefaults());
+  const page = ref(1);
+  const pageSize = ref(DEFAULT_PAGE_SIZE);
   const total = ref(0);
   const loading = ref(false);
   const detailLoading = ref(false);
@@ -53,6 +93,22 @@ export function useOrders() {
     const status = detail.value?.status;
     return status ? deriveOrderActions(status) : [];
   });
+  const advancedCount = computed(() =>
+    countActiveFilters({
+      userId: filters.userId,
+      itemQ: filters.itemQ,
+      usesMembership: filters.usesMembership,
+      usesCredit: filters.usesCredit,
+      hasRemark: filters.hasRemark,
+      minPayableYuan: filters.minPayableYuan,
+      maxPayableYuan: filters.maxPayableYuan,
+      createdAtRange: filters.createdAtRange,
+    }),
+  );
+
+  function setFilters(value: Partial<OrderFilterForm>): void {
+    Object.assign(filters, value);
+  }
 
   async function load(): Promise<void> {
     const sequence = listSequence + 1;
@@ -60,17 +116,21 @@ export function useOrders() {
     loading.value = true;
     lastError.value = null;
     try {
-      const result = await ordersApi.list(
-        toQuery(filters, page.value, pageSize.value),
+      const query = toOrderQuery(
+        appliedFilters.value,
+        page.value,
+        pageSize.value,
       );
+      const result = await ordersApi.list(query);
       if (sequence !== listSequence) return;
       orders.value = [...result.items];
       page.value = result.page;
       pageSize.value = result.pageSize;
       total.value = result.total;
-    } catch {
+    } catch (error) {
       if (sequence === listSequence) {
-        lastError.value = '订单加载失败，请重试';
+        lastError.value =
+          error instanceof Error ? error.message : '订单加载失败，请重试';
       }
     } finally {
       if (sequence === listSequence) loading.value = false;
@@ -78,12 +138,15 @@ export function useOrders() {
   }
 
   async function search(): Promise<void> {
+    appliedFilters.value = copyFilters(filters);
     page.value = 1;
     await load();
   }
 
   async function reset(): Promise<void> {
-    Object.assign(filters, createOrderFilterDefaults());
+    const defaults = createOrderFilterDefaults();
+    replaceFilters(filters, defaults);
+    appliedFilters.value = copyFilters(defaults);
     page.value = 1;
     await load();
   }
@@ -142,6 +205,7 @@ export function useOrders() {
     orders,
     detail,
     filters,
+    appliedFilters,
     page,
     pageSize,
     total,
@@ -152,6 +216,8 @@ export function useOrders() {
     detailError,
     detailVisible,
     actions,
+    advancedCount,
+    setFilters,
     load,
     search,
     reset,

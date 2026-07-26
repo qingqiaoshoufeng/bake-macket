@@ -7,12 +7,13 @@ import {
   Patch,
   Post,
   Put,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 
 import type {
   AdminProductDetailView,
-  AdminProductSummaryView,
+  AdminProductListResult,
   SaveProductRequest,
 } from '@bake-mall/contracts';
 
@@ -20,6 +21,7 @@ import { JwtAdminGuard } from '../auth/admin-jwt.guard.js';
 import type { AuthenticatedAdmin } from '../auth/auth.types.js';
 import { CurrentAdmin } from '../auth/current-user.decorator.js';
 import { CatalogService } from './catalog.service.js';
+import { AdminProductListQueryDto } from './dto/admin-product-list-query.dto.js';
 import { UpdateProductDto } from './dto/product.dto.js';
 import { SaveProductDto } from './dto/save-product.dto.js';
 import { CreateSkuDto, UpdateSkuDto } from './dto/sku.dto.js';
@@ -29,8 +31,11 @@ import { CreateSkuDto, UpdateSkuDto } from './dto/sku.dto.js';
 export class AdminProductsController {
   constructor(private readonly catalog: CatalogService) {}
 
-  @Get() list(): Promise<AdminProductSummaryView[]> {
-    return this.catalog.listProducts();
+  @Get()
+  list(
+    @Query() query: AdminProductListQueryDto,
+  ): Promise<AdminProductListResult> {
+    return this.catalog.listAdminProducts(query);
   }
   @Post() create(
     @Body() dto: SaveProductDto,

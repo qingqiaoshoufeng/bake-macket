@@ -7,10 +7,11 @@ import {
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import {
   ApiErrorCode,
+  BooleanFilter,
   MembershipLevelStatus,
   type AdminMembershipLevelDetailView,
-  type AdminMembershipLevelListItem,
   type AdminMembershipLevelListQuery,
+  type AdminMembershipLevelListResult,
   type PublicMembershipLevelView,
   type SaveMembershipLevelRequest,
 } from '@bake-mall/contracts';
@@ -22,6 +23,7 @@ import {
 } from 'typeorm';
 
 import { AuditService } from '../audit/audit.service.js';
+import { escapeLike } from '../common/query/admin-query.helpers.js';
 import { MembershipLevel } from '../database/entities/membership-level.entity.js';
 import { MembershipPurchaseOrder } from '../database/entities/membership-purchase-order.entity.js';
 
@@ -51,20 +53,108 @@ export class MembershipService {
   }
 
   async listAdminLevels(
-    query: AdminMembershipLevelListQuery = {},
-  ): Promise<AdminMembershipLevelListItem[]> {
-    const levels = await this.levels.find({
-      order: { sortOrder: 'ASC', createdAt: 'DESC' },
-    });
-    const normalizedQuery = query.q?.trim().toLowerCase();
-    const filtered = levels.filter(
-      (level) =>
-        (query.status === undefined || this.statusOf(level) === query.status) &&
-        (!normalizedQuery ||
-          level.code.toLowerCase().includes(normalizedQuery) ||
-          level.name.toLowerCase().includes(normalizedQuery)),
+    query: AdminMembershipLevelListQuery,
+  ): Promise<AdminMembershipLevelListResult> {
+    const builder = this.levels
+      .createQueryBuilder('level')
+      .leftJoin(
+        MembershipPurchaseOrder,
+        'purchase',
+        'purchase.membershipLevelId = level.id',
+      )
+      .addSelect('COUNT(purchase.id)', 'purchaseCount');
+    const keyword = query.q?.trim();
+    if (keyword) {
+      builder.andWhere(
+        "(level.code LIKE :q ESCAPE '\\\\' OR level.name LIKE :q ESCAPE '\\\\')",
+        { q: `%${escapeLike(keyword)}%` },
+      );
+    }
+    if (query.status) {
+      builder.andWhere('level.isActive = :isActive', {
+        isActive: query.status === MembershipLevelStatus.ACTIVE,
+      });
+    }
+    if (query.rank !== undefined) {
+      builder.andWhere('level.rank = :rank', { rank: query.rank });
+    }
+    if (query.minPriceCents !== undefined) {
+      builder.andWhere('level.priceCents >= :minPriceCents', {
+        minPriceCents: query.minPriceCents,
+      });
+    }
+    if (query.maxPriceCents !== undefined) {
+      builder.andWhere('level.priceCents <= :maxPriceCents', {
+        maxPriceCents: query.maxPriceCents,
+      });
+    }
+    if (query.minDiscountBasisPoints !== undefined) {
+      builder.andWhere('level.discountBasisPoints >= :minDiscountBasisPoints', {
+        minDiscountBasisPoints: query.minDiscountBasisPoints,
+      });
+    }
+    if (query.maxDiscountBasisPoints !== undefined) {
+      builder.andWhere('level.discountBasisPoints <= :maxDiscountBasisPoints', {
+        maxDiscountBasisPoints: query.maxDiscountBasisPoints,
+      });
+    }
+    if (query.hasPurchases) {
+      builder.andWhere(
+        query.hasPurchases === BooleanFilter.YES
+          ? 'EXISTS (SELECT 1 FROM membership_purchase_orders sold WHERE sold.membership_level_id = level.id)'
+          : 'NOT EXISTS (SELECT 1 FROM membership_purchase_orders sold WHERE sold.membership_level_id = level.id)',
+      );
+    }
+    if (query.theme) {
+      builder.andWhere('level.theme = :theme', { theme: query.theme });
+    }
+    if (query.minValidDays !== undefined) {
+      builder.andWhere('level.validDays >= :minValidDays', {
+        minValidDays: query.minValidDays,
+      });
+    }
+    if (query.maxValidDays !== undefined) {
+      builder.andWhere('level.validDays <= :maxValidDays', {
+        maxValidDays: query.maxValidDays,
+      });
+    }
+    if (query.updatedAtFrom) {
+      builder.andWhere('level.updatedAt >= :updatedAtFrom', {
+        updatedAtFrom: new Date(query.updatedAtFrom),
+      });
+    }
+    if (query.updatedAtBefore) {
+      builder.andWhere('level.updatedAt < :updatedAtBefore', {
+        updatedAtBefore: new Date(query.updatedAtBefore),
+      });
+    }
+
+    const filtered = builder.groupBy('level.id');
+    const total = await filtered.getCount();
+    const { entities, raw } = await filtered
+      .orderBy('level.sortOrder', 'ASC')
+      .addOrderBy('level.createdAt', 'DESC')
+      .addOrderBy('level.id', 'DESC')
+      .skip((query.page - 1) * query.pageSize)
+      .take(query.pageSize)
+      .getRawAndEntities();
+    const purchaseCounts = new Map(
+      raw.map((row: Record<string, unknown>, index: number) => [
+        String(row.level_id ?? entities[index]?.id),
+        Number(row.purchaseCount ?? 0),
+      ]),
     );
-    return Promise.all(filtered.map((level) => this.toAdminView(level)));
+    return {
+      items: entities.map((level) =>
+        this.toAdminViewWithPurchaseCount(
+          level,
+          purchaseCounts.get(level.id) ?? 0,
+        ),
+      ),
+      total,
+      page: query.page,
+      pageSize: query.pageSize,
+    };
   }
 
   async getAdminLevel(id: string): Promise<AdminMembershipLevelDetailView> {
@@ -198,13 +288,21 @@ export class MembershipService {
   ): Promise<AdminMembershipLevelDetailView> {
     const purchases =
       manager?.getRepository(MembershipPurchaseOrder) ?? this.purchases;
+    return this.toAdminViewWithPurchaseCount(
+      level,
+      await purchases.count({ where: { membershipLevelId: level.id } }),
+    );
+  }
+
+  private toAdminViewWithPurchaseCount(
+    level: MembershipLevel,
+    purchaseCount: number,
+  ): AdminMembershipLevelDetailView {
     return {
       ...this.toPublicView(level),
       status: this.statusOf(level),
       version: level.version,
-      purchaseCount: await purchases.count({
-        where: { membershipLevelId: level.id },
-      }),
+      purchaseCount,
       createdAt: level.createdAt.toISOString(),
       updatedAt: level.updatedAt.toISOString(),
     };

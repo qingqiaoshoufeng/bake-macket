@@ -56,8 +56,27 @@ const createLevelRepository = () => {
   const records: MembershipLevel[] = [];
   let nextId = 1;
   const now = () => new Date('2026-07-21T08:00:00.000Z');
+  const queryBuilder = {
+    leftJoin: vi.fn().mockReturnThis(),
+    addSelect: vi.fn().mockReturnThis(),
+    andWhere: vi.fn().mockReturnThis(),
+    groupBy: vi.fn().mockReturnThis(),
+    orderBy: vi.fn().mockReturnThis(),
+    addOrderBy: vi.fn().mockReturnThis(),
+    skip: vi.fn().mockReturnThis(),
+    take: vi.fn().mockReturnThis(),
+    getCount: vi.fn(async () => records.length),
+    getRawAndEntities: vi.fn(async () => ({
+      entities: [...records],
+      raw: records.map((record) => ({
+        level_id: record.id,
+        purchaseCount: '0',
+      })),
+    })),
+  };
   return {
     records,
+    createQueryBuilder: vi.fn(() => queryBuilder),
     find: vi.fn(async ({ where }: { where?: Partial<MembershipLevel> } = {}) =>
       records.filter(
         (record) =>
@@ -298,9 +317,13 @@ describe('Membership levels (e2e)', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200)
       .expect(({ body }) => {
-        expect(body).toEqual([
-          expect.objectContaining({ id: active?.id, status: 'ACTIVE' }),
-        ]);
+        expect(body).toMatchObject({
+          items: [
+            expect.objectContaining({ id: active?.id, status: 'ACTIVE' }),
+          ],
+          page: 1,
+          pageSize: 20,
+        });
       });
     await request(app.getHttpServer())
       .get(`/api/v1/admin/membership-levels/${active?.id}`)

@@ -50,11 +50,14 @@ function toAdminProductBaseView(product: Product, category: Category) {
 export function toAdminProductSummaryView(
   product: Product,
   category: Category,
-  skus: Sku[],
+  skusOrActiveSkuCount: Sku[] | number,
 ): AdminProductSummaryView {
+  const activeSkuCount = Array.isArray(skusOrActiveSkuCount)
+    ? skusOrActiveSkuCount.filter(({ isActive }) => isActive).length
+    : skusOrActiveSkuCount;
   return {
     ...toAdminProductBaseView(product, category),
-    activeSkuCount: skus.filter(({ isActive }) => isActive).length,
+    activeSkuCount,
   };
 }
 

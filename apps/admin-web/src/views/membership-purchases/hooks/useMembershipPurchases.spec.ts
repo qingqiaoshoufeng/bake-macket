@@ -1,4 +1,5 @@
 import {
+  BooleanFilter,
   MemberCreditDirection,
   MemberCreditEntryType,
   MemberCreditGrantStatus,
@@ -138,34 +139,93 @@ function paginated(items: readonly MembershipPurchaseView[]) {
 describe('useMembershipPurchases', () => {
   afterEach(() => vi.resetAllMocks());
 
-  it('queries pagination plus user, level, one purchase status, and time filters', async () => {
+  it('将基础和高级草稿条件精确映射为分页查询', async () => {
     api.list.mockResolvedValueOnce(paginated([row]));
     const state = useMembershipPurchases();
     state.setFilters({
       purchaseNo: ' MP2026 ',
-      userId: ' user-1 ',
+      userPhone: ' 13800000000 ',
       levelId: ' level-1 ',
       status: MembershipPurchaseStatus.FULFILLED,
+      paymentStatus: MembershipPaymentStatus.SUCCEEDED,
+      minPriceYuan: '0.29',
+      maxPriceYuan: '99.90',
+      voidable: BooleanFilter.YES,
       createdAtRange: [
         new Date('2026-07-01T00:00:00.000Z'),
         new Date('2026-08-01T00:00:00.000Z'),
+      ],
+      paidAtRange: [
+        new Date('2026-07-02T00:00:00.000Z'),
+        new Date('2026-08-02T00:00:00.000Z'),
+      ],
+      voidedAtRange: [
+        new Date('2026-07-03T00:00:00.000Z'),
+        new Date('2026-08-03T00:00:00.000Z'),
       ],
     });
 
     await state.search();
 
-    expect(state.filters.status).toBe(MembershipPurchaseStatus.FULFILLED);
     expect(api.list).toHaveBeenCalledWith({
       purchaseNo: 'MP2026',
-      userId: 'user-1',
+      userPhone: '13800000000',
       levelId: 'level-1',
       status: MembershipPurchaseStatus.FULFILLED,
+      paymentStatus: MembershipPaymentStatus.SUCCEEDED,
+      minPriceCents: 29,
+      maxPriceCents: 9990,
+      voidable: BooleanFilter.YES,
       createdAtFrom: '2026-07-01T00:00:00.000Z',
       createdAtBefore: '2026-08-01T00:00:00.000Z',
+      paidAtFrom: '2026-07-02T00:00:00.000Z',
+      paidAtBefore: '2026-08-02T00:00:00.000Z',
+      voidedAtFrom: '2026-07-03T00:00:00.000Z',
+      voidedAtBefore: '2026-08-03T00:00:00.000Z',
       page: 1,
       pageSize: 20,
     });
     expect(state.purchases.value).toEqual([row]);
+  });
+
+  it('分页只使用已应用条件，重置清空草稿并立即刷新第一页', async () => {
+    api.list.mockResolvedValue(paginated([]));
+    const state = useMembershipPurchases();
+    state.setFilters({ userPhone: '13800000000' });
+    await state.search();
+    state.setFilters({ userPhone: '13900000000' });
+
+    await state.setPage(2);
+
+    expect(api.list).toHaveBeenLastCalledWith({
+      userPhone: '13800000000',
+      page: 2,
+      pageSize: 20,
+    });
+
+    await state.reset();
+
+    expect(state.filters.userPhone).toBe('');
+    expect(state.page.value).toBe(1);
+    expect(api.list).toHaveBeenLastCalledWith({ page: 1, pageSize: 20 });
+  });
+
+  it('金额草稿非法时保留草稿、阻止新请求并使旧响应失效', async () => {
+    const oldRequest = deferred<Awaited<ReturnType<typeof api.list>>>();
+    api.list.mockReturnValueOnce(oldRequest.promise);
+    const state = useMembershipPurchases();
+    const oldLoad = state.load();
+    state.setFilters({ minPriceYuan: '0.001' });
+
+    await state.search();
+    oldRequest.resolve(paginated([row]));
+    await oldLoad;
+
+    expect(api.list).toHaveBeenCalledTimes(1);
+    expect(state.filters.minPriceYuan).toBe('0.001');
+    expect(state.listError.value).toBe('金额最多保留两位小数');
+    expect(state.purchases.value).toEqual([]);
+    expect(state.loading.value).toBe(false);
   });
 
   it('keeps only the latest list result and latest error state', async () => {

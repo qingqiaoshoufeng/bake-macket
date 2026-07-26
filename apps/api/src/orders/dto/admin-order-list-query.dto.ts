@@ -11,18 +11,22 @@ import {
 } from 'class-validator';
 
 import {
+  BooleanFilter,
   FulfillmentType,
   OrderStatus,
   type AdminOrderListQuery,
 } from '@bake-mall/contracts';
 
-const COMPLETE_DATETIME_WITH_TIMEZONE =
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+import { COMPLETE_DATETIME_WITH_TIMEZONE } from '../../common/query/admin-query.helpers.js';
 
 export class AdminOrderListQueryDto implements AdminOrderListQuery {
   @IsOptional()
   @IsString()
   orderNo?: string;
+
+  @IsOptional()
+  @IsString()
+  contact?: string;
 
   @IsOptional()
   @IsEnum(OrderStatus)
@@ -31,6 +35,38 @@ export class AdminOrderListQueryDto implements AdminOrderListQuery {
   @IsOptional()
   @IsEnum(FulfillmentType)
   fulfillmentType?: FulfillmentType;
+
+  @IsOptional()
+  @IsString()
+  userId?: string;
+
+  @IsOptional()
+  @IsString()
+  itemQ?: string;
+
+  @IsOptional()
+  @IsEnum(BooleanFilter)
+  usesMembership?: BooleanFilter;
+
+  @IsOptional()
+  @IsEnum(BooleanFilter)
+  usesCredit?: BooleanFilter;
+
+  @IsOptional()
+  @IsEnum(BooleanFilter)
+  hasRemark?: BooleanFilter;
+
+  @Type(() => Number)
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  minPayableCents?: number;
+
+  @Type(() => Number)
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  maxPayableCents?: number;
 
   @IsOptional()
   @Matches(COMPLETE_DATETIME_WITH_TIMEZONE)

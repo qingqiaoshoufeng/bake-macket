@@ -12,6 +12,7 @@ import {
   type ComputedRef,
 } from 'vue';
 
+import { yuanTextToCents } from '../../../utils/money.js';
 import { membershipPurchasesApi } from '../api/index.js';
 import { createMembershipPurchaseFilterDefaults } from '../config/defaults.js';
 import { MEMBERSHIP_PURCHASE_PAGINATION } from '../config/pagination.js';
@@ -21,26 +22,55 @@ function messageOf(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
+function cloneFilters(
+  filters: MembershipPurchaseFilterForm,
+): MembershipPurchaseFilterForm {
+  const cloneRange = (range: readonly [Date, Date] | null) =>
+    range ? ([new Date(range[0]), new Date(range[1])] as const) : null;
+  return {
+    ...filters,
+    createdAtRange: cloneRange(filters.createdAtRange),
+    paidAtRange: cloneRange(filters.paidAtRange),
+    voidedAtRange: cloneRange(filters.voidedAtRange),
+  };
+}
+
+function optionalMoney(value: string): number | undefined {
+  return value.trim() ? yuanTextToCents(value) : undefined;
+}
+
+function rangeQuery(
+  range: readonly [Date, Date] | null,
+  fromKey: 'createdAtFrom' | 'paidAtFrom' | 'voidedAtFrom',
+  beforeKey: 'createdAtBefore' | 'paidAtBefore' | 'voidedAtBefore',
+): Record<string, string> {
+  return range
+    ? { [fromKey]: range[0].toISOString(), [beforeKey]: range[1].toISOString() }
+    : {};
+}
+
 export function toMembershipPurchaseQuery(
   filters: MembershipPurchaseFilterForm,
   page: number,
   pageSize: number,
 ): AdminMembershipPurchaseListQuery {
   const purchaseNo = filters.purchaseNo.trim();
-  const userId = filters.userId.trim();
+  const userPhone = filters.userPhone.trim();
   const levelId = filters.levelId.trim();
-  const status = filters.status || undefined;
+  const minPriceCents = optionalMoney(filters.minPriceYuan);
+  const maxPriceCents = optionalMoney(filters.maxPriceYuan);
   return {
     ...(purchaseNo ? { purchaseNo } : {}),
-    ...(userId ? { userId } : {}),
+    ...(userPhone ? { userPhone } : {}),
     ...(levelId ? { levelId } : {}),
-    ...(status ? { status } : {}),
-    ...(filters.createdAtRange
-      ? {
-          createdAtFrom: filters.createdAtRange[0].toISOString(),
-          createdAtBefore: filters.createdAtRange[1].toISOString(),
-        }
-      : {}),
+    ...(filters.status ? { status: filters.status } : {}),
+    ...(filters.paymentStatus ? { paymentStatus: filters.paymentStatus } : {}),
+    ...(minPriceCents !== undefined ? { minPriceCents } : {}),
+    ...(maxPriceCents !== undefined ? { maxPriceCents } : {}),
+    ...(filters.voidable ? { voidable: filters.voidable } : {}),
+    ...rangeQuery(filters.createdAtRange, 'createdAtFrom', 'createdAtBefore'),
+    ...rangeQuery(filters.paidAtRange, 'paidAtFrom', 'paidAtBefore'),
+    ...rangeQuery(filters.voidedAtRange, 'voidedAtFrom', 'voidedAtBefore'),
     page,
     pageSize,
   };
@@ -54,13 +84,15 @@ function rowFromDetail(
   detail: AdminMembershipPurchaseDetailView,
 ): MembershipPurchaseView {
   const {
-    benefits: _benefits,
-    paymentChannel: _paymentChannel,
+    benefits,
+    paymentChannel,
     membershipId,
     paidAt,
     voidedAt,
     ...purchase
   } = detail.purchase;
+  void benefits;
+  void paymentChannel;
   return {
     ...purchase,
     voidability: detail.voidability,
@@ -74,6 +106,9 @@ export function useMembershipPurchases() {
   const purchases = ref<readonly MembershipPurchaseView[]>([]);
   const detail = ref<AdminMembershipPurchaseDetailView | null>(null);
   const filters = reactive<MembershipPurchaseFilterForm>(
+    createMembershipPurchaseFilterDefaults(),
+  );
+  const appliedFilters = ref<MembershipPurchaseFilterForm>(
     createMembershipPurchaseFilterDefaults(),
   );
   const page = ref<number>(MEMBERSHIP_PURCHASE_PAGINATION.defaultPage);
@@ -109,7 +144,11 @@ export function useMembershipPurchases() {
     listError.value = null;
     try {
       const result = await membershipPurchasesApi.list(
-        toMembershipPurchaseQuery(filters, page.value, pageSize.value),
+        toMembershipPurchaseQuery(
+          appliedFilters.value,
+          page.value,
+          pageSize.value,
+        ),
       );
       if (!isCurrent('list', request)) return;
       purchases.value = [...result.items];
@@ -126,12 +165,23 @@ export function useMembershipPurchases() {
   }
 
   async function search(): Promise<void> {
-    page.value = 1;
-    await load();
+    try {
+      const nextAppliedFilters = cloneFilters(filters);
+      toMembershipPurchaseQuery(nextAppliedFilters, 1, pageSize.value);
+      appliedFilters.value = nextAppliedFilters;
+      page.value = 1;
+      await load();
+    } catch (error) {
+      sequence.list += 1;
+      loading.value = false;
+      listError.value = messageOf(error, '筛选条件无效');
+    }
   }
 
   async function reset(): Promise<void> {
-    Object.assign(filters, createMembershipPurchaseFilterDefaults());
+    const defaults = createMembershipPurchaseFilterDefaults();
+    Object.assign(filters, defaults);
+    appliedFilters.value = defaults;
     page.value = 1;
     await load();
   }

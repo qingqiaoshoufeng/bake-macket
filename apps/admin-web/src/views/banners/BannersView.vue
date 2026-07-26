@@ -1,17 +1,30 @@
 <script setup lang="ts">
 import type { AdminBannerView, MediaAsset } from '@bake-mall/contracts';
 import { onMounted } from 'vue';
-import { ElAlert, ElButton, ElMessage, ElMessageBox } from 'element-plus';
+import {
+  ElAlert,
+  ElButton,
+  ElMessage,
+  ElMessageBox,
+  ElPagination,
+} from 'element-plus';
 
 import AdminDataPanel from '../../components/layout/AdminDataPanel.vue';
 import AdminPage from '../../components/layout/AdminPage.vue';
 import AdminPageHeader from '../../components/layout/AdminPageHeader.vue';
+import BannerFilters from './components/BannerFilters.vue';
 import BannerFormDialog from './components/BannerFormDialog.vue';
 import BannerTable from './components/BannerTable.vue';
+import { BANNER_PAGINATION } from './config/pagination.js';
 import { useBanners } from './hooks/useBanners.js';
+import type { BannerFilterForm } from './type/list.js';
 
 const state = useBanners();
-onMounted(state.refresh);
+onMounted(state.initialize);
+
+function updateFilters(patch: Partial<BannerFilterForm>): void {
+  Object.assign(state.draftFilters, patch);
+}
 
 function updateForm(value: Partial<typeof state.form>): void {
   Object.assign(state.form, value);
@@ -80,19 +93,46 @@ async function removeBanner(banner: AdminBannerView): Promise<void> {
       show-icon
     >
       <template #default>
-        <ElButton size="small" @click="state.refresh">重新加载</ElButton>
+        <ElButton size="small" @click="state.initialize">重新加载</ElButton>
       </template>
     </ElAlert>
 
     <AdminDataPanel>
+      <template #toolbar>
+        <BannerFilters
+          :filters="state.draftFilters"
+          :target-options="state.filterTargetOptions.value"
+          :loading="state.loading.value"
+          :advanced-count="state.advancedCount.value"
+          @change="updateFilters"
+          @target-type-change="state.setFilterTargetType"
+          @search="state.search"
+          @reset="state.reset"
+        />
+      </template>
+
       <BannerTable
         :banners="state.banners.value"
         :loading="state.loading.value"
         :get-target-label="state.getTargetLabel"
+        :has-applied-filters="state.hasAppliedFilters.value"
         @edit="state.startEdit"
         @toggle="toggleBanner"
         @remove="removeBanner"
       />
+
+      <template v-if="state.total.value > 0" #footer>
+        <ElPagination
+          background
+          layout="total, sizes, prev, pager, next"
+          :total="state.total.value"
+          :current-page="state.page.value"
+          :page-size="state.pageSize.value"
+          :page-sizes="[...BANNER_PAGINATION.pageSizes]"
+          @update:current-page="state.setPage"
+          @update:page-size="state.setPageSize"
+        />
+      </template>
     </AdminDataPanel>
 
     <BannerFormDialog

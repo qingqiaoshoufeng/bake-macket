@@ -1,38 +1,66 @@
 <script setup lang="ts">
-import { FulfillmentType, OrderStatus } from '@bake-mall/contracts';
 import {
-  ElButton,
+  BooleanFilter,
+  FulfillmentType,
+  OrderStatus,
+} from '@bake-mall/contracts';
+import {
   ElDatePicker,
-  ElForm,
   ElFormItem,
   ElInput,
   ElOption,
   ElSelect,
 } from 'element-plus';
 
+import AdminFilterPanel from '../../../components/filters/AdminFilterPanel.vue';
 import {
   FULFILLMENT_LABELS,
   ORDER_STATUS_LABELS,
 } from '../../../constants/labels.js';
 import type { OrderFilterForm } from '../type/index.js';
 
-const props = defineProps<{ filters: OrderFilterForm; loading: boolean }>();
+const props = defineProps<{
+  filters: OrderFilterForm;
+  loading: boolean;
+  advancedCount: number;
+}>();
 const emit = defineEmits<{
   change: [value: Partial<OrderFilterForm>];
   search: [];
   reset: [];
 }>();
+
+const BOOLEAN_FILTER_LABELS: Readonly<Record<BooleanFilter, string>> = {
+  [BooleanFilter.YES]: '是',
+  [BooleanFilter.NO]: '否',
+};
+
+function emitText(key: keyof OrderFilterForm, value: unknown): void {
+  emit('change', { [key]: String(value ?? '') });
+}
 </script>
 
 <template>
-  <ElForm class="order-filters">
+  <AdminFilterPanel
+    :loading="props.loading"
+    :advanced-count="props.advancedCount"
+    @search="emit('search')"
+    @reset="emit('reset')"
+  >
     <ElFormItem label="订单号">
       <ElInput
         :model-value="props.filters.orderNo"
         clearable
         placeholder="输入订单号"
-        @update:model-value="emit('change', { orderNo: $event })"
-        @keyup.enter="emit('search')"
+        @update:model-value="emitText('orderNo', $event)"
+      />
+    </ElFormItem>
+    <ElFormItem label="联系人 / 手机号">
+      <ElInput
+        :model-value="props.filters.contact"
+        clearable
+        placeholder="输入联系人或手机号"
+        @update:model-value="emitText('contact', $event)"
       />
     </ElFormItem>
     <ElFormItem label="状态">
@@ -40,7 +68,7 @@ const emit = defineEmits<{
         :model-value="props.filters.status"
         clearable
         placeholder="全部状态"
-        @update:model-value="emit('change', { status: $event })"
+        @update:model-value="emit('change', { status: $event || '' })"
       >
         <ElOption
           v-for="status in Object.values(OrderStatus)"
@@ -55,7 +83,7 @@ const emit = defineEmits<{
         :model-value="props.filters.fulfillmentType"
         clearable
         placeholder="全部方式"
-        @update:model-value="emit('change', { fulfillmentType: $event })"
+        @update:model-value="emit('change', { fulfillmentType: $event || '' })"
       >
         <ElOption
           v-for="type in Object.values(FulfillmentType)"
@@ -65,84 +93,101 @@ const emit = defineEmits<{
         />
       </ElSelect>
     </ElFormItem>
-    <ElFormItem label="下单时间" class="order-filters__date">
-      <ElDatePicker
-        :model-value="
-          props.filters.createdAtRange
-            ? [...props.filters.createdAtRange]
-            : null
-        "
-        type="datetimerange"
-        range-separator="至"
-        start-placeholder="开始时间"
-        end-placeholder="结束时间"
-        @update:model-value="emit('change', { createdAtRange: $event })"
-      />
-    </ElFormItem>
-    <ElFormItem class="order-filters__actions">
-      <ElButton type="primary" :loading="loading" @click="emit('search')">
-        查询
-      </ElButton>
-      <ElButton :disabled="loading" @click="emit('reset')">重置</ElButton>
-    </ElFormItem>
-  </ElForm>
+
+    <template #advanced>
+      <ElFormItem label="用户 ID">
+        <ElInput
+          :model-value="props.filters.userId"
+          clearable
+          placeholder="输入用户 ID"
+          @update:model-value="emitText('userId', $event)"
+        />
+      </ElFormItem>
+      <ElFormItem label="商品 / SKU">
+        <ElInput
+          :model-value="props.filters.itemQ"
+          clearable
+          placeholder="输入商品或 SKU"
+          @update:model-value="emitText('itemQ', $event)"
+        />
+      </ElFormItem>
+      <ElFormItem label="是否会员">
+        <ElSelect
+          :model-value="props.filters.usesMembership"
+          clearable
+          placeholder="全部"
+          @update:model-value="emit('change', { usesMembership: $event || '' })"
+        >
+          <ElOption
+            v-for="value in Object.values(BooleanFilter)"
+            :key="value"
+            :label="BOOLEAN_FILTER_LABELS[value]"
+            :value="value"
+          />
+        </ElSelect>
+      </ElFormItem>
+      <ElFormItem label="是否消费金">
+        <ElSelect
+          :model-value="props.filters.usesCredit"
+          clearable
+          placeholder="全部"
+          @update:model-value="emit('change', { usesCredit: $event || '' })"
+        >
+          <ElOption
+            v-for="value in Object.values(BooleanFilter)"
+            :key="value"
+            :label="BOOLEAN_FILTER_LABELS[value]"
+            :value="value"
+          />
+        </ElSelect>
+      </ElFormItem>
+      <ElFormItem label="有无备注">
+        <ElSelect
+          :model-value="props.filters.hasRemark"
+          clearable
+          placeholder="全部"
+          @update:model-value="emit('change', { hasRemark: $event || '' })"
+        >
+          <ElOption
+            v-for="value in Object.values(BooleanFilter)"
+            :key="value"
+            :label="BOOLEAN_FILTER_LABELS[value]"
+            :value="value"
+          />
+        </ElSelect>
+      </ElFormItem>
+      <ElFormItem label="最低应付（元）">
+        <ElInput
+          :model-value="props.filters.minPayableYuan"
+          clearable
+          inputmode="decimal"
+          placeholder="例如 10.00"
+          @update:model-value="emitText('minPayableYuan', $event)"
+        />
+      </ElFormItem>
+      <ElFormItem label="最高应付（元）">
+        <ElInput
+          :model-value="props.filters.maxPayableYuan"
+          clearable
+          inputmode="decimal"
+          placeholder="例如 100.00"
+          @update:model-value="emitText('maxPayableYuan', $event)"
+        />
+      </ElFormItem>
+      <ElFormItem label="下单时间">
+        <ElDatePicker
+          :model-value="
+            props.filters.createdAtRange
+              ? [...props.filters.createdAtRange]
+              : null
+          "
+          type="datetimerange"
+          range-separator="至"
+          start-placeholder="开始时间"
+          end-placeholder="结束时间"
+          @update:model-value="emit('change', { createdAtRange: $event })"
+        />
+      </ElFormItem>
+    </template>
+  </AdminFilterPanel>
 </template>
-
-<style scoped>
-.order-filters {
-  display: grid;
-  grid-template-columns:
-    minmax(180px, 1.2fr)
-    minmax(140px, 0.8fr)
-    minmax(140px, 0.8fr)
-    minmax(300px, 1.6fr)
-    auto;
-  gap: 14px 16px;
-  width: 100%;
-}
-
-.order-filters :deep(.el-form-item) {
-  display: grid;
-  gap: 7px;
-  margin: 0;
-}
-
-.order-filters :deep(.el-form-item__label) {
-  height: auto;
-  line-height: 1.4;
-}
-
-.order-filters :deep(.el-input),
-.order-filters :deep(.el-select),
-.order-filters :deep(.el-date-editor) {
-  width: 100%;
-}
-
-.order-filters__actions {
-  align-content: end;
-}
-
-.order-filters__actions :deep(.el-form-item__content) {
-  flex-wrap: nowrap;
-}
-
-@media (max-width: 1240px) {
-  .order-filters {
-    grid-template-columns: repeat(3, minmax(160px, 1fr));
-  }
-
-  .order-filters__date {
-    grid-column: span 2;
-  }
-}
-
-@media (max-width: 1024px) {
-  .order-filters {
-    grid-template-columns: repeat(2, minmax(180px, 1fr));
-  }
-
-  .order-filters__date {
-    grid-column: 1 / -1;
-  }
-}
-</style>

@@ -45,7 +45,12 @@ describe('ProductEditorView', () => {
   it('shows a loading failure and retries', async () => {
     categories.list
       .mockRejectedValueOnce(new Error('分类加载失败'))
-      .mockResolvedValueOnce([]);
+      .mockResolvedValueOnce({
+        items: [],
+        total: 0,
+        page: 1,
+        pageSize: 100,
+      });
     const wrapper = await mountEditor();
 
     expect(wrapper.text()).toContain('商品加载失败，请重试');
@@ -56,7 +61,12 @@ describe('ProductEditorView', () => {
   });
 
   it('reloads the editor when the reused route changes to another product', async () => {
-    categories.list.mockResolvedValue([]);
+    categories.list.mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 100,
+    });
     api.getOne.mockImplementation((productId) =>
       Promise.resolve({
         ...PRODUCT_DETAIL_MOCK,
@@ -88,7 +98,12 @@ describe('ProductEditorView', () => {
   });
 
   it('renders create and edit titles without previewing initially loaded detail HTML', async () => {
-    categories.list.mockResolvedValue([]);
+    categories.list.mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 100,
+    });
     expect((await mountEditor()).text()).toContain('新增商品');
 
     api.getOne.mockResolvedValue({
@@ -105,7 +120,12 @@ describe('ProductEditorView', () => {
   });
 
   it('shows a non-conflict save message without a reload retry and keeps the draft', async () => {
-    categories.list.mockResolvedValue([]);
+    categories.list.mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 100,
+    });
     const saveError = new ApiClientError(500, '服务暂时不可用');
     api.create.mockRejectedValueOnce(saveError);
     const errorMessage = vi.spyOn(ElMessage, 'error');
@@ -141,7 +161,12 @@ describe('ProductEditorView', () => {
   });
 
   it('shows the conflict action without reloading the draft automatically', async () => {
-    categories.list.mockResolvedValue([]);
+    categories.list.mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 100,
+    });
     api.getOne.mockResolvedValue(PRODUCT_DETAIL_MOCK);
     api.replace.mockRejectedValueOnce(
       new ApiClientError(409, '冲突', {
@@ -157,7 +182,12 @@ describe('ProductEditorView', () => {
   });
 
   it('reports successful save and only previews response HTML', async () => {
-    categories.list.mockResolvedValue([]);
+    categories.list.mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 100,
+    });
     api.create.mockResolvedValue({
       ...PRODUCT_DETAIL_MOCK,
       detailHtml: '<p>server</p>',
@@ -198,7 +228,12 @@ describe('ProductEditorView', () => {
   });
 
   it('keeps untrusted server preview behind the shared sanitized boundary', async () => {
-    categories.list.mockResolvedValue([]);
+    categories.list.mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 100,
+    });
     api.create.mockResolvedValue({
       ...PRODUCT_DETAIL_MOCK,
       detailHtml:

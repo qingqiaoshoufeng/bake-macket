@@ -9,6 +9,7 @@ const props = defineProps<{
   products: readonly AdminProductSummaryView[];
   loading: boolean;
   deletingId: string | null;
+  hasAppliedFilters?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -92,13 +93,21 @@ void props;
       </div>
       <AdminEmptyState
         v-else
-        title="暂无商品"
-        description="创建第一件商品并补充可售 SKU。"
+        :title="hasAppliedFilters ? '当前筛选无结果' : '暂无商品'"
+        :description="
+          hasAppliedFilters
+            ? '请调整筛选条件后重新查询。'
+            : '创建第一件商品并补充可售 SKU。'
+        "
         tone="pink"
       />
     </template>
 
-    <ElTableColumn :label="actionsColumn.label" :width="actionsColumn.width">
+    <ElTableColumn
+      :label="actionsColumn.label"
+      :width="actionsColumn.width"
+      fixed="right"
+    >
       <template #default="{ row }">
         <ElButton
           size="small"

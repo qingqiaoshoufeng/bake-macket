@@ -1,5 +1,6 @@
 import type {
   ApiErrorCode,
+  BooleanFilter,
   MembershipBenefit,
   MembershipLevelStatus,
   MembershipTheme,
@@ -24,8 +25,18 @@ export type MembershipCardForm = {
 };
 
 export type MembershipCardFilters = {
-  readonly q: string;
-  readonly status: MembershipLevelStatus | '';
+  q: string;
+  status: MembershipLevelStatus | '';
+  rank: number | null;
+  minPriceYuan: string;
+  maxPriceYuan: string;
+  minDiscountText: string;
+  maxDiscountText: string;
+  hasPurchases: BooleanFilter | '';
+  theme: MembershipTheme | '';
+  minValidDays: number | null;
+  maxValidDays: number | null;
+  updatedAtRange: readonly [Date, Date] | null;
 };
 
 export type MembershipLevelConflict = {

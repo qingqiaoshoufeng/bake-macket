@@ -11,6 +11,7 @@ const props = defineProps<{
   banners: readonly AdminBannerView[];
   loading: boolean;
   getTargetLabel: (banner: AdminBannerView) => string;
+  hasAppliedFilters?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -112,8 +113,12 @@ const tableData = computed(() => [...props.banners]);
     </ElTable>
     <AdminEmptyState
       v-else
-      title="暂无 Banner"
-      description="先创建一张首页横幅，让顾客快速看到主推内容。"
+      :title="hasAppliedFilters ? '当前筛选无结果' : '暂无 Banner'"
+      :description="
+        hasAppliedFilters
+          ? '请调整筛选条件后重新查询。'
+          : '先创建一张首页横幅，让顾客快速看到主推内容。'
+      "
       tone="lilac"
     />
   </div>

@@ -1,15 +1,26 @@
+import type {
+  AdminPageQuery,
+  BooleanFilter,
+  CreatedAtRangeQuery,
+  PaginatedView,
+} from './admin-list.js';
 import type { FulfillmentType, OrderStatus } from './enums.js';
 import type { OrderView } from './order.js';
 
-export type AdminOrderListQuery = {
-  orderNo?: string;
-  status?: OrderStatus;
-  fulfillmentType?: FulfillmentType;
-  createdAtFrom?: string;
-  createdAtBefore?: string;
-  page: number;
-  pageSize: number;
-};
+export type AdminOrderListQuery = AdminPageQuery &
+  CreatedAtRangeQuery & {
+    orderNo?: string;
+    contact?: string;
+    status?: OrderStatus;
+    fulfillmentType?: FulfillmentType;
+    userId?: string;
+    itemQ?: string;
+    usesMembership?: BooleanFilter;
+    usesCredit?: BooleanFilter;
+    hasRemark?: BooleanFilter;
+    minPayableCents?: number;
+    maxPayableCents?: number;
+  };
 
 export type AdminOrderListItem = {
   id: string;
@@ -26,12 +37,7 @@ export type AdminOrderListItem = {
   updatedAt: string;
 };
 
-export type AdminOrderListResult = {
-  items: AdminOrderListItem[];
-  page: number;
-  pageSize: number;
-  total: number;
-};
+export type AdminOrderListResult = PaginatedView<AdminOrderListItem>;
 
 export type OrderStatusUpdateResult = {
   order: OrderView;

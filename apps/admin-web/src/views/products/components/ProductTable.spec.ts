@@ -22,7 +22,10 @@ const TableStub = defineComponent({
 const TableColumnStub = defineComponent({
   name: 'ElTableColumn',
   inject: ['tableRows'],
-  props: { label: { type: String, required: true } },
+  props: {
+    label: { type: String, required: true },
+    fixed: { type: [String, Boolean], default: false },
+  },
   template: `
     <section :data-column-label="label">
       <slot v-for="row in tableRows" :key="row.id" :row="row" />
@@ -92,6 +95,9 @@ describe('ProductTable', () => {
     ).toEqual(
       PRODUCT_LIST_MOCK.map((product) => product.coverImage?.publicUrl),
     );
+    expect(
+      wrapper.findAllComponents(TableColumnStub).at(-1)?.props('fixed'),
+    ).toBe('right');
   });
 
   it('shows loading feedback without rendering the empty-product prompt', () => {

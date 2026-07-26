@@ -8,15 +8,21 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 
-import type { AdminBannerView, SaveBannerRequest } from '@bake-mall/contracts';
+import type {
+  AdminBannerListResult,
+  AdminBannerView,
+  SaveBannerRequest,
+} from '@bake-mall/contracts';
 
 import { JwtAdminGuard } from '../auth/admin-jwt.guard.js';
 import type { AuthenticatedAdmin } from '../auth/auth.types.js';
 import { CurrentAdmin } from '../auth/current-user.decorator.js';
 import { BannerService } from './banner.service.js';
+import { AdminBannerListQueryDto } from './dto/admin-banner-list-query.dto.js';
 import { SaveBannerDto } from './dto.js';
 
 @Controller('admin/banners')
@@ -25,8 +31,10 @@ export class AdminBannerController {
   constructor(private readonly banners: BannerService) {}
 
   @Get()
-  list(): Promise<AdminBannerView[]> {
-    return this.banners.list();
+  list(
+    @Query() query: AdminBannerListQueryDto,
+  ): Promise<AdminBannerListResult> {
+    return this.banners.list(query);
   }
 
   @Post()

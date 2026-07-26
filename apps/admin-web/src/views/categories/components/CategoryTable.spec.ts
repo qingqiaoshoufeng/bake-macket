@@ -102,6 +102,7 @@ describe('CategoryTable', () => {
     expect(columnProps.map(({ label }) => label)).toEqual(
       CATEGORY_COLUMNS.map(({ label }) => label),
     );
+    expect(columnProps.at(-1)?.fixed).toBe('right');
   });
 
   it('shows active and inactive labels from the shared defaults', () => {
@@ -109,6 +110,22 @@ describe('CategoryTable', () => {
 
     expect(wrapper.text()).toContain(ACTIVE_LABEL);
     expect(wrapper.text()).toContain(INACTIVE_LABEL);
+  });
+
+  it('disables the independent status switch while editing a row', async () => {
+    const category = categoryListMock[0];
+    const wrapper = mountTable(true);
+
+    await wrapper.setProps({ editingId: category.id });
+
+    expect(
+      wrapper
+        .findAllComponents({ name: 'ElSwitch' })
+        .find((component) =>
+          component.attributes('data-testid')?.endsWith(category.id),
+        )
+        ?.props('disabled'),
+    ).toBe(true);
   });
 
   it('emits row actions without mutating the readonly category input', async () => {

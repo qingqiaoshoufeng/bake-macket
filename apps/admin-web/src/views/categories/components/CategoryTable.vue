@@ -29,6 +29,7 @@ const props = defineProps<{
   loading: boolean;
   editingId: string | null;
   draft: CategoryInlineEdit;
+  hasAppliedFilters?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -139,6 +140,7 @@ function asCategory(row: unknown): AdminCategoryView {
       <template #default="{ row }">
         <ElSwitch
           :model-value="row.isActive"
+          :disabled="editingId === row.id"
           :data-testid="`category-active-${row.id}`"
           @change="() => emit('toggle-active', asCategory(row))"
         />
@@ -158,8 +160,12 @@ function asCategory(row: unknown): AdminCategoryView {
 
     <template #empty>
       <AdminEmptyState
-        title="暂无分类"
-        description="先创建一个分类，再为商品安排归属。"
+        :title="hasAppliedFilters ? '当前筛选无结果' : '暂无分类'"
+        :description="
+          hasAppliedFilters
+            ? '请调整筛选条件后重新查询。'
+            : '先创建一个分类，再为商品安排归属。'
+        "
         tone="mint"
       />
     </template>
@@ -168,6 +174,7 @@ function asCategory(row: unknown): AdminCategoryView {
       :label="actionsColumn.label"
       :width="actionsColumn.width"
       :align="actionsColumn.align"
+      fixed="right"
     >
       <template #default="{ row }">
         <template v-if="editingId === row.id">

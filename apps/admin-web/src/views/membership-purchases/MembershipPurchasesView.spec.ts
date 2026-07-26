@@ -1,4 +1,5 @@
 import {
+  MembershipLevelStatus,
   MemberCreditDirection,
   MemberCreditEntryType,
   MemberCreditGrantStatus,
@@ -13,7 +14,12 @@ import {
   type MembershipPurchaseView,
 } from '@bake-mall/contracts';
 import { flushPromises, mount } from '@vue/test-utils';
-import { ElMessage, ElMessageBox, type MessageBoxData } from 'element-plus';
+import {
+  ElButton,
+  ElMessage,
+  ElMessageBox,
+  type MessageBoxData,
+} from 'element-plus';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { membershipPurchasesApi } from './api/index.js';
@@ -24,6 +30,23 @@ vi.mock('./api/index.js', () => ({
     list: vi.fn(),
     getOne: vi.fn(),
     voidPurchase: vi.fn(),
+  },
+}));
+vi.mock('../membership-cards/api/index.js', () => ({
+  membershipCardsApi: {
+    list: vi.fn().mockResolvedValue({
+      items: [
+        {
+          id: 'level-1',
+          code: 'PEARL_90',
+          name: '珍珠季卡',
+          status: MembershipLevelStatus.ACTIVE,
+        },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 100,
+    }),
   },
 }));
 
@@ -135,14 +158,17 @@ const detail = {
 
 function mountView() {
   return mount(MembershipPurchasesView, {
-    global: { directives: { loading: {} } },
+    global: {
+      directives: { loading: {} },
+      components: { 'el-button': ElButton },
+    },
   });
 }
 
 describe('MembershipPurchasesView', () => {
   afterEach(() => vi.resetAllMocks());
 
-  it('offers one combined purchase status filter without a contradictory payment selector', async () => {
+  it('使用统一筛选面板并独立提供履约、支付和可读等级筛选', async () => {
     api.list.mockResolvedValueOnce({
       items: [],
       page: 1,
@@ -152,9 +178,18 @@ describe('MembershipPurchasesView', () => {
     const wrapper = mountView();
     await flushPromises();
 
+    expect(wrapper.findComponent({ name: 'AdminFilterPanel' }).exists()).toBe(
+      true,
+    );
     expect(wrapper.find('[aria-label="筛选购卡状态"]').exists()).toBe(true);
-    expect(wrapper.find('[aria-label="筛选支付状态"]').exists()).toBe(false);
-    expect(wrapper.text()).toContain('已履约 / 支付成功');
+    await wrapper.get('[data-testid="toggle-advanced"]').trigger('click');
+    expect(wrapper.find('[aria-label="筛选支付状态"]').exists()).toBe(true);
+    expect(wrapper.find('[aria-label="筛选用户手机号"]').exists()).toBe(true);
+    expect(
+      wrapper
+        .findComponent({ name: 'MembershipPurchaseFilters' })
+        .props('levelOptions'),
+    ).toEqual([{ value: 'level-1', label: '珍珠季卡（PEARL_90）' }]);
   });
 
   it('renders actionable list errors and empty state inside the shared Admin system', async () => {

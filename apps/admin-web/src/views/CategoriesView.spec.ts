@@ -23,7 +23,12 @@ describe('CategoriesView', () => {
   });
 
   it('uses the shared Admin page, header, and data panel hierarchy', async () => {
-    api.list.mockResolvedValueOnce([]);
+    api.list.mockResolvedValueOnce({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 20,
+    });
 
     const wrapper = mount(CategoriesView);
     await vi.waitFor(() => expect(api.list).toHaveBeenCalledTimes(1));
@@ -45,7 +50,12 @@ describe('CategoriesView', () => {
   });
 
   it('does not show an error after a successful initial load', async () => {
-    api.list.mockResolvedValueOnce([]);
+    api.list.mockResolvedValueOnce({
+      items: [],
+      total: 0,
+      page: 1,
+      pageSize: 20,
+    });
     const errorMessage = vi.spyOn(ElMessage, 'error');
 
     mount(CategoriesView);

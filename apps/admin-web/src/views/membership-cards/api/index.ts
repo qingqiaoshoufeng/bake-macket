@@ -1,7 +1,7 @@
 import type {
   AdminMembershipLevelDetailView,
-  AdminMembershipLevelListItem,
   AdminMembershipLevelListQuery,
+  AdminMembershipLevelListResult,
   MembershipLevelStatus,
   SaveMembershipLevelRequest,
 } from '@bake-mall/contracts';
@@ -11,15 +11,18 @@ import { apiClient } from '../../../api/http.js';
 function toSearchParams(query: AdminMembershipLevelListQuery): URLSearchParams {
   return new URLSearchParams(
     Object.entries(query)
-      .filter((entry): entry is [string, string] => Boolean(entry[1]))
-      .map(([key, value]) => [key, value]),
+      .filter((entry): entry is [string, string | number] => {
+        const value = entry[1];
+        return value !== undefined && value !== '';
+      })
+      .map(([key, value]) => [key, String(value)]),
   );
 }
 
 export const membershipCardsApi = {
   list: (
-    query: AdminMembershipLevelListQuery = {},
-  ): Promise<AdminMembershipLevelListItem[]> => {
+    query: AdminMembershipLevelListQuery,
+  ): Promise<AdminMembershipLevelListResult> => {
     const params = toSearchParams(query).toString();
     return apiClient.get(
       `/admin/membership-levels${params ? `?${params}` : ''}`,

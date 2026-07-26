@@ -1,12 +1,26 @@
 import { describe, expect, it } from 'vitest';
 
-import { envSchema } from './env.schema.js';
+import { buildDataSourceOptions, envSchema } from './env.schema.js';
 
 const DATABASE_ENV = {
   DATABASE_URL: 'mysql://user:password@127.0.0.1:3306/bake_mall',
 };
 const DEVELOPMENT_QUOTE_SECRET =
   'dev-only-order-quote-secret-must-be-at-least-32';
+
+describe('buildDataSourceOptions', () => {
+  it('runs each MySQL migration in its own transaction', () => {
+    const { error, value } = envSchema.validate({
+      ...DATABASE_ENV,
+      NODE_ENV: 'test',
+    });
+
+    expect(error).toBeUndefined();
+    expect(buildDataSourceOptions(value)).toMatchObject({
+      migrationsTransactionMode: 'each',
+    });
+  });
+});
 
 describe('envSchema order quote secret', () => {
   it.each([

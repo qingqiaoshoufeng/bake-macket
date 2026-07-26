@@ -4,6 +4,7 @@ import {
   type AdminMembershipLevelListItem,
 } from '@bake-mall/contracts';
 import { flushPromises, mount } from '@vue/test-utils';
+import { ElButton } from 'element-plus';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -59,6 +60,7 @@ async function mountView() {
     global: {
       plugins: [router],
       directives: { loading: {} },
+      components: { 'el-button': ElButton },
       stubs: { MembershipCardTable: true },
     },
   });
@@ -70,10 +72,18 @@ describe('MembershipCardsView', () => {
   afterEach(() => vi.resetAllMocks());
 
   it('从生产 API 加载列表并导航到新建和编辑页面', async () => {
-    api.list.mockResolvedValue([level]);
+    api.list.mockResolvedValue({
+      items: [level],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    });
     const { router, wrapper } = await mountView();
 
-    expect(api.list).toHaveBeenCalledWith({});
+    expect(api.list).toHaveBeenCalledWith({ page: 1, pageSize: 20 });
+    expect(wrapper.findComponent({ name: 'AdminFilterPanel' }).exists()).toBe(
+      true,
+    );
     const table = wrapper.findComponent({ name: 'MembershipCardTable' });
     expect(table.props('levels')).toEqual([level]);
 
@@ -87,7 +97,12 @@ describe('MembershipCardsView', () => {
   it('加载失败时保留可操作错误态并允许重新加载', async () => {
     api.list
       .mockRejectedValueOnce(new Error('服务不可用'))
-      .mockResolvedValueOnce([level]);
+      .mockResolvedValueOnce({
+        items: [level],
+        total: 1,
+        page: 1,
+        pageSize: 20,
+      });
     const { wrapper } = await mountView();
 
     expect(wrapper.text()).toContain('会员卡列表加载失败');

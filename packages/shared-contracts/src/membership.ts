@@ -1,3 +1,11 @@
+import type {
+  AdminPageQuery,
+  BooleanFilter,
+  CreatedAtRangeQuery,
+  PaginatedView,
+  UpdatedAtRangeQuery,
+} from './admin-list.js';
+
 export enum MembershipLevelStatus {
   ACTIVE = 'ACTIVE',
   INACTIVE = 'INACTIVE',
@@ -103,10 +111,23 @@ export type AdminMembershipLevelListItem = PublicMembershipLevelView & {
 
 export type AdminMembershipLevelDetailView = AdminMembershipLevelListItem;
 
-export type AdminMembershipLevelListQuery = {
-  q?: string;
-  status?: MembershipLevelStatus;
-};
+export type AdminMembershipLevelListQuery = AdminPageQuery &
+  UpdatedAtRangeQuery & {
+    q?: string;
+    status?: MembershipLevelStatus;
+    rank?: number;
+    minPriceCents?: number;
+    maxPriceCents?: number;
+    minDiscountBasisPoints?: number;
+    maxDiscountBasisPoints?: number;
+    hasPurchases?: BooleanFilter;
+    theme?: MembershipTheme;
+    minValidDays?: number;
+    maxValidDays?: number;
+  };
+
+export type AdminMembershipLevelListResult =
+  PaginatedView<AdminMembershipLevelListItem>;
 
 export type SaveMembershipLevelRequest = {
   code: string;
@@ -190,23 +211,25 @@ export type CreateMembershipPurchaseRequest = {
   levelId: string;
 };
 
-export type AdminMembershipPurchaseListQuery = {
-  purchaseNo?: string;
-  userId?: string;
-  levelId?: string;
-  status?: MembershipPurchaseStatus;
-  createdAtFrom?: string;
-  createdAtBefore?: string;
-  page: number;
-  pageSize: number;
-};
+export type AdminMembershipPurchaseListQuery = AdminPageQuery &
+  CreatedAtRangeQuery & {
+    purchaseNo?: string;
+    userId?: string;
+    userPhone?: string;
+    levelId?: string;
+    status?: MembershipPurchaseStatus;
+    paymentStatus?: MembershipPaymentStatus;
+    minPriceCents?: number;
+    maxPriceCents?: number;
+    voidable?: BooleanFilter;
+    paidAtFrom?: string;
+    paidAtBefore?: string;
+    voidedAtFrom?: string;
+    voidedAtBefore?: string;
+  };
 
-export type AdminMembershipPurchaseListResult = {
-  items: MembershipPurchaseView[];
-  page: number;
-  pageSize: number;
-  total: number;
-};
+export type AdminMembershipPurchaseListResult =
+  PaginatedView<MembershipPurchaseView>;
 
 type MembershipEntitlementSegmentBaseView = {
   id: string;

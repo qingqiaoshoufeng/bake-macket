@@ -77,7 +77,13 @@ describe('Order quote (e2e)', () => {
       ],
     })
       .overrideProvider(getRepositoryToken(User))
-      .useValue({ findOneBy: vi.fn() })
+      .useValue({
+        findOneBy: vi.fn().mockResolvedValue({
+          id: 'user-1',
+          phone: '13800000000',
+          phoneVerified: true,
+        }),
+      })
       .overrideProvider(getRepositoryToken(AdminUser))
       .useValue({
         findOne: vi.fn().mockResolvedValue(null),

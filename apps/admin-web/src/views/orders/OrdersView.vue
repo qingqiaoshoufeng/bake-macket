@@ -8,17 +8,12 @@ import AdminPageHeader from '../../components/layout/AdminPageHeader.vue';
 import OrderDetailDrawer from './components/OrderDetailDrawer.vue';
 import OrderFilters from './components/OrderFilters.vue';
 import OrderTable from './components/OrderTable.vue';
-import { ORDER_PAGINATION } from './config/pagination.js';
+import { PAGE_SIZE_OPTIONS } from '../../config/pagination.js';
 import type { OrderAction } from './hooks/useOrderActions.js';
 import { useOrders } from './hooks/useOrders.js';
-import type { OrderFilterForm } from './type/index.js';
 
 const state = useOrders();
 onMounted(state.load);
-
-function updateFilters(value: Partial<OrderFilterForm>): void {
-  Object.assign(state.filters, value);
-}
 
 async function runAction(action: OrderAction): Promise<void> {
   if (action.key === 'cancel') {
@@ -73,7 +68,8 @@ async function runAction(action: OrderAction): Promise<void> {
         <OrderFilters
           :filters="state.filters"
           :loading="state.loading.value"
-          @change="updateFilters"
+          :advanced-count="state.advancedCount.value"
+          @change="state.setFilters"
           @search="state.search"
           @reset="state.reset"
         />
@@ -93,7 +89,7 @@ async function runAction(action: OrderAction): Promise<void> {
           :total="state.total.value"
           :current-page="state.page.value"
           :page-size="state.pageSize.value"
-          :page-sizes="[...ORDER_PAGINATION.pageSizes]"
+          :page-sizes="[...PAGE_SIZE_OPTIONS]"
           @update:current-page="state.setPage"
           @update:page-size="state.setPageSize"
         />

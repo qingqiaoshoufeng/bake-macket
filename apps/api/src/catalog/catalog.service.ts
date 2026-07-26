@@ -11,13 +11,23 @@ import { DataSource, Repository } from 'typeorm';
 
 import {
   ApiErrorCode,
+  BooleanFilter,
+  ProductStockFilter,
+  type AdminCategoryListQuery,
+  type AdminCategoryListResult,
+  type AdminCategoryView,
   type AdminProductDetailView,
-  type AdminProductSummaryView,
+  type AdminProductListQuery,
+  type AdminProductListResult,
   type PublicProductDetailView,
   type PublicProductSummaryView,
   type SaveProductRequest,
 } from '@bake-mall/contracts';
 
+import {
+  escapeLike,
+  toPaginatedView,
+} from '../common/query/admin-query.helpers.js';
 import { HtmlSanitizerService } from '../content/html-sanitizer.service.js';
 import { AuditLog } from '../database/entities/audit-log.entity.js';
 import { Category } from '../database/entities/category.entity.js';
@@ -72,10 +82,58 @@ export class CatalogService {
     private readonly dataSource?: DataSource,
   ) {}
 
-  listCategories(): Promise<Category[]> {
-    return this.categories.find({
-      order: { sortOrder: 'ASC', createdAt: 'DESC' },
-    });
+  async listAdminCategories(
+    query: AdminCategoryListQuery,
+  ): Promise<AdminCategoryListResult> {
+    const builder = this.categories.createQueryBuilder('category');
+    if (query.q?.trim()) {
+      builder.andWhere("category.name LIKE :q ESCAPE '\\\\'", {
+        q: `%${escapeLike(query.q.trim())}%`,
+      });
+    }
+    if (query.isActive) {
+      builder.andWhere('category.isActive = :isActive', {
+        isActive: query.isActive === BooleanFilter.YES,
+      });
+    }
+    if (query.hasImage) {
+      builder.andWhere(
+        query.hasImage === BooleanFilter.YES
+          ? 'category.imageUrl IS NOT NULL'
+          : 'category.imageUrl IS NULL',
+      );
+    }
+    if (query.hasProducts) {
+      builder.andWhere(
+        `${query.hasProducts === BooleanFilter.NO ? 'NOT ' : ''}EXISTS (
+          SELECT 1 FROM products category_product
+          WHERE category_product.category_id = category.id
+        )`,
+      );
+    }
+    if (query.createdAtFrom) {
+      builder.andWhere('category.createdAt >= :createdAtFrom', {
+        createdAtFrom: new Date(query.createdAtFrom),
+      });
+    }
+    if (query.createdAtBefore) {
+      builder.andWhere('category.createdAt < :createdAtBefore', {
+        createdAtBefore: new Date(query.createdAtBefore),
+      });
+    }
+    const [categories, total] = await builder
+      .orderBy('category.sortOrder', 'ASC')
+      .addOrderBy('category.createdAt', 'DESC')
+      .addOrderBy('category.id', 'DESC')
+      .skip((query.page - 1) * query.pageSize)
+      .take(query.pageSize)
+      .getManyAndCount();
+    return toPaginatedView(
+      categories.map((category) => this.toAdminCategoryView(category)),
+      total,
+      query.page,
+      query.pageSize,
+    );
   }
   listPublicCategories(): Promise<Category[]> {
     return this.categories.find({
@@ -107,22 +165,120 @@ export class CatalogService {
     await this.categories.delete(id);
   }
 
-  async listProducts(): Promise<AdminProductSummaryView[]> {
-    const products = await this.products.find({
-      relations: { category: true },
-      order: { sortOrder: 'ASC', createdAt: 'DESC' },
-    });
-    return Promise.all(
-      products.map(async (product) =>
+  async listAdminProducts(
+    query: AdminProductListQuery,
+  ): Promise<AdminProductListResult> {
+    const builder = this.products
+      .createQueryBuilder('product')
+      .innerJoinAndSelect('product.category', 'category');
+    if (query.q?.trim()) {
+      builder.andWhere("product.name LIKE :q ESCAPE '\\\\'", {
+        q: `%${escapeLike(query.q.trim())}%`,
+      });
+    }
+    if (query.categoryId?.trim()) {
+      builder.andWhere('product.categoryId = :categoryId', {
+        categoryId: query.categoryId.trim(),
+      });
+    }
+    if (query.isActive) {
+      builder.andWhere('product.isActive = :isActive', {
+        isActive: query.isActive === BooleanFilter.YES,
+      });
+    }
+    if (query.hasActiveSku) {
+      builder.andWhere(
+        `${query.hasActiveSku === BooleanFilter.NO ? 'NOT ' : ''}EXISTS (
+          SELECT 1 FROM skus active_sku
+          WHERE active_sku.product_id = product.id
+            AND active_sku.is_active = TRUE
+        )`,
+      );
+    }
+    if (query.stock) {
+      const maxActiveStock = `COALESCE((SELECT MAX(sku_stock.stock)
+        FROM skus sku_stock
+        WHERE sku_stock.product_id = product.id
+          AND sku_stock.is_active = TRUE), 0)`;
+      const stockPredicate =
+        query.stock === ProductStockFilter.IN_STOCK
+          ? `${maxActiveStock} > :lowStockThreshold`
+          : query.stock === ProductStockFilter.LOW_STOCK
+            ? `${maxActiveStock} BETWEEN 1 AND :lowStockThreshold`
+            : `${maxActiveStock} = 0`;
+      builder.andWhere(
+        stockPredicate,
+        query.stock === ProductStockFilter.OUT_OF_STOCK
+          ? undefined
+          : { lowStockThreshold: query.lowStockThreshold ?? 10 },
+      );
+    }
+    if (query.hasCoverImage) {
+      builder.andWhere(
+        query.hasCoverImage === BooleanFilter.YES
+          ? 'product.coverImageUrl IS NOT NULL'
+          : 'product.coverImageUrl IS NULL',
+      );
+    }
+    if (
+      query.minPriceCents !== undefined ||
+      query.maxPriceCents !== undefined
+    ) {
+      const pricePredicates = [
+        ...(query.minPriceCents !== undefined
+          ? ['sku_price.price_cents >= :minPriceCents']
+          : []),
+        ...(query.maxPriceCents !== undefined
+          ? ['sku_price.price_cents <= :maxPriceCents']
+          : []),
+      ];
+      builder.andWhere(
+        `EXISTS (
+          SELECT 1 FROM skus sku_price
+          WHERE sku_price.product_id = product.id
+            AND ${pricePredicates.join(' AND ')}
+        )`,
+        {
+          ...(query.minPriceCents !== undefined
+            ? { minPriceCents: query.minPriceCents }
+            : {}),
+          ...(query.maxPriceCents !== undefined
+            ? { maxPriceCents: query.maxPriceCents }
+            : {}),
+        },
+      );
+    }
+    if (query.createdAtFrom) {
+      builder.andWhere('product.createdAt >= :createdAtFrom', {
+        createdAtFrom: new Date(query.createdAtFrom),
+      });
+    }
+    if (query.createdAtBefore) {
+      builder.andWhere('product.createdAt < :createdAtBefore', {
+        createdAtBefore: new Date(query.createdAtBefore),
+      });
+    }
+    const [products, total] = await builder
+      .orderBy('product.sortOrder', 'ASC')
+      .addOrderBy('product.createdAt', 'DESC')
+      .addOrderBy('product.id', 'DESC')
+      .skip((query.page - 1) * query.pageSize)
+      .take(query.pageSize)
+      .getManyAndCount();
+    const activeSkuCounts = await this.loadActiveSkuCounts(
+      products.map(({ id }) => id),
+    );
+    return toPaginatedView(
+      products.map((product) =>
         toAdminProductSummaryView(
           product,
           product.category,
-          await this.skus.find({
-            where: { productId: product.id },
-            order: { createdAt: 'DESC' },
-          }),
+          activeSkuCounts.get(product.id) ?? 0,
         ),
       ),
+      total,
+      query.page,
+      query.pageSize,
     );
   }
   async createProduct(dto: CreateProductDto): Promise<Product> {
@@ -488,6 +644,40 @@ export class CatalogService {
       skus,
     );
   }
+  private toAdminCategoryView(category: Category): AdminCategoryView {
+    return {
+      id: category.id,
+      name: category.name,
+      ...(category.imageUrl ? { imageUrl: category.imageUrl } : {}),
+      sortOrder: category.sortOrder,
+      isActive: category.isActive,
+      createdAt: category.createdAt.toISOString(),
+      updatedAt: category.updatedAt.toISOString(),
+    };
+  }
+
+  private async loadActiveSkuCounts(
+    productIds: string[],
+  ): Promise<Map<string, number>> {
+    if (!productIds.length) return new Map();
+    const rows = await this.skus
+      .createQueryBuilder('sku')
+      .select('sku.productId', 'productId')
+      .addSelect(
+        'SUM(CASE WHEN sku.isActive = TRUE THEN 1 ELSE 0 END)',
+        'activeSkuCount',
+      )
+      .where('sku.productId IN (:...productIds)', { productIds })
+      .groupBy('sku.productId')
+      .getRawMany<{ productId: string; activeSkuCount: string }>();
+    return new Map(
+      rows.map(({ productId, activeSkuCount }) => [
+        String(productId),
+        Number(activeSkuCount),
+      ]),
+    );
+  }
+
   private async validateSku(dto: CreateSkuDto): Promise<void> {
     try {
       await validateOrReject(Object.assign(new CreateSkuDto(), dto));

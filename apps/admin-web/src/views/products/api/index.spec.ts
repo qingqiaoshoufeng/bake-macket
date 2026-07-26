@@ -46,13 +46,16 @@ describe('productsApi', () => {
   });
 
   it('composes the five admin product endpoints without reshaping the body', async () => {
-    await productsApi.list();
+    await productsApi.list({ page: 2, pageSize: 50, q: '草莓' });
     await productsApi.getOne('product-1');
     await productsApi.create(body);
     await productsApi.replace('product-1', body);
     await productsApi.remove('product-1');
 
-    expect(client.get).toHaveBeenNthCalledWith(1, '/admin/products');
+    expect(client.get).toHaveBeenNthCalledWith(
+      1,
+      '/admin/products?page=2&pageSize=50&q=%E8%8D%89%E8%8E%93',
+    );
     expect(client.get).toHaveBeenNthCalledWith(2, '/admin/products/product-1');
     expect(client.post).toHaveBeenCalledWith('/admin/products', body);
     expect(client.put).toHaveBeenCalledWith('/admin/products/product-1', body);

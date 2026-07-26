@@ -9,6 +9,7 @@ import {
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import {
   ApiErrorCode,
+  BooleanFilter,
   canTransitionOrder,
   FulfillmentType,
   MemberCreditDirection,
@@ -497,12 +498,67 @@ export class OrdersService {
         orderNo: `%${escapeLikeLiteral(query.orderNo.trim())}%`,
       });
     }
+    if (query.contact?.trim()) {
+      const contact = `%${escapeLikeLiteral(query.contact.trim())}%`;
+      builder.andWhere(
+        "(order.contactName LIKE :contact ESCAPE '\\\\' OR order.contactPhone LIKE :contact ESCAPE '\\\\')",
+        { contact },
+      );
+    }
     if (query.status) {
       builder.andWhere('order.status = :status', { status: query.status });
     }
     if (query.fulfillmentType) {
       builder.andWhere('order.fulfillmentType = :fulfillmentType', {
         fulfillmentType: query.fulfillmentType,
+      });
+    }
+    if (query.userId?.trim()) {
+      builder.andWhere('order.userId = :userId', {
+        userId: query.userId.trim(),
+      });
+    }
+    if (query.itemQ?.trim()) {
+      const itemQ = `%${escapeLikeLiteral(query.itemQ.trim())}%`;
+      builder.andWhere(
+        `EXISTS (
+          SELECT 1 FROM order_items item
+          WHERE item.order_id = order.id
+            AND (item.product_name LIKE :itemQ ESCAPE '\\\\'
+              OR item.sku_name LIKE :itemQ ESCAPE '\\\\')
+        )`,
+        { itemQ },
+      );
+    }
+    if (query.usesMembership) {
+      builder.andWhere(
+        query.usesMembership === BooleanFilter.YES
+          ? 'order.membershipId IS NOT NULL'
+          : 'order.membershipId IS NULL',
+      );
+    }
+    if (query.usesCredit) {
+      builder.andWhere(
+        query.usesCredit === BooleanFilter.YES
+          ? 'order.creditAppliedCents > 0'
+          : 'order.creditAppliedCents = 0',
+      );
+    }
+    if (query.hasRemark) {
+      builder.andWhere(
+        query.hasRemark === BooleanFilter.YES
+          ? "order.remark IS NOT NULL AND order.remark <> ''"
+          : "order.remark IS NULL OR order.remark = ''",
+      );
+    }
+    if (query.minPayableCents !== undefined) {
+      builder.andWhere('order.payableTotalCents >= :minPayableCents', {
+        minPayableCents: query.minPayableCents,
+      });
+    }
+    if (query.maxPayableCents !== undefined) {
+      builder.andWhere('order.payableTotalCents <= :maxPayableCents', {
+        maxPayableCents: query.maxPayableCents,
       });
     }
     if (query.createdAtFrom) {
@@ -554,6 +610,9 @@ export class OrdersService {
       contactName: order.contactName,
       contactPhone: order.contactPhone,
       goodsTotalCents: order.goodsTotalCents,
+      membershipDiscountCents: order.membershipDiscountCents,
+      creditAppliedCents: order.creditAppliedCents,
+      payableTotalCents: order.payableTotalCents,
       createdAt: order.createdAt.toISOString(),
       updatedAt: order.updatedAt.toISOString(),
     };

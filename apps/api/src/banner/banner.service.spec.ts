@@ -1,4 +1,8 @@
-import { BannerTargetType, type SaveBannerRequest } from '@bake-mall/contracts';
+import {
+  BannerTargetType,
+  BooleanFilter,
+  type SaveBannerRequest,
+} from '@bake-mall/contracts';
 import { describe, expect, it, vi } from 'vitest';
 
 import { Banner } from '../database/entities/banner.entity.js';
@@ -36,6 +40,7 @@ const buildService = (
     ...entity,
   }));
   const bannerRepository = {
+    createQueryBuilder: vi.fn(),
     find: vi.fn().mockResolvedValue(banner ? [banner] : []),
     findOneBy: vi.fn().mockResolvedValue(banner),
     create: vi.fn((value: Record<string, unknown>) => value),
@@ -110,40 +115,144 @@ const storedProductBanner = {
 };
 
 describe('BannerService admin contract', () => {
-  it('returns the shared AdminBannerView shape instead of a persistence entity', async () => {
-    const { service } = buildService(storedProductBanner);
+  it('filters target validity and stably paginates banners in the database', async () => {
+    const builder = {
+      andWhere: vi.fn().mockReturnThis(),
+      orderBy: vi.fn().mockReturnThis(),
+      addOrderBy: vi.fn().mockReturnThis(),
+      skip: vi.fn().mockReturnThis(),
+      take: vi.fn().mockReturnThis(),
+      getManyAndCount: vi.fn().mockResolvedValue([[storedProductBanner], 4]),
+    };
+    const { service, bannerRepository } = buildService();
+    bannerRepository.createQueryBuilder = vi.fn().mockReturnValue(builder);
 
-    await expect(service.list()).resolves.toEqual([
-      {
-        id: 'banner-1',
-        image: {
-          objectKey: 'banners/summer.webp',
-          publicUrl: 'https://cdn.example.com/banners/summer.webp',
-        },
-        title: '夏日限定',
+    await expect(
+      service.list({
+        q: String.raw`  夏%_日\限定  `,
+        isActive: BooleanFilter.YES,
         targetType: BannerTargetType.PRODUCT,
         targetId: 'product-1',
-        sortOrder: 10,
-        isActive: true,
-        createdAt: '2026-07-18T08:00:00.000Z',
-        updatedAt: '2026-07-18T09:00:00.000Z',
-      },
-    ]);
+        targetValid: BooleanFilter.YES,
+        createdAtFrom: '2026-07-01T00:00:00.000Z',
+        createdAtBefore: '2026-08-01T00:00:00.000Z',
+        page: 2,
+        pageSize: 20,
+      }),
+    ).resolves.toEqual({
+      items: [
+        {
+          id: 'banner-1',
+          image: {
+            objectKey: 'banners/summer.webp',
+            publicUrl: 'https://cdn.example.com/banners/summer.webp',
+          },
+          title: '夏日限定',
+          targetType: BannerTargetType.PRODUCT,
+          targetId: 'product-1',
+          sortOrder: 10,
+          isActive: true,
+          createdAt: '2026-07-18T08:00:00.000Z',
+          updatedAt: '2026-07-18T09:00:00.000Z',
+        },
+      ],
+      total: 4,
+      page: 2,
+      pageSize: 20,
+    });
+    expect(builder.andWhere.mock.calls).toEqual(
+      expect.arrayContaining([
+        [
+          "banner.title LIKE :q ESCAPE '\\\\'",
+          { q: String.raw`%夏\%\_日\\限定%` },
+        ],
+        ['banner.isActive = :isActive', { isActive: true }],
+        [
+          'banner.targetType = :targetType',
+          { targetType: BannerTargetType.PRODUCT },
+        ],
+        ['banner.targetId = :targetId', { targetId: 'product-1' }],
+        [expect.stringContaining('product_target.is_active = TRUE')],
+        [
+          'banner.createdAt >= :createdAtFrom',
+          { createdAtFrom: new Date('2026-07-01T00:00:00.000Z') },
+        ],
+        [
+          'banner.createdAt < :createdAtBefore',
+          { createdAtBefore: new Date('2026-08-01T00:00:00.000Z') },
+        ],
+      ]),
+    );
+    expect(builder.orderBy).toHaveBeenCalledWith('banner.sortOrder', 'ASC');
+    expect(builder.addOrderBy).toHaveBeenNthCalledWith(
+      1,
+      'banner.createdAt',
+      'DESC',
+    );
+    expect(builder.addOrderBy).toHaveBeenNthCalledWith(2, 'banner.id', 'DESC');
+    expect(builder.skip).toHaveBeenCalledWith(20);
+  });
+
+  it('filters invalid NONE targets and returns an empty page', async () => {
+    const builder = {
+      andWhere: vi.fn().mockReturnThis(),
+      orderBy: vi.fn().mockReturnThis(),
+      addOrderBy: vi.fn().mockReturnThis(),
+      skip: vi.fn().mockReturnThis(),
+      take: vi.fn().mockReturnThis(),
+      getManyAndCount: vi.fn().mockResolvedValue([[], 0]),
+    };
+    const { service, bannerRepository } = buildService();
+    bannerRepository.createQueryBuilder = vi.fn().mockReturnValue(builder);
+
+    await expect(
+      service.list({
+        targetType: BannerTargetType.NONE,
+        targetValid: BooleanFilter.NO,
+        page: 1,
+        pageSize: 20,
+      }),
+    ).resolves.toEqual({ items: [], total: 0, page: 1, pageSize: 20 });
+    expect(builder.andWhere.mock.calls).toEqual(
+      expect.arrayContaining([
+        [
+          'banner.targetType = :targetType',
+          { targetType: BannerTargetType.NONE },
+        ],
+        [expect.stringContaining('banner.target_id IS NULL')],
+      ]),
+    );
   });
 
   it('keeps legacy rows manageable when object-key metadata is missing', async () => {
-    const { service } = buildService({
-      ...storedProductBanner,
-      imageObjectKey: null,
-    });
+    const builder = {
+      andWhere: vi.fn().mockReturnThis(),
+      orderBy: vi.fn().mockReturnThis(),
+      addOrderBy: vi.fn().mockReturnThis(),
+      skip: vi.fn().mockReturnThis(),
+      take: vi.fn().mockReturnThis(),
+      getManyAndCount: vi
+        .fn()
+        .mockResolvedValue([
+          [{ ...storedProductBanner, imageObjectKey: null }],
+          1,
+        ]),
+    };
+    const { service, bannerRepository } = buildService();
+    bannerRepository.createQueryBuilder = vi.fn().mockReturnValue(builder);
 
-    await expect(service.list()).resolves.toEqual([
-      expect.objectContaining({
-        id: 'banner-1',
-        image: null,
-        targetType: BannerTargetType.PRODUCT,
-      }),
-    ]);
+    await expect(service.list({ page: 1, pageSize: 20 })).resolves.toEqual({
+      items: [
+        expect.objectContaining({
+          id: 'banner-1',
+          image: null,
+          targetType: BannerTargetType.PRODUCT,
+        }),
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    });
   });
 
   it('persists and audits the complete shared save request', async () => {
