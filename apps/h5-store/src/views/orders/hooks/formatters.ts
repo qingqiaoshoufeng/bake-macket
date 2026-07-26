@@ -1,6 +1,4 @@
-export function formatMoney(cents: number): string {
-  return `¥${(cents / 100).toFixed(2)}`;
-}
+export { formatMoney } from '../../../utils/money.js';
 
 export function formatOrderDate(iso: string): string {
   const date = new Date(iso);

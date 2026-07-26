@@ -22,6 +22,22 @@ function createTestRouter() {
             },
             meta: { requiresAdminAuth: true, title: '编辑商品' },
           },
+          {
+            path: 'membership-cards/:id/edit',
+            component: {
+              template:
+                '<div data-testid="membership-editor-child">会员卡编辑内容</div>',
+            },
+            meta: { requiresAdminAuth: true, title: '编辑会员卡' },
+          },
+          {
+            path: 'membership-purchases',
+            component: {
+              template:
+                '<div data-testid="membership-purchases-child">购卡记录内容</div>',
+            },
+            meta: { requiresAdminAuth: true, title: '购卡记录' },
+          },
         ],
       },
     ],
@@ -33,12 +49,12 @@ function createTestRouter() {
   return router;
 }
 
-async function mountAdminLayoutAtEditor() {
+async function mountAdminLayoutAt(path: string) {
   const pinia = createPinia();
   setActivePinia(pinia);
   useAdminAuthStore(pinia).accessToken = 'admin-token';
   const router = createTestRouter();
-  await router.push('/products/product-1/edit');
+  await router.push(path);
   await router.isReady();
 
   const wrapper = mount(
@@ -48,6 +64,10 @@ async function mountAdminLayoutAtEditor() {
     },
   );
   return { router, wrapper };
+}
+
+async function mountAdminLayoutAtEditor() {
+  return mountAdminLayoutAt('/products/product-1/edit');
 }
 
 describe('AdminLayout', () => {
@@ -68,6 +88,36 @@ describe('AdminLayout', () => {
     expect(wrapper.get('[data-testid="editor-child"]').text()).toBe(
       '商品编辑内容',
     );
+  });
+
+  it('renders the membership editor title and highlights membership cards', async () => {
+    const { wrapper } = await mountAdminLayoutAt(
+      '/membership-cards/level-1/edit',
+    );
+
+    expect(wrapper.get('[data-testid="admin-page-title"]').text()).toBe(
+      '编辑会员卡',
+    );
+    const activeMenuItem = wrapper.get('.el-menu-item.is-active');
+    expect(activeMenuItem.text()).toContain('会员卡配置');
+    expect(activeMenuItem.attributes('aria-current')).toBe('page');
+    expect(wrapper.get('[data-testid="membership-editor-child"]').text()).toBe(
+      '会员卡编辑内容',
+    );
+  });
+
+  it('highlights the longest matching membership purchase navigation prefix', async () => {
+    const { wrapper } = await mountAdminLayoutAt('/membership-purchases');
+
+    expect(wrapper.get('[data-testid="admin-page-title"]').text()).toBe(
+      '购卡记录',
+    );
+    const activeMenuItem = wrapper.get('.el-menu-item.is-active');
+    expect(activeMenuItem.text()).toContain('购卡记录');
+    expect(activeMenuItem.attributes('aria-current')).toBe('page');
+    expect(
+      wrapper.get('[data-testid="membership-purchases-child"]').text(),
+    ).toBe('购卡记录内容');
   });
 
   it('places the narrow-screen warning below the topbar and before content', async () => {

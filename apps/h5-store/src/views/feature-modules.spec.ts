@@ -6,6 +6,7 @@ import * as cartFeature from './cart/index.js';
 import StoreTabbar from './catalog/components/StoreTabbar.vue';
 import * as checkoutFeature from './checkout/index.js';
 import * as loginFeature from './login/index.js';
+import * as membershipFeature from './membership/index.js';
 import * as ordersFeature from './orders/index.js';
 import * as profileFeature from './profile/index.js';
 
@@ -26,7 +27,27 @@ const FEATURE_EXPORTS = [
     ['OrderCard', 'OrderSnapshot', 'useOrderList', 'useOrderDetail'],
   ],
   [addressesFeature, ['AddressCard', 'AddressForm', 'useAddresses']],
-  [profileFeature, ['ProfileSummary', 'useProfile']],
+  [
+    profileFeature,
+    [
+      'ProfileIdentityCard',
+      'ProfileAccountInfo',
+      'ProfileServiceLinks',
+      'ProfileLogoutButton',
+      'useProfile',
+    ],
+  ],
+  [
+    membershipFeature,
+    [
+      'MembershipCardCarousel',
+      'MembershipCenterView',
+      'MembershipDetailView',
+      'MembershipPurchaseResultView',
+      'useMembershipOverview',
+      'useMembershipPurchase',
+    ],
+  ],
   [loginFeature, ['LoginForm', 'useLogin']],
 ] as const;
 

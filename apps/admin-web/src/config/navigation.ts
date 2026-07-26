@@ -26,4 +26,15 @@ export const ADMIN_NAV_GROUPS: readonly AdminNavGroup[] = [
     label: '订单履约',
     items: [{ path: '/orders', label: '订单', icon: 'order' }],
   },
+  {
+    label: '会员运营',
+    items: [
+      { path: '/membership-cards', label: '会员卡配置', icon: 'membership' },
+      {
+        path: '/membership-purchases',
+        label: '购卡记录',
+        icon: 'membership-purchase',
+      },
+    ],
+  },
 ];

@@ -1,7 +1,9 @@
 import { computed, readonly, ref, watch } from 'vue';
 import {
+  ApiErrorCode,
   FulfillmentType,
   type CreateOrderRequest,
+  type OrderQuoteView,
   type OrderView,
   type UserProfileView,
 } from '@bake-mall/contracts';
@@ -19,11 +21,15 @@ import { cartFeatureApi } from '../../cart/api/index.js';
 import { checkoutFeatureApi } from '../api/index.js';
 import {
   CHECKOUT_DEFAULTS,
+  ORDER_QUOTE_DEBOUNCE_MS,
   PHONE_PATTERN,
   REMARK_MAX_LENGTH,
 } from '../config/defaults.js';
 import { generateIdempotencyKey } from '../../../utils/idempotency.js';
+import { yuanTextToCents } from '../../../utils/money.js';
+import { ApiClientError } from '../../../api/http.js';
 import type { CheckoutFormValues, CheckoutValidation } from '../type/index.js';
+import { useOrderQuote } from './useOrderQuote.js';
 
 export { generateIdempotencyKey } from '../../../utils/idempotency.js';
 
@@ -56,6 +62,7 @@ export function validateCheckout(
 export function mapCheckoutRequest(
   values: Readonly<CheckoutFormValues>,
   cartItemIds: readonly string[],
+  quote: Readonly<OrderQuoteView> | null,
 ): CreateOrderRequest {
   const common = {
     contactName: values.contactName.trim(),
@@ -65,17 +72,27 @@ export function mapCheckoutRequest(
       ? { remark: values.remark.trim().slice(0, REMARK_MAX_LENGTH) }
       : {}),
   };
-  return values.fulfillmentType === FulfillmentType.PICKUP
-    ? {
-        ...common,
-        fulfillmentType: FulfillmentType.PICKUP,
-        pickupTimeText: values.pickupTimeText.trim(),
-      }
-    : {
-        ...common,
-        fulfillmentType: FulfillmentType.DELIVERY,
-        addressId: values.addressId as string,
-      };
+  if (!quote) {
+    throw new Error('报价已更新，请确认最新金额后再次下单');
+  }
+  const quoteIntent = {
+    requestedCreditCents: quote.requestedCreditCents,
+    quoteToken: quote.quoteToken,
+  };
+  if (values.fulfillmentType === FulfillmentType.PICKUP) {
+    return {
+      ...common,
+      ...quoteIntent,
+      fulfillmentType: FulfillmentType.PICKUP,
+      pickupTimeText: values.pickupTimeText.trim(),
+    };
+  }
+  return {
+    ...common,
+    ...quoteIntent,
+    fulfillmentType: FulfillmentType.DELIVERY,
+    addressId: values.addressId as string,
+  };
 }
 
 function errorMessage(error: unknown, fallback: string): string {
@@ -91,7 +108,10 @@ export function useCheckout(profile: UserProfileView | null) {
     contactName: profile?.nickname ?? '',
   });
   const submitting = ref(false);
-  const idempotencyKey = ref<string | null>(null);
+  const idempotencyReservation = ref<{
+    key: string;
+    requestFingerprint: string;
+  } | null>(null);
   const formError = ref<string | null>(null);
   const submitError = ref<string | null>(null);
 
@@ -102,9 +122,33 @@ export function useCheckout(profile: UserProfileView | null) {
       0,
     ),
   );
+  const quoteIntent = computed(() => ({
+    cartItemIds: cartItemIds.value,
+    cartVersion: cart.selectedItems
+      .map(
+        (item) =>
+          `${item.id}:${item.sku.id}:${item.quantity}:${item.sku.priceCents}`,
+      )
+      .join('|'),
+    fulfillmentType: values.value.fulfillmentType,
+  }));
+  const orderQuote = useOrderQuote({
+    intent: quoteIntent,
+    request: checkoutFeatureApi.quote,
+    debounceMs: ORDER_QUOTE_DEBOUNCE_MS,
+  });
+  const hasSubmittablePricing = computed(() => {
+    try {
+      yuanTextToCents(orderQuote.data.requestedCreditText.value);
+      return orderQuote.canUseQuote.value;
+    } catch {
+      return false;
+    }
+  });
   const canSubmit = computed(
     () =>
       !submitting.value &&
+      hasSubmittablePricing.value &&
       validateCheckout(values.value, cartItemIds.value).valid,
   );
 
@@ -156,15 +200,13 @@ export function useCheckout(profile: UserProfileView | null) {
 
   async function createOrder(
     key: string,
+    request: CreateOrderRequest,
     session: SessionSnapshot,
   ): Promise<OrderView> {
     orders.setSubmitting(true);
     orders.setError(null);
     try {
-      const order = await checkoutFeatureApi.create(
-        mapCheckoutRequest(values.value, cartItemIds.value),
-        key,
-      );
+      const order = await checkoutFeatureApi.create(request, key);
       if (isCurrentSession(session)) orders.applyCurrent(order);
       return order;
     } catch (error) {
@@ -186,13 +228,35 @@ export function useCheckout(profile: UserProfileView | null) {
       return null;
     }
 
+    try {
+      yuanTextToCents(orderQuote.data.requestedCreditText.value);
+    } catch (error) {
+      submitError.value = errorMessage(error, '消费金输入格式不正确');
+      return null;
+    }
+    const usableQuote = orderQuote.methods.requireUsableQuote();
+    if (!usableQuote) {
+      submitError.value = '报价已更新，请确认最新金额后再次下单';
+      return null;
+    }
+
+    const request = mapCheckoutRequest(
+      values.value,
+      cartItemIds.value,
+      usableQuote,
+    );
+    const requestFingerprint = JSON.stringify(request);
+    const reservation = idempotencyReservation.value;
+    const key =
+      reservation?.requestFingerprint === requestFingerprint
+        ? reservation.key
+        : generateIdempotencyKey();
+    idempotencyReservation.value = { key, requestFingerprint };
     const session = captureSession();
-    const key = idempotencyKey.value ?? generateIdempotencyKey();
-    idempotencyKey.value = key;
     submitting.value = true;
     try {
-      const order = await createOrder(key, session);
-      if (isCurrentSession(session)) idempotencyKey.value = null;
+      const order = await createOrder(key, request, session);
+      if (isCurrentSession(session)) idempotencyReservation.value = null;
       try {
         await refreshCart(session);
       } catch {
@@ -200,6 +264,16 @@ export function useCheckout(profile: UserProfileView | null) {
       }
       return order;
     } catch (error) {
+      if (
+        isCurrentSession(session) &&
+        error instanceof ApiClientError &&
+        error.code === ApiErrorCode.ORDER_QUOTE_STALE
+      ) {
+        idempotencyReservation.value = null;
+        orderQuote.methods.markStale('报价已失效，请确认最新金额后再次下单');
+        submitError.value = '报价已失效，请确认最新金额后再次下单';
+        return null;
+      }
       if (isCurrentSession(session)) {
         submitError.value = errorMessage(error, '提交失败');
       }
@@ -218,10 +292,22 @@ export function useCheckout(profile: UserProfileView | null) {
       cartTotalCents,
       formError: readonly(formError),
       submitError: readonly(submitError),
+      quote: orderQuote.data.quote,
+      requestedCreditText: orderQuote.data.requestedCreditText,
+      quoteValidationError: orderQuote.data.validationError,
+      quoteError: orderQuote.data.error,
+      quoteRequiresConfirmation: orderQuote.data.requiresConfirmation,
     },
     loading: computed(() => cart.loading || addresses.loading),
+    quoteLoading: orderQuote.loading,
     submitting: readonly(submitting),
     canSubmit,
-    methods: { load, updateValues, submit },
+    methods: {
+      load,
+      updateValues,
+      updateRequestedCreditText: orderQuote.methods.updateRequestedCreditText,
+      confirmQuote: orderQuote.methods.confirmLatest,
+      submit,
+    },
   };
 }

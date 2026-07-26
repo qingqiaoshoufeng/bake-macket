@@ -2,6 +2,13 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { AuditModule } from '../audit/audit.module.js';
+import { MemberAccount } from '../database/entities/member-account.entity.js';
+import { MemberCreditAllocation } from '../database/entities/member-credit-allocation.entity.js';
+import { MemberCreditEntry } from '../database/entities/member-credit-entry.entity.js';
+import { MemberCreditGrant } from '../database/entities/member-credit-grant.entity.js';
+import { UserMembership } from '../database/entities/user-membership.entity.js';
+import { IdempotencyModule } from '../idempotency/idempotency.module.js';
+import { MembershipModule } from '../membership/membership.module.js';
 import { Address } from '../database/entities/address.entity.js';
 import { CartItem } from '../database/entities/cart-item.entity.js';
 import { IdempotencyRecord } from '../database/entities/idempotency-record.entity.js';
@@ -32,8 +39,15 @@ import { OrdersService } from './orders.service.js';
       Order,
       OrderItem,
       IdempotencyRecord,
+      MemberAccount,
+      UserMembership,
+      MemberCreditGrant,
+      MemberCreditEntry,
+      MemberCreditAllocation,
     ]),
     AuditModule,
+    IdempotencyModule,
+    MembershipModule,
   ],
   controllers: [OrdersController, AdminOrdersController],
   providers: [OrdersService],

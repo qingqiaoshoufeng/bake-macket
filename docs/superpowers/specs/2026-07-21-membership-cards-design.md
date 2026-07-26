@@ -1,9 +1,10 @@
 # Bake Mall 会员卡与消费金设计规格
 
 - **日期：** 2026-07-21
-- **状态：** 已确认，待实施
+- **状态：** 已确认，实施中
 - **范围：** 共享契约、NestJS API、MySQL 迁移、Admin 会员运营、H5 会员展示与购买、商品订单会员定价
 - **关联规格：** `docs/superpowers/specs/2026-07-12-bake-mall-design.md`
+- **2026-07-22 决策补充：** 同级有效期内续费直接延长当前会员，并以不可变有效期贡献记录保留每笔购买的区间来源；有效期内升级按目标等级全价支付并立即生效，不折算、退款或顺延低等级剩余天数。
 
 ## 1. 目标与范围
 
@@ -44,12 +45,15 @@
 
 ### 2.1 会员卡
 
-- 每个用户同时最多有一个当前会员等级。
-- 同等级再次购买为续费：从当前到期时间顺延该等级的 `validDays`；若已过期，则从支付成功时间开始。
-- 购买更高 `rank` 等级为立即升级：新有效期从支付成功时间开始。
-- 当前会员有效时禁止购买更低 `rank` 等级。
-- 升级不折算旧卡剩余天数或现金。
-- 等级配置修改只影响未来购买；已购权益使用购买时快照。
+- 每个用户同时最多有一个当前会员等级；`member_accounts.active_membership_id` 必须直接指向当前时间有效且状态为 `ACTIVE` 的记录，不能指向未来才生效的记录。
+- 同级有效期内续费按该等级本次购买的完整价格付款，不允许消费金抵扣；不创建新的 `user_memberships`，而是从当前 `endsAt` 顺延本次购买快照的 `validDays`，并创建不可变有效期贡献记录。
+- 续费后的新周期沿用当前 `user_memberships` 的权益与折扣快照；等级配置变化仅影响首次开卡、过期后重新购买和跨等级升级。续费购买单仍完整保存当次配置快照，用于价格、赠送额度和审计追溯，但不在续费中途切换当前权益。
+- 同级会员已过期后重新购买，从支付成功时间开始并创建新的当前会员记录；旧记录转为 `EXPIRED`。
+- 购买更高 `rank` 等级为立即升级：按目标等级完整价格付款，支付成功时间为唯一切换点；旧会员截止并转为 `REPLACED`，新会员从该时刻起按新等级快照生效。
+- 当前会员有效时禁止购买更低 `rank` 等级；会员过期后可按新购卡购买任意上架等级。
+- 升级不折算旧卡已支付金额，不退款，不补偿或顺延低等级剩余天数；低等级已续到未来但尚未使用的天数随升级失效。
+- 消费金不能用于购买、续费或升级会员卡。升级与续费只追加新赠送额度，不清空原有消费金。
+- 等级配置修改只影响规则明确允许采用新快照的未来购买；已经生效的会员周期使用其 `user_memberships` 快照。
 - 会员到期后停止折扣，但已获得的消费金仍可使用。
 
 ### 2.2 赠送消费金
@@ -214,21 +218,39 @@ Admin 新增独立 `membership-cards` 和 `membership-purchases` feature；H5 �
 
 ### 4.4 `user_memberships`
 
-每次发卡、续费或升级创建新记录：
+首次开卡、过期后重新购买和跨等级升级创建新记录；同级有效期内续费延长当前记录，不新增记录：
 
-| 字段                                | 说明                           |
-| ----------------------------------- | ------------------------------ |
-| `user_id` / `purchase_order_id`     | 归属与来源                     |
-| `membership_level_id`               | 配置引用                       |
-| 等级 code/name/rank/discount 等快照 | 历史权益依据                   |
-| `starts_at` / `ends_at`             | 有效区间 `[start, end)`        |
-| `previous_membership_id`            | 前一记录，可空                 |
-| `status`                            | `ACTIVE`、`REPLACED`、`VOIDED` |
-| `created_at` / `updated_at`         | UTC 时间                       |
+| 字段                                | 说明                                      |
+| ----------------------------------- | ----------------------------------------- |
+| `user_id` / `purchase_order_id`     | 归属与首次创建该会员记录的购买来源        |
+| `membership_level_id`               | 配置引用                                  |
+| 等级 code/name/rank/discount 等快照 | 该连续会员周期内使用的历史权益依据        |
+| `starts_at` / `ends_at`             | 当前聚合有效区间 `[start, end)`           |
+| `previous_membership_id`            | 跨等级升级或重新开卡前的记录，可空        |
+| `status`                            | `ACTIVE`、`REPLACED`、`VOIDED`、`EXPIRED` |
+| `created_at` / `updated_at`         | UTC 时间                                  |
 
-有效会员必须同时满足：账户指针指向该记录、状态为 `ACTIVE`、当前时间位于 `[startsAt, endsAt)`。
+有效会员必须同时满足：账户指针指向该记录、状态为 `ACTIVE`、当前时间位于 `[startsAt, endsAt)`。任何写路径都不得让账户指针指向未来区间或已过期记录。
 
-### 4.5 `member_credit_grants`
+### 4.5 `membership_entitlement_segments`
+
+`0006` 迁移新增不可变有效期贡献表。每笔成功购卡恰好对应一条 segment，用于证明该 purchase 为哪一条会员记录贡献了哪段时间，并支持精确作废：
+
+| 字段                          | 说明                                               |
+| ----------------------------- | -------------------------------------------------- |
+| `membership_id`               | 被创建或延长的 `user_memberships`                  |
+| `purchase_order_id`           | 唯一购买来源；一笔成功购卡只能贡献一次             |
+| `kind`                        | `INITIAL`、`RENEWAL`、`UPGRADE`                    |
+| `starts_at` / `ends_at`       | 该购买贡献的有效区间 `[start, end)`                |
+| `previous_membership_id`      | 升级前会员，可空                                   |
+| `previous_membership_ends_at` | 升级前原始到期时间，用于作废升级时恢复；非升级为空 |
+| `created_at`                  | UTC 时间                                           |
+
+约束：`ends_at > starts_at`；`purchase_order_id` 唯一；三个外键均 `ON DELETE RESTRICT`；`membership_id` 与 `purchase_order_id` 使用 `ON UPDATE CASCADE`，`previous_membership_id` restore 外键固定使用 `ON UPDATE RESTRICT`。MySQL 8.4 errno 3823 禁止 previous restore 外键列同时参与 upgrade restore CHECK 与 `ON UPDATE CASCADE`，且会员主键不可变，因此不尝试 CASCADE fallback。segment 不复制等级权益、价格或额度快照，这些仍以购买单为权威。
+
+同级续费只允许追加当前会员的链尾 segment，且必须满足 `segment.startsAt === membership.endsAt`。作废续费只允许撤销链尾 segment，并把会员 `endsAt` 回退到该 segment 的 `startsAt`。
+
+### 4.6 `member_credit_grants`
 
 虽然消费金永久有效，仍按来源批次记录，支持精确作废：
 
@@ -242,7 +264,7 @@ Admin 新增独立 `membership-cards` 和 `membership-purchases` feature；H5 �
 
 扣款按创建时间 FIFO 分配到 grant；这样可以判断某一购卡赠送额度是否已被使用，并可精确冲销未用额度。
 
-### 4.6 `member_credit_entries`
+### 4.7 `member_credit_entries`
 
 不可变流水：
 
@@ -260,7 +282,7 @@ Admin 新增独立 `membership-cards` 和 `membership-purchases` feature；H5 �
 
 流水不更新、不删除；返还或作废通过新流水表达。
 
-### 4.7 `member_credit_allocations`
+### 4.8 `member_credit_allocations`
 
 记录一笔商品订单扣款或返还如何对应 grant 批次：
 
@@ -270,7 +292,7 @@ Admin 新增独立 `membership-cards` 和 `membership-purchases` feature；H5 �
 
 订单取消时根据原扣款 allocation 恢复各 grant，保证守恒。
 
-### 4.8 商品订单扩展
+### 4.9 商品订单扩展
 
 订单头保留 `goods_total_cents`，新增：
 
@@ -304,19 +326,20 @@ Purchase: PENDING → FULFILLED → VOIDED
 Payment:  PENDING → SUCCEEDED → REVERSED
 ```
 
-创建购卡单只保存快照，不发卡、不入账。模拟支付成功事务：
+创建购卡单只保存快照，不发卡、不入账。模拟支付成功事务使用统一锁顺序：用户 → 会员账户 → 购卡单 → 当前会员 → 有效期贡献 → grant → 流水。
 
-1. 锁定购卡单、用户账户及当前会员；
-2. 校验环境允许模拟支付；
-3. 校验购卡单仍为 `PENDING`；
-4. 再次校验等级上架和禁止降购；
-5. 创建新会员快照；
-6. 同级续费按旧到期日顺延，升级从当前时间重新计算；
-7. 将旧会员标记 `REPLACED`，账户指向新会员；
-8. 创建消费金 grant；
-9. 增加账户余额并写发放流水；
-10. 将支付和购买状态更新为成功；
-11. 提交。
+1. 校验环境允许模拟支付并锁定用户、账户和购卡单；
+2. 校验购卡单仍为 `PENDING`，目标等级仍上架；
+3. 解析当前时间有效会员并锁定记录；
+4. 当前会员有效且目标 `rank` 更低时拒绝降购；
+5. 同级有效期内续费：锁定当前链尾 segment，追加 `RENEWAL` segment，并把当前会员 `endsAt` 延长到新 segment 的 `endsAt`；状态和账户指针保持不变；
+6. 过期后购买：将旧记录置 `EXPIRED`，从支付成功时间创建新的当前会员及 `INITIAL` segment；
+7. 有效期内升级：按目标等级完整价格立即生效；记录旧会员原始 `endsAt`，将旧会员截止到支付时间并置 `REPLACED`，创建新会员及 `UPGRADE` segment，账户指向新会员；低等级剩余和未来已续天数不折算、不退款、不顺延；
+8. 通过 `MembershipCreditService` 创建消费金 grant、增加账户余额并写唯一发放流水；
+9. 将支付和购买状态更新为成功；
+10. 提交。
+
+任何购卡支付都不接受消费金抵扣。相同购卡单的并发支付只能创建一次会员/segment、一次 grant 和一条发放流水。
 
 相同幂等键重复请求返回同一购卡单；同 key 不同 request hash 返回 `409`。
 
@@ -325,12 +348,22 @@ Payment:  PENDING → SUCCEEDED → REVERSED
 仅当以下条件同时成立：
 
 - 购买单为 `FULFILLED` 且未作废；
-- 该购买对应当前会员链末端；
+- 该购买对应当前会员或其有效期贡献的链尾；
 - 该 grant 的 `remainingCents === grantedCents`；
 - 购卡生效后没有已创建商品订单使用该会员快照；
-- 前一会员链可恢复。
+- 对升级作废，前一会员的恢复信息完整；
+- 对续费作废，该 segment 是当前会员最后一段有效期贡献。
 
-事务中：冲销 grant、扣减账户余额、写反向流水、标记当前会员 `VOIDED`、恢复前一记录和账户指针、标记购买单与支付已冲销、写审计。
+作废使用与支付、商品订单一致的锁顺序：账户 → 当前会员 → segment → grant → 原发放流水。所有资格必须在锁内重新读取和判断，禁止使用锁前读取的 grant 作为权威值。
+
+事务中：
+
+- 通过 `MembershipCreditService` 锁定 grant，冲销未使用额度、扣减账户余额并写反向流水；反向流水的 `reversalOfEntryId` 必须指向原发放流水；
+- 同级续费作废：将当前会员 `endsAt` 回退到该 `RENEWAL` segment 的 `startsAt`，并保留同一当前会员记录；
+- 首次开卡作废：将对应会员置 `VOIDED`，账户指针置空或恢复仍有效的前一记录；
+- 升级作废：将新会员置 `VOIDED`；将旧会员 `endsAt` 恢复为 segment 保存的原始到期时间。作废时旧会员仍有效则恢复为 `ACTIVE` 并更新账户指针，已经过期则置 `EXPIRED` 且账户指针置空；
+- 标记购买单与支付已冲销并写审计；
+- 任一步失败时整体回滚。
 
 ### 5.3 商品报价
 
@@ -372,6 +405,12 @@ Payment:  PENDING → SUCCEEDED → REVERSED
 - 写 `PRODUCT_ORDER_CANCEL_REVERSAL`；
 - 更新订单状态并写审计；
 - 提交。
+
+### 5.6 Task 4.4 实现记录（2026-07-23）
+
+支付履约已拆分为 `MembershipEntitlementService` 与 `MembershipCreditService`：支付事务在锁定用户后先锁/创建账户，再锁购卡单与支付幂等记录；权益服务在同一事务内锁当前会员及同级续费链尾 segment，随后才调用消费金额度发放。首次、过期重开与升级各创建一条新会员记录和对应 segment；同级续费只追加 `RENEWAL` segment 并延长既有会员，不改变该会员的权益快照或账户当前指针。成功 purchase 的任何支付 key 重试都由其唯一 segment 回查 `membershipId`，因此不得通过 `UserMembership.purchaseOrderId` 查询续费结果。
+
+本记录不包含 Task 4.5 的作废恢复、Admin 详情或订单服务调用。
 
 ## 6. API 设计
 

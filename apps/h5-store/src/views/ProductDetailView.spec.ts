@@ -110,7 +110,9 @@ describe('ProductDetailView', () => {
 
     await router.push('/products/product-2');
     await vi.waitFor(() =>
-      expect(catalogFeatureApi.getProduct).toHaveBeenLastCalledWith('product-2'),
+      expect(catalogFeatureApi.getProduct).toHaveBeenLastCalledWith(
+        'product-2',
+      ),
     );
 
     expect(wrapper.text()).not.toContain(detail.name);

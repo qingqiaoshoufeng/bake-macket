@@ -29,6 +29,30 @@ export enum MembershipPaymentStatus {
   REVERSED = 'REVERSED',
 }
 
+export enum MembershipPaymentChannel {
+  SIMULATED = 'SIMULATED',
+}
+
+export enum MembershipEntitlementSegmentKind {
+  INITIAL = 'INITIAL',
+  RENEWAL = 'RENEWAL',
+  UPGRADE = 'UPGRADE',
+}
+
+export enum MembershipPurchaseVoidReasonCode {
+  PURCHASE_NOT_FULFILLED = 'PURCHASE_NOT_FULFILLED',
+  CREDIT_USED = 'CREDIT_USED',
+  MEMBERSHIP_CHAIN_NOT_RESTORABLE = 'MEMBERSHIP_CHAIN_NOT_RESTORABLE',
+  SEGMENT_NOT_CHAIN_TAIL = 'SEGMENT_NOT_CHAIN_TAIL',
+  MEMBERSHIP_BENEFIT_USED = 'MEMBERSHIP_BENEFIT_USED',
+}
+
+export enum MemberCreditGrantStatus {
+  ACTIVE = 'ACTIVE',
+  EXHAUSTED = 'EXHAUSTED',
+  REVERSED = 'REVERSED',
+}
+
 export enum MemberCreditDirection {
   CREDIT = 'CREDIT',
   DEBIT = 'DEBIT',
@@ -127,10 +151,17 @@ export type MembershipOverviewView = {
   simulatedPaymentEnabled: boolean;
 };
 
-export type MembershipPurchaseVoidability = {
-  allowed: boolean;
-  reason?: string;
-};
+export type MembershipPurchaseVoidability =
+  | {
+      allowed: true;
+      reasonCode?: never;
+      reason?: never;
+    }
+  | {
+      allowed: false;
+      reasonCode: MembershipPurchaseVoidReasonCode;
+      reason: string;
+    };
 
 export type MembershipPurchaseView = {
   id: string;
@@ -176,6 +207,138 @@ export type AdminMembershipPurchaseListResult = {
   pageSize: number;
   total: number;
 };
+
+type MembershipEntitlementSegmentBaseView = {
+  id: string;
+  membershipId: string;
+  purchaseOrderId: string;
+  startsAt: string;
+  endsAt: string;
+  createdAt: string;
+};
+
+export type MembershipEntitlementSegmentView =
+  | (MembershipEntitlementSegmentBaseView & {
+      kind:
+        | MembershipEntitlementSegmentKind.INITIAL
+        | MembershipEntitlementSegmentKind.RENEWAL;
+      previousMembershipId: null;
+      previousMembershipEndsAt: null;
+    })
+  | (MembershipEntitlementSegmentBaseView & {
+      kind: MembershipEntitlementSegmentKind.UPGRADE;
+      previousMembershipId: string;
+      previousMembershipEndsAt: string;
+    });
+
+export type AdminMembershipRecordView = {
+  id: string;
+  userId: string;
+  purchaseOrderId: string;
+  levelId: string;
+  levelCode: string;
+  levelName: string;
+  levelRank: number;
+  discountBasisPoints: number;
+  benefits: MembershipBenefit[];
+  cardTheme: MembershipCardThemeView;
+  startsAt: string;
+  endsAt: string;
+  previousMembershipId: string | null;
+  status: MembershipStatus;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AdminMemberCreditGrantView = {
+  id: string;
+  accountId: string;
+  purchaseOrderId: string;
+  grantedCents: number;
+  remainingCents: number;
+  status: MemberCreditGrantStatus;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AdminMemberCreditEntryView = {
+  id: string;
+  accountId: string;
+  direction: MemberCreditDirection;
+  type: MemberCreditEntryType;
+  amountCents: number;
+  balanceAfterCents: number;
+  referenceType: string;
+  referenceId: string;
+  operationKey: string;
+  reversalOfEntryId: string | null;
+  createdAt: string;
+};
+
+type AdminMembershipPurchaseSnapshotBaseView = Omit<
+  MembershipPurchaseView,
+  | 'userId'
+  | 'voidability'
+  | 'membershipId'
+  | 'paidAt'
+  | 'voidedAt'
+  | 'status'
+  | 'paymentStatus'
+> & {
+  userId: string;
+  benefits: MembershipBenefit[];
+  paymentChannel: MembershipPaymentChannel;
+};
+
+export type AdminMembershipPurchaseSnapshotView =
+  | (AdminMembershipPurchaseSnapshotBaseView & {
+      status: MembershipPurchaseStatus.PENDING;
+      paymentStatus: MembershipPaymentStatus.PENDING;
+      membershipId: null;
+      paidAt: null;
+      voidedAt: null;
+    })
+  | (AdminMembershipPurchaseSnapshotBaseView & {
+      status: MembershipPurchaseStatus.FULFILLED;
+      paymentStatus: MembershipPaymentStatus.SUCCEEDED;
+      membershipId: string;
+      paidAt: string;
+      voidedAt: null;
+    })
+  | (AdminMembershipPurchaseSnapshotBaseView & {
+      status: MembershipPurchaseStatus.VOIDED;
+      paymentStatus: MembershipPaymentStatus.REVERSED;
+      membershipId: string;
+      paidAt: string;
+      voidedAt: string;
+    });
+
+type AdminMembershipPurchaseDetailBaseView = {
+  membershipChain: AdminMembershipRecordView[];
+  grant: AdminMemberCreditGrantView | null;
+  entries: AdminMemberCreditEntryView[];
+  voidability: MembershipPurchaseVoidability;
+};
+
+export type AdminMembershipPurchaseDetailView =
+  | (AdminMembershipPurchaseDetailBaseView & {
+      purchase: Extract<
+        AdminMembershipPurchaseSnapshotView,
+        { status: MembershipPurchaseStatus.PENDING }
+      >;
+      segment: null;
+    })
+  | (AdminMembershipPurchaseDetailBaseView & {
+      purchase: Extract<
+        AdminMembershipPurchaseSnapshotView,
+        {
+          status:
+            | MembershipPurchaseStatus.FULFILLED
+            | MembershipPurchaseStatus.VOIDED;
+        }
+      >;
+      segment: MembershipEntitlementSegmentView;
+    });
 
 export type MemberCreditEntryView = {
   id: string;

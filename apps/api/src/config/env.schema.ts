@@ -31,6 +31,10 @@ export interface AppEnv {
    * sessions share the same lifetime for simplicity.
    */
   JWT_EXPIRES_IN_SECONDS: number;
+  /** Explicitly enables simulated membership payments outside production. */
+  SIMULATED_PAYMENT_ENABLED: boolean;
+  ORDER_QUOTE_TOKEN_SECRET: string;
+  ORDER_QUOTE_TTL_SECONDS: number;
 
   /**
    * Optional initial administrator provisioned from environment variables on
@@ -70,6 +74,8 @@ export const FALLBACK_USER_SECRET =
   'dev-only-user-jwt-secret-do-not-use-in-prod';
 export const FALLBACK_ADMIN_SECRET =
   'dev-only-admin-jwt-secret-do-not-use-in-prod';
+const FALLBACK_ORDER_QUOTE_TOKEN_SECRET =
+  'dev-only-order-quote-secret-must-be-at-least-32';
 
 export const envSchema = Joi.object<AppEnv, true>({
   NODE_ENV: Joi.string()
@@ -93,6 +99,18 @@ export const envSchema = Joi.object<AppEnv, true>({
     .integer()
     .positive()
     .default(60 * 60 * 24),
+  SIMULATED_PAYMENT_ENABLED: Joi.boolean()
+    .truthy('true')
+    .falsy('false')
+    .default(false),
+  ORDER_QUOTE_TOKEN_SECRET: Joi.string()
+    .min(32)
+    .default(FALLBACK_ORDER_QUOTE_TOKEN_SECRET)
+    .when('NODE_ENV', {
+      is: 'production',
+      then: Joi.string().invalid(FALLBACK_ORDER_QUOTE_TOKEN_SECRET).required(),
+    }),
+  ORDER_QUOTE_TTL_SECONDS: Joi.number().integer().positive().default(300),
 
   ADMIN_EMAIL: Joi.string().email().optional(),
   ADMIN_PASSWORD: Joi.string().min(8).optional(),

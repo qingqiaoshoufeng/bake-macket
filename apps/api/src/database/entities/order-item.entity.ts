@@ -50,6 +50,30 @@ export class OrderItem {
   @Column({ type: 'int', unsigned: true })
   quantity!: number;
 
+  @Column({
+    name: 'line_goods_total_cents',
+    type: 'int',
+    unsigned: true,
+    default: 0,
+  })
+  lineGoodsTotalCents!: number;
+
+  @Column({
+    name: 'line_membership_discount_cents',
+    type: 'int',
+    unsigned: true,
+    default: 0,
+  })
+  lineMembershipDiscountCents!: number;
+
+  @Column({
+    name: 'line_payable_cents',
+    type: 'int',
+    unsigned: true,
+    default: 0,
+  })
+  linePayableCents!: number;
+
   @CreateDateColumn({ name: 'created_at', type: 'datetime', precision: 0 })
   createdAt!: Date;
 }

@@ -13,8 +13,9 @@ import {
   OrderStatus,
   type AddressView,
   type CartItemView,
+  type OrderQuoteView,
 } from '@bake-mall/contracts';
-import { ApiClientError } from '../api/http.js';
+import { apiClient, ApiClientError } from '../api/http.js';
 
 /**
  * Checkout view contract pinned by Task 10.
@@ -96,6 +97,25 @@ function mountCheckout(
     global: { plugins: [pinia, router] },
   });
   return { wrapper, pinia, router };
+}
+
+const quote: OrderQuoteView = {
+  lines: [],
+  goodsTotalCents: 6800,
+  membershipDiscountCents: 0,
+  discountedTotalCents: 6800,
+  requestedCreditCents: 0,
+  creditAppliedCents: 0,
+  payableTotalCents: 6800,
+  availableCreditCents: 0,
+  maxCreditCents: 0,
+  membership: null,
+  quoteToken: 'checkout-test-quote-token',
+  expiresAt: '2099-01-01T00:00:00.000Z',
+};
+
+function seedQuoteApi(): void {
+  vi.spyOn(apiClient, 'post').mockResolvedValue(quote);
 }
 
 function verifiedProfile() {
@@ -197,12 +217,13 @@ describe('CheckoutView', () => {
     };
     const items = [cart[0], secondItem];
     seedApis({ cart: items });
+    seedQuoteApi();
     const { wrapper } = mountCheckout(() => {
       const store = useCartStore();
       store.applyItems(items);
       store.setSelected('cart-2', false);
     });
-    await flushPromises();
+    await waitForQuote();
     const createSpy = vi.spyOn(ordersApi, 'create').mockResolvedValue({
       id: 'order-selected',
       orderNo: 'BM2026071200000099',
@@ -212,6 +233,10 @@ describe('CheckoutView', () => {
       contactPhone: '13800000000',
       pickupTimeText: '明天上午十点',
       goodsTotalCents: 6800,
+      membershipDiscountCents: 0,
+      creditAppliedCents: 0,
+      payableTotalCents: 6800,
+      pricingVersion: 1,
       items: [],
       createdAt: '2026-07-12T10:00:00.000Z',
       updatedAt: '2026-07-12T10:00:00.000Z',
@@ -232,8 +257,9 @@ describe('CheckoutView', () => {
   it('submits a valid PICKUP order with a stable Idempotency-Key', async () => {
     const refreshSpy = vi.fn().mockResolvedValue(cart);
     seedApis({ cartRefresh: refreshSpy });
+    seedQuoteApi();
     const { wrapper, router } = mountCheckout();
-    await flushPromises();
+    await waitForQuote();
     const createSpy = vi.spyOn(ordersApi, 'create').mockResolvedValue({
       id: 'order-1',
       orderNo: 'BM2026071200000001',
@@ -243,6 +269,10 @@ describe('CheckoutView', () => {
       contactPhone: '13800000000',
       pickupTimeText: '明天上午十点',
       goodsTotalCents: 6800,
+      membershipDiscountCents: 0,
+      creditAppliedCents: 0,
+      payableTotalCents: 6800,
+      pricingVersion: 1,
       items: [],
       createdAt: '2026-07-12T10:00:00.000Z',
       updatedAt: '2026-07-12T10:00:00.000Z',
@@ -264,16 +294,45 @@ describe('CheckoutView', () => {
       contactPhone: '13800000000',
       pickupTimeText: '明天上午十点',
     });
+    expect(payload).toMatchObject({
+      requestedCreditCents: 0,
+      quoteToken: 'checkout-test-quote-token',
+    });
     expect(key).toBeTruthy();
     // Cart is refetched on success so the cleared items disappear.
     expect(refreshSpy).toHaveBeenCalled();
     expect(router.currentRoute.value.fullPath).toBe('/orders/order-1');
   });
 
+  it('generates a new Idempotency-Key when the payload changes after failure', async () => {
+    seedApis();
+    seedQuoteApi();
+    const { wrapper } = mountCheckout();
+    await waitForQuote();
+    const createSpy = vi
+      .spyOn(ordersApi, 'create')
+      .mockRejectedValue(new ApiClientError(0, '网络异常,请稍后重试'));
+
+    await wrapper.get('[data-testid="fulfillment-pickup"]').trigger('click');
+    await wrapper.get('[data-testid="contact-name"]').setValue('小明');
+    await wrapper.get('[data-testid="contact-phone"]').setValue('13800000000');
+    await wrapper.get('[data-testid="pickup-time"]').setValue('明天上午十点');
+    await wrapper.get('form').trigger('submit.prevent');
+    await flushPromises();
+    const firstKey = createSpy.mock.calls[0][1] as string;
+
+    await wrapper.get('[data-testid="contact-name"]').setValue('小明改名');
+    await wrapper.get('form').trigger('submit.prevent');
+    await flushPromises();
+
+    expect(createSpy.mock.calls[1][1]).not.toBe(firstKey);
+  });
+
   it('reuses the same Idempotency-Key across retries until success', async () => {
     seedApis();
+    seedQuoteApi();
     const { wrapper } = mountCheckout();
-    await flushPromises();
+    await waitForQuote();
     const networkError = new ApiClientError(0, '网络异常,请稍后重试');
     const createSpy = vi
       .spyOn(ordersApi, 'create')
@@ -287,6 +346,10 @@ describe('CheckoutView', () => {
         contactPhone: '13800000000',
         pickupTimeText: '明天上午十点',
         goodsTotalCents: 6800,
+        membershipDiscountCents: 0,
+        creditAppliedCents: 0,
+        payableTotalCents: 6800,
+        pricingVersion: 1,
         items: [],
         createdAt: '2026-07-12T10:00:00.000Z',
         updatedAt: '2026-07-12T10:00:00.000Z',
@@ -314,4 +377,8 @@ describe('CheckoutView', () => {
 
 function flushPromises(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+function waitForQuote(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 350));
 }

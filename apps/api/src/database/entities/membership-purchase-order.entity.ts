@@ -26,9 +26,13 @@ export enum MembershipPaymentChannel {
 
 @Entity({ name: 'membership_purchase_orders' })
 @Index('uniq_membership_purchase_orders_no', ['purchaseNo'], { unique: true })
-@Index('uniq_membership_purchase_orders_user_key', ['userId', 'idempotencyKey'], {
-  unique: true,
-})
+@Index(
+  'uniq_membership_purchase_orders_user_key',
+  ['userId', 'idempotencyKey'],
+  {
+    unique: true,
+  },
+)
 @Index('idx_membership_purchase_orders_user_created', ['userId', 'createdAt'])
 @Index('idx_membership_purchase_orders_level', ['membershipLevelId'])
 @Check('chk_membership_purchase_level_rank_positive', '`level_rank` > 0')

@@ -8,6 +8,7 @@ import { MemberAccount } from './member-account.entity.js';
 import { MemberCreditAllocation } from './member-credit-allocation.entity.js';
 import { MemberCreditEntry } from './member-credit-entry.entity.js';
 import { MemberCreditGrant } from './member-credit-grant.entity.js';
+import { MembershipEntitlementSegment } from './membership-entitlement-segment.entity.js';
 import { MembershipLevel } from './membership-level.entity.js';
 import { MembershipPurchaseOrder } from './membership-purchase-order.entity.js';
 import { OrderItem } from './order-item.entity.js';
@@ -102,6 +103,20 @@ const EXPECTED_COLUMNS = new Map<EntityTarget<unknown>, readonly string[]>([
     ],
   ],
   [
+    MembershipEntitlementSegment,
+    [
+      'id',
+      'membership_id',
+      'purchase_order_id',
+      'kind',
+      'starts_at',
+      'ends_at',
+      'previous_membership_id',
+      'previous_membership_ends_at',
+      'created_at',
+    ],
+  ],
+  [
     MemberCreditGrant,
     [
       'id',
@@ -142,6 +157,7 @@ const entities = [
   MemberAccount,
   MembershipPurchaseOrder,
   UserMembership,
+  MembershipEntitlementSegment,
   MemberCreditGrant,
   MemberCreditEntry,
   MemberCreditAllocation,
@@ -176,6 +192,37 @@ describe('membership and pricing entity metadata', () => {
         [...expectedColumns].toSorted(),
       );
     }
+  });
+
+  it('keeps direct entitlement FKs cascading but makes the restore FK restrictive', async () => {
+    const dataSource = new DataSource({
+      type: 'mysql',
+      database: 'metadata_test',
+      entities,
+    });
+
+    await (
+      dataSource as DataSource & { buildMetadatas(): Promise<void> }
+    ).buildMetadatas();
+
+    const foreignKeys = dataSource.getMetadata(
+      MembershipEntitlementSegment,
+    ).foreignKeys;
+    expect(
+      foreignKeys.find(({ columnNames }) =>
+        columnNames.includes('membership_id'),
+      )?.onUpdate,
+    ).toBe('CASCADE');
+    expect(
+      foreignKeys.find(({ columnNames }) =>
+        columnNames.includes('purchase_order_id'),
+      )?.onUpdate,
+    ).toBe('CASCADE');
+    expect(
+      foreignKeys.find(({ columnNames }) =>
+        columnNames.includes('previous_membership_id'),
+      )?.onUpdate,
+    ).toBe('RESTRICT');
   });
 
   it('uses unsigned integer metadata for identifiers, money, quantities, and versions', async () => {
@@ -269,8 +316,8 @@ describe('membership and pricing entity metadata', () => {
 
     const unique = dataSource
       .getMetadata(IdempotencyRecord)
-      .indices.find(({ givenName }) =>
-        givenName === 'uniq_idempotency_user_operation_key',
+      .indices.find(
+        ({ givenName }) => givenName === 'uniq_idempotency_user_operation_key',
       );
     expect(unique?.isUnique).toBe(true);
     expect(unique?.columns.map(({ propertyName }) => propertyName)).toEqual([

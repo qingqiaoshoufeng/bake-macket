@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
+  IsDefined,
   IsEnum,
   IsInt,
   IsOptional,
@@ -51,15 +52,15 @@ export class CreateOrderDto {
   @IsString()
   addressId?: string;
 
-  @IsOptional()
+  @IsDefined()
   @Type(() => Number)
   @IsInt()
   @Min(0)
   requestedCreditCents?: number;
 
-  @IsOptional()
+  @IsDefined()
   @IsString()
-  @MaxLength(4096)
+  @Length(1, 4096)
   quoteToken?: string;
 
   @IsOptional()

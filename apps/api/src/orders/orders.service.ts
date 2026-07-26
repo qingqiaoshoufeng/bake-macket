@@ -11,6 +11,9 @@ import {
   ApiErrorCode,
   canTransitionOrder,
   FulfillmentType,
+  MemberCreditDirection,
+  MemberCreditEntryType,
+  MembershipStatus,
   OrderStatus,
   type AdminOrderListItem,
   type AdminOrderListQuery,
@@ -24,15 +27,26 @@ import { DataSource, In, Repository } from 'typeorm';
 import { AuditService } from '../audit/audit.service.js';
 import { Address } from '../database/entities/address.entity.js';
 import { CartItem } from '../database/entities/cart-item.entity.js';
-import { IdempotencyRecord } from '../database/entities/idempotency-record.entity.js';
+import { MemberAccount } from '../database/entities/member-account.entity.js';
+import { IdempotencyService } from '../idempotency/idempotency.service.js';
+import { MemberCreditEntry } from '../database/entities/member-credit-entry.entity.js';
 import { Order } from '../database/entities/order.entity.js';
 import { OrderItem } from '../database/entities/order-item.entity.js';
 import { Product } from '../database/entities/product.entity.js';
 import { Sku } from '../database/entities/sku.entity.js';
+import { UserMembership } from '../database/entities/user-membership.entity.js';
 import { User } from '../database/entities/user.entity.js';
+import { MembershipCreditService } from '../membership/membership-credit.service.js';
+import {
+  type OrderQuoteTokenPayload,
+  OrderQuoteTokenService,
+} from '../membership/order-quote-token.service.js';
+import { calculateMembershipPricing } from '../membership/pricing.js';
 import { CreateOrderDto } from './dto/create-order.dto.js';
 
-const UNIQUE_VIOLATION_CODE = 'ER_DUP_ENTRY';
+const PRODUCT_ORDER_CREATE = 'PRODUCT_ORDER_CREATE';
+const ORDER_RESOURCE_TYPE = 'ORDER';
+const ORDER_PRICING_VERSION = 1;
 
 const escapeLikeLiteral = (value: string): string =>
   value.replace(/[\\%_]/g, (character) => `\\${character}`);
@@ -63,9 +77,10 @@ export class OrdersService {
     @InjectRepository(Sku) private readonly skus: Repository<Sku>,
     @InjectRepository(Address) private readonly addresses: Repository<Address>,
     @InjectRepository(Product) private readonly products: Repository<Product>,
-    @InjectRepository(IdempotencyRecord)
-    private readonly idempotency: Repository<IdempotencyRecord>,
     private readonly audit: AuditService,
+    private readonly quoteTokens: OrderQuoteTokenService,
+    private readonly credit: MembershipCreditService,
+    private readonly idempotencyService: IdempotencyService,
   ) {}
 
   /**
@@ -110,66 +125,27 @@ export class OrdersService {
     if (!dto.cartItemIds?.length) {
       throw new BadRequestException('cartItemIds must not be empty');
     }
-
-    // Idempotency reservation happens before any other state lookup so that
-    // a retry returns the original order without depending on the cart
-    // still being populated (the cart is cleared once the order commits).
-    const priorRecord = await this.idempotency.findOne({
-      where: { userId, key: idempotencyKey },
-    });
-    if (priorRecord?.orderId) {
-      const order = await this.orders.findOneByOrFail({
-        id: priorRecord.orderId,
-      });
-      return this.fetchOrderView(order);
-    }
-    if (priorRecord) {
-      throw new ConflictException({
-        code: ApiErrorCode.STOCK_INSUFFICIENT,
-        message:
-          'Another request with the same Idempotency-Key is still being processed.',
-      });
+    if (new Set(dto.cartItemIds).size !== dto.cartItemIds.length) {
+      throw OrdersService.orderQuoteStale();
     }
 
-    // Resolve cart items + SKUs + products in one go before the transaction so
-    // a malformed payload never opens a database session.
-    const cartRecords = await this.cartItems.find({
-      where: { id: In(dto.cartItemIds), userId },
-    });
-    if (cartRecords.length !== dto.cartItemIds.length) {
-      throw new NotFoundException('Cart item not found');
-    }
-    const skuIds = Array.from(new Set(cartRecords.map((c) => c.skuId)));
-    const skuRecords = await this.skus.find({
-      where: { id: In(skuIds) },
-    });
-    const skuById = new Map(skuRecords.map((s) => [s.id, s] as const));
-    const productIds = Array.from(new Set(skuRecords.map((s) => s.productId)));
-    const productRecords = await this.products.find({
-      where: { id: In(productIds) },
-    });
-    const productById = new Map(productRecords.map((p) => [p.id, p] as const));
+    const requestHash = this.idempotencyService.hashRequest(
+      OrdersService.semanticCreateRequest(dto),
+    );
+    const idempotencyInput = {
+      userId,
+      operation: PRODUCT_ORDER_CREATE,
+      key: idempotencyKey,
+      requestHash,
+      resourceType: ORDER_RESOURCE_TYPE,
+      snapshotGuard: OrdersService.isOrderViewSnapshot,
+    };
 
-    // Validate SKU state (active flag and product existence) before touching
-    // any stock counter.
-    for (const cartItem of cartRecords) {
-      const sku = skuById.get(cartItem.skuId);
-      if (!sku || !sku.isActive) {
-        throw new ConflictException({
-          code: ApiErrorCode.SKU_UNAVAILABLE,
-          message: 'SKU is not available for purchase.',
-          details: { skuId: cartItem.skuId },
-        });
-      }
-      const product = productById.get(sku.productId);
-      if (!product || !product.isActive) {
-        throw new ConflictException({
-          code: ApiErrorCode.SKU_UNAVAILABLE,
-          message: 'Product is not available for purchase.',
-          details: { skuId: cartItem.skuId },
-        });
-      }
-    }
+    // A completed replay must not depend on cart or order rows still existing.
+    const replay = await this.idempotencyService.findReplay(idempotencyInput);
+    if (replay) return replay;
+
+    const quotePayload = this.validateQuoteIntent(userId, dto);
 
     // Resolve the address snapshot for delivery fulfillment up front so the
     // transaction can capture a fully populated snapshot without re-querying.
@@ -197,67 +173,92 @@ export class OrdersService {
       const orderRepo = manager.getRepository(Order);
       const orderItemRepo = manager.getRepository(OrderItem);
       const cartRepo = manager.getRepository(CartItem);
-      const idempotencyRepo = manager.getRepository(IdempotencyRecord);
+      const skuRepo = manager.getRepository(Sku);
+      const productRepo = manager.getRepository(Product);
+      const userRepo = manager.getRepository(User);
+      const membershipRepo = manager.getRepository(UserMembership);
 
-      // Atomically reserve the idempotency key for the duration of the
-      // transaction. The pre-transaction check above caught the "already
-      // completed" and "in-flight" cases; here we either insert a fresh row
-      // or detect that another concurrent caller raced us to it.
-      try {
-        await idempotencyRepo.insert({ userId, key: idempotencyKey });
-      } catch (err) {
-        if (OrdersService.isUniqueViolation(err)) {
-          throw new ConflictException({
-            code: ApiErrorCode.STOCK_INSUFFICIENT,
-            message:
-              'Another request with the same Idempotency-Key is still being processed.',
+      const racedReplay = await this.idempotencyService.reserve(
+        manager,
+        idempotencyInput,
+      );
+      if (racedReplay) return racedReplay;
+
+      await userRepo.findOne({
+        where: { id: userId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      const lockedAccount = await this.credit.lockOrCreateAccount(
+        manager,
+        userId,
+      );
+      const lockedMembership = lockedAccount?.activeMembershipId
+        ? await membershipRepo.findOne({
+            where: { id: lockedAccount.activeMembershipId },
+            lock: { mode: 'pessimistic_write' },
+          })
+        : null;
+      const currentMembership = OrdersService.isCurrentMembership(
+        lockedMembership,
+        new Date(),
+      )
+        ? lockedMembership
+        : null;
+      const cartRecords = await dto.cartItemIds
+        .toSorted((left, right) => left.localeCompare(right))
+        .reduce(
+          async (pending, cartItemId) => {
+            const collected = await pending;
+            const cartItem = await cartRepo.findOne({
+              where: { id: cartItemId, userId },
+              lock: { mode: 'pessimistic_write' },
+            });
+            if (!cartItem) throw new NotFoundException('Cart item not found');
+            return [...collected, cartItem];
+          },
+          Promise.resolve([] as CartItem[]),
+        );
+      const skuIds = [...new Set(cartRecords.map(({ skuId }) => skuId))].sort(
+        (left, right) => left.localeCompare(right),
+      );
+      const skuRecords = await skuIds.reduce(
+        async (pending, skuId) => {
+          const collected = await pending;
+          const sku = await skuRepo.findOne({
+            where: { id: skuId },
+            lock: { mode: 'pessimistic_write' },
           });
-        }
-        throw err;
-      }
-
-      // Conditional decrement for every cart item. The cart order is the
-      // shape sent to the customer, so we preserve it while applying the
-      // atomic update. Any failure aborts the transaction (no order, no
-      // idempotency stamp, no cart cleanup, no stock loss).
-      const decremented: Array<{ skuId: string; quantity: number }> = [];
-      for (const cartItem of cartRecords) {
+          if (!sku) throw OrdersService.skuUnavailable(skuId);
+          return [...collected, sku];
+        },
+        Promise.resolve([] as Sku[]),
+      );
+      const skuById = new Map(skuRecords.map((sku) => [sku.id, sku]));
+      this.assertQuoteVersions(
+        quotePayload,
+        cartRecords,
+        skuById,
+        currentMembership,
+        lockedAccount,
+      );
+      const productIds = [
+        ...new Set(skuRecords.map(({ productId }) => productId)),
+      ];
+      const productRecords = await productRepo.find({
+        where: { id: In(productIds) },
+      });
+      const productById = new Map(
+        productRecords.map((product) => [product.id, product]),
+      );
+      cartRecords.forEach((cartItem) => {
         const sku = skuById.get(cartItem.skuId);
-        if (!sku || !sku.isActive) {
-          throw new ConflictException({
-            code: ApiErrorCode.SKU_UNAVAILABLE,
-            message: 'SKU is not available for purchase.',
-            details: { skuId: cartItem.skuId },
-          });
+        const product = sku && productById.get(sku.productId);
+        if (!sku?.isActive || !product?.isActive) {
+          throw OrdersService.skuUnavailable(cartItem.skuId);
         }
-        const result = await manager
-          .createQueryBuilder()
-          .update(Sku)
-          .set({
-            stock: () => 'stock - :quantity',
-            stockVersion: () => 'stock_version + 1',
-          })
-          .where('id = :skuId AND stock >= :quantity AND is_active = true', {
-            skuId: cartItem.skuId,
-            quantity: cartItem.quantity,
-          })
-          .execute();
-        if (result.affected !== 1) {
-          throw new ConflictException({
-            code: ApiErrorCode.STOCK_INSUFFICIENT,
-            message: 'Insufficient stock for one or more items.',
-            details: { skuId: cartItem.skuId },
-          });
-        }
-        decremented.push({
-          skuId: cartItem.skuId,
-          quantity: cartItem.quantity,
-        });
-      }
+      });
 
-      // Compute the order total from the snapshot prices, never from the
-      // cart or any post-decrement counter.
-      const orderItems: OrderItem[] = cartRecords.map((cartItem) => {
+      const orderItems = cartRecords.map((cartItem) => {
         const sku = skuById.get(cartItem.skuId) as Sku;
         const product = productById.get(sku.productId) as Product;
         return orderItemRepo.create({
@@ -269,12 +270,50 @@ export class OrdersService {
           quantity: cartItem.quantity,
         });
       });
-
-      const orderNo = await this.generateOrderNo(orderRepo);
-      const goodsTotalCents = orderItems.reduce(
-        (sum, item) => sum + item.unitPriceCents * item.quantity,
-        0,
+      const pricing = calculateMembershipPricing(
+        orderItems.map(({ unitPriceCents, quantity }) => ({
+          unitPriceCents,
+          quantity,
+        })),
+        currentMembership?.discountBasisPoints ?? 10_000,
+        quotePayload?.requestedCreditCents ?? 0,
+        lockedAccount?.availableCreditCents ?? 0,
       );
+      const pricedOrderItems = orderItems.map((item, index) =>
+        orderItemRepo.create({ ...item, ...pricing.lines[index] }),
+      );
+      const stockReservations = cartRecords.reduce(
+        (totals, cartItem) => ({
+          ...totals,
+          [cartItem.skuId]: (totals[cartItem.skuId] ?? 0) + cartItem.quantity,
+        }),
+        {} as Record<string, number>,
+      );
+      await Object.entries(stockReservations)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .reduce(async (pending, [skuId, quantity]) => {
+          await pending;
+          const result = await manager
+            .createQueryBuilder()
+            .update(Sku)
+            .set({
+              stock: () => 'stock - :quantity',
+              stockVersion: () => 'stock_version + 1',
+            })
+            .where('id = :skuId AND stock >= :quantity AND is_active = true', {
+              skuId,
+              quantity,
+            })
+            .execute();
+          if (result.affected !== 1) {
+            throw new ConflictException({
+              code: ApiErrorCode.STOCK_INSUFFICIENT,
+              message: 'Insufficient stock for one or more items.',
+              details: { skuId },
+            });
+          }
+        }, Promise.resolve());
+      const orderNo = await this.generateOrderNo(orderRepo);
       const order = await orderRepo.save(
         orderRepo.create({
           orderNo,
@@ -291,13 +330,31 @@ export class OrdersService {
             dto.fulfillmentType === FulfillmentType.DELIVERY
               ? deliveryAddressSnapshot
               : null,
-          goodsTotalCents,
+          goodsTotalCents: pricing.goodsTotalCents,
+          membershipDiscountCents: pricing.membershipDiscountCents,
+          creditAppliedCents: pricing.creditAppliedCents,
+          payableTotalCents: pricing.payableTotalCents,
+          membershipId: currentMembership?.id ?? null,
+          membershipCode: currentMembership?.levelCode ?? null,
+          membershipName: currentMembership?.levelName ?? null,
+          membershipDiscountBasisPoints:
+            currentMembership?.discountBasisPoints ?? null,
+          pricingVersion: ORDER_PRICING_VERSION,
           remark: dto.remark ?? null,
         }),
       );
 
+      if (lockedAccount && pricing.creditAppliedCents > 0) {
+        await this.credit.debitFifo(manager, lockedAccount, {
+          amountCents: pricing.creditAppliedCents,
+          referenceType: 'PRODUCT_ORDER',
+          referenceId: order.id,
+          operationKey: `product-order-debit:${order.id}`,
+        });
+      }
+
       const persistedItems = await orderItemRepo.save(
-        orderItems.map((item) =>
+        pricedOrderItems.map((item) =>
           orderItemRepo.create({ ...item, orderId: order.id }),
         ),
       );
@@ -305,14 +362,20 @@ export class OrdersService {
       // Clear the source cart items only after the order is durably stored.
       await cartRepo.delete({ userId, id: In(dto.cartItemIds) });
 
-      // Stamp the idempotency record so a retry returns the same order.
-      await idempotencyRepo.update(
-        { userId, key: idempotencyKey },
-        { orderId: order.id },
-      );
+      const responseSnapshot = this.toOrderView(order, persistedItems);
+      await this.idempotencyService.complete(manager, {
+        userId,
+        operation: PRODUCT_ORDER_CREATE,
+        key: idempotencyKey,
+        requestHash,
+        resourceType: ORDER_RESOURCE_TYPE,
+        resourceId: order.id,
+        responseSnapshot: responseSnapshot as OrderView &
+          Record<string, unknown>,
+        legacyOrderId: order.id,
+      });
 
-      void decremented; // mark intentional; not needed after the transaction
-      return this.toOrderView(order, persistedItems);
+      return responseSnapshot;
     });
   }
 
@@ -328,55 +391,91 @@ export class OrdersService {
     nextStatus: OrderStatus,
     adminUserId: string,
   ): Promise<OrderStatusUpdateResult> {
-    const order = await this.orders.findOneBy({ id: orderId });
-    if (!order) {
+    const cancellationCandidate =
+      nextStatus === OrderStatus.CANCELLED
+        ? await this.orders.findOneBy({ id: orderId })
+        : null;
+    if (nextStatus === OrderStatus.CANCELLED && !cancellationCandidate) {
       throw new NotFoundException('Order not found');
     }
 
-    if (!canTransitionOrder(order.status, nextStatus)) {
-      throw new UnprocessableEntityException({
-        code: ApiErrorCode.INVALID_ORDER_TRANSITION,
-        message: `Cannot transition order from ${order.status} to ${nextStatus}.`,
+    return this.dataSource.transaction(async (manager) => {
+      const lockedAccount =
+        cancellationCandidate && cancellationCandidate.creditAppliedCents > 0
+          ? await this.lockCancellationAccount(
+              manager,
+              cancellationCandidate.userId,
+            )
+          : null;
+      const orderRepo = manager.getRepository(Order);
+      const order = await orderRepo.findOne({
+        where: { id: orderId },
+        lock: { mode: 'pessimistic_write' },
       });
-    }
+      if (!order) {
+        throw new NotFoundException('Order not found');
+      }
 
-    const previousStatus = order.status;
-    order.status = nextStatus;
-    await this.orders.save(order);
+      if (!canTransitionOrder(order.status, nextStatus)) {
+        throw new UnprocessableEntityException({
+          code: ApiErrorCode.INVALID_ORDER_TRANSITION,
+          message: `Cannot transition order from ${order.status} to ${nextStatus}.`,
+        });
+      }
 
-    if (nextStatus === OrderStatus.CANCELLED) {
-      await this.audit.record({
-        adminUserId,
-        targetEntity: 'orders',
-        targetId: order.id,
-        action: 'ORDER_CANCELLED',
-        changeSummary: {
-          from: previousStatus,
-          to: OrderStatus.CANCELLED,
-          noRestock: true,
+      const previousStatus = order.status;
+      if (
+        nextStatus === OrderStatus.CANCELLED &&
+        order.creditAppliedCents > 0
+      ) {
+        if (!lockedAccount || lockedAccount.userId !== order.userId) {
+          throw new ConflictException('订单取消账户状态已变更');
+        }
+        const originalEntry = await manager
+          .getRepository(MemberCreditEntry)
+          .findOne({
+            where: { operationKey: `product-order-debit:${order.id}` },
+          });
+        if (!originalEntry) {
+          throw OrdersService.memberCreditInconsistent();
+        }
+        OrdersService.assertOrderDebitMatches(
+          originalEntry,
+          lockedAccount,
+          order,
+        );
+        await this.credit.reverseDebit(manager, lockedAccount, {
+          originalEntryId: originalEntry.id,
+          referenceType: 'PRODUCT_ORDER',
+          referenceId: order.id,
+          operationKey: `product-order-cancel:${order.id}`,
+        });
+      }
+
+      const savedOrder = await orderRepo.save({ ...order, status: nextStatus });
+      const noRestock = nextStatus === OrderStatus.CANCELLED;
+      await this.audit.record(
+        {
+          adminUserId,
+          targetEntity: 'orders',
+          targetId: savedOrder.id,
+          action: noRestock ? 'ORDER_CANCELLED' : 'ORDER_STATUS_CHANGED',
+          changeSummary: {
+            from: previousStatus,
+            to: nextStatus,
+            ...(noRestock ? { noRestock: true } : {}),
+          },
         },
-      });
+        manager,
+      );
+
+      const itemRepo = manager.getRepository(OrderItem);
+      const items = await itemRepo.find({ where: { orderId: savedOrder.id } });
       return {
-        order: await this.fetchOrderView(order),
-        noRestock: true,
+        order: this.toOrderView(savedOrder, items),
+        noRestock,
       };
-    }
-
-    await this.audit.record({
-      adminUserId,
-      targetEntity: 'orders',
-      targetId: order.id,
-      action: 'ORDER_STATUS_CHANGED',
-      changeSummary: {
-        from: previousStatus,
-        to: nextStatus,
-      },
     });
-
-    return {
-      order: await this.fetchOrderView(order),
-      noRestock: false,
-    };
   }
 
   /**
@@ -477,8 +576,11 @@ export class OrdersService {
         imageUrl: item.imageUrl ?? undefined,
         unitPriceCents: item.unitPriceCents,
         quantity: item.quantity,
+        lineGoodsTotalCents: item.lineGoodsTotalCents,
+        lineMembershipDiscountCents: item.lineMembershipDiscountCents,
+        linePayableCents: item.linePayableCents,
       }));
-    return {
+    const common = {
       id: order.id,
       orderNo: order.orderNo,
       status: order.status,
@@ -488,11 +590,275 @@ export class OrdersService {
       pickupTimeText: order.pickupTimeText ?? undefined,
       deliveryAddressText: order.deliveryAddressText ?? undefined,
       goodsTotalCents: order.goodsTotalCents,
+      membershipDiscountCents: order.membershipDiscountCents,
+      creditAppliedCents: order.creditAppliedCents,
+      payableTotalCents: order.payableTotalCents,
+      pricingVersion: order.pricingVersion,
       remark: order.remark ?? undefined,
       items: itemViews,
       createdAt: (order.createdAt ?? new Date()).toISOString(),
       updatedAt: (order.updatedAt ?? new Date()).toISOString(),
     };
+    if (
+      order.membershipId &&
+      order.membershipCode &&
+      order.membershipName &&
+      order.membershipDiscountBasisPoints !== null
+    ) {
+      return {
+        ...common,
+        membershipId: order.membershipId,
+        membershipCode: order.membershipCode,
+        membershipName: order.membershipName,
+        membershipDiscountBasisPoints: order.membershipDiscountBasisPoints,
+      };
+    }
+    return common;
+  }
+
+  private validateQuoteIntent(
+    userId: string,
+    dto: CreateOrderDto,
+  ): OrderQuoteTokenPayload | null {
+    const hasRequestedCredit = dto.requestedCreditCents !== undefined;
+    const hasQuoteToken = dto.quoteToken !== undefined;
+    if (!hasRequestedCredit && !hasQuoteToken) return null;
+    if (
+      !Number.isInteger(dto.requestedCreditCents) ||
+      (dto.requestedCreditCents as number) < 0 ||
+      typeof dto.quoteToken !== 'string' ||
+      dto.quoteToken.length === 0
+    ) {
+      throw OrdersService.orderQuoteStale();
+    }
+
+    const payload = this.quoteTokens.verify(dto.quoteToken, userId);
+    const quotedCartItemIds = payload.cart
+      .map(({ cartItemId }) => cartItemId)
+      .toSorted();
+    const requestedCartItemIds = [...dto.cartItemIds].sort();
+    if (
+      new Set(quotedCartItemIds).size !== quotedCartItemIds.length ||
+      payload.requestedCreditCents !== dto.requestedCreditCents ||
+      quotedCartItemIds.length !== requestedCartItemIds.length ||
+      quotedCartItemIds.some(
+        (cartItemId, index) => cartItemId !== requestedCartItemIds[index],
+      )
+    ) {
+      throw OrdersService.orderQuoteStale();
+    }
+    return payload;
+  }
+
+  private assertQuoteVersions(
+    payload: OrderQuoteTokenPayload | null,
+    cartItems: CartItem[],
+    skuById: Map<string, Sku>,
+    membership: UserMembership | null,
+    account: MemberAccount | null,
+  ): void {
+    if (!payload) return;
+    const tokenCartById = new Map(
+      payload.cart.map((item) => [item.cartItemId, item]),
+    );
+    const cartMatches = cartItems.every((cartItem) => {
+      const quoted = tokenCartById.get(cartItem.id);
+      const sku = skuById.get(cartItem.skuId);
+      return Boolean(
+        quoted &&
+        sku &&
+        quoted.skuId === cartItem.skuId &&
+        quoted.quantity === cartItem.quantity &&
+        quoted.stockVersion === sku.stockVersion,
+      );
+    });
+    if (
+      payload.pricingVersion !== ORDER_PRICING_VERSION ||
+      payload.cart.length !== cartItems.length ||
+      !cartMatches ||
+      payload.membershipId !== (membership?.id ?? null) ||
+      payload.membershipVersion !==
+        (membership?.updatedAt.toISOString() ?? null) ||
+      payload.accountVersion !== (account?.version ?? null)
+    ) {
+      throw OrdersService.orderQuoteStale();
+    }
+  }
+
+  private async lockCancellationAccount(
+    manager: Parameters<MembershipCreditService['lockOrCreateAccount']>[0],
+    userId: string,
+  ): Promise<MemberAccount> {
+    const user = await manager.getRepository(User).findOne({
+      where: { id: userId },
+      lock: { mode: 'pessimistic_write' },
+    });
+    if (!user) throw new NotFoundException('User not found');
+    return this.credit.lockOrCreateAccount(manager, userId);
+  }
+
+  private static isCurrentMembership(
+    membership: UserMembership | null,
+    now: Date,
+  ): membership is UserMembership {
+    return Boolean(
+      membership &&
+      membership.status === MembershipStatus.ACTIVE &&
+      membership.startsAt <= now &&
+      membership.endsAt > now,
+    );
+  }
+
+  private static assertOrderDebitMatches(
+    entry: MemberCreditEntry,
+    account: MemberAccount,
+    order: Order,
+  ): void {
+    if (
+      entry.accountId !== account.id ||
+      entry.direction !== MemberCreditDirection.DEBIT ||
+      entry.type !== MemberCreditEntryType.PRODUCT_ORDER_DEBIT ||
+      entry.referenceType !== 'PRODUCT_ORDER' ||
+      entry.referenceId !== order.id ||
+      entry.amountCents !== order.creditAppliedCents
+    ) {
+      throw OrdersService.memberCreditInconsistent();
+    }
+  }
+
+  private static memberCreditInconsistent(): ConflictException {
+    return new ConflictException({
+      code: ApiErrorCode.MEMBER_CREDIT_INCONSISTENT,
+      message: '订单消费金扣款记录不一致',
+    });
+  }
+
+  private static skuUnavailable(skuId: string): ConflictException {
+    return new ConflictException({
+      code: ApiErrorCode.SKU_UNAVAILABLE,
+      message: 'SKU is not available for purchase.',
+      details: { skuId },
+    });
+  }
+
+  private static semanticCreateRequest(dto: CreateOrderDto) {
+    return {
+      cartItemIds: [...dto.cartItemIds].sort(),
+      fulfillmentType: dto.fulfillmentType,
+      contactName: dto.contactName,
+      contactPhone: dto.contactPhone,
+      pickupTimeText: dto.pickupTimeText ?? null,
+      addressId: dto.addressId ?? null,
+      requestedCreditCents: dto.requestedCreditCents ?? null,
+      quoteToken: dto.quoteToken ?? null,
+      remark: dto.remark ?? null,
+    };
+  }
+
+  private static isOrderViewSnapshot(
+    snapshot: unknown,
+    resourceId: string,
+  ): snapshot is OrderView {
+    if (!OrdersService.isRecord(snapshot)) return false;
+    const fulfillmentType = snapshot.fulfillmentType;
+    const hasValidFulfillment =
+      fulfillmentType === FulfillmentType.PICKUP
+        ? typeof snapshot.pickupTimeText === 'string'
+        : fulfillmentType === FulfillmentType.DELIVERY &&
+          typeof snapshot.deliveryAddressText === 'string';
+    const moneyFields = [
+      snapshot.goodsTotalCents,
+      snapshot.membershipDiscountCents,
+      snapshot.creditAppliedCents,
+      snapshot.payableTotalCents,
+    ];
+    const membershipFields = [
+      snapshot.membershipId,
+      snapshot.membershipCode,
+      snapshot.membershipName,
+      snapshot.membershipDiscountBasisPoints,
+    ];
+    const hasMembership = membershipFields.some((value) => value !== undefined);
+    const hasCompleteMembership =
+      typeof snapshot.membershipId === 'string' &&
+      typeof snapshot.membershipCode === 'string' &&
+      typeof snapshot.membershipName === 'string' &&
+      OrdersService.isUnsignedInteger(snapshot.membershipDiscountBasisPoints);
+    const valid = Boolean(
+      snapshot.id === resourceId &&
+      typeof snapshot.orderNo === 'string' &&
+      snapshot.orderNo.length > 0 &&
+      typeof snapshot.status === 'string' &&
+      Object.values(OrderStatus).includes(snapshot.status as OrderStatus) &&
+      hasValidFulfillment &&
+      typeof snapshot.contactName === 'string' &&
+      typeof snapshot.contactPhone === 'string' &&
+      moneyFields.every(OrdersService.isUnsignedInteger) &&
+      snapshot.payableTotalCents ===
+        (snapshot.goodsTotalCents as number) -
+          (snapshot.membershipDiscountCents as number) -
+          (snapshot.creditAppliedCents as number) &&
+      OrdersService.isUnsignedInteger(snapshot.pricingVersion) &&
+      typeof snapshot.createdAt === 'string' &&
+      typeof snapshot.updatedAt === 'string' &&
+      Array.isArray(snapshot.items) &&
+      snapshot.items.every(OrdersService.isOrderItemViewSnapshot) &&
+      (!hasMembership || hasCompleteMembership),
+    );
+    if (!valid) return false;
+    const items = snapshot.items as Array<Record<string, unknown>>;
+    const itemTotals = items.reduce<{ goods: number; discount: number }>(
+      (totals, item) => ({
+        goods: totals.goods + (item.lineGoodsTotalCents as number),
+        discount:
+          totals.discount + (item.lineMembershipDiscountCents as number),
+      }),
+      { goods: 0, discount: 0 },
+    );
+    return (
+      itemTotals.goods === snapshot.goodsTotalCents &&
+      itemTotals.discount === snapshot.membershipDiscountCents
+    );
+  }
+
+  private static isOrderItemViewSnapshot(item: unknown): boolean {
+    if (!OrdersService.isRecord(item)) return false;
+    const lineMoneyFields = [
+      item.unitPriceCents,
+      item.lineGoodsTotalCents,
+      item.lineMembershipDiscountCents,
+      item.linePayableCents,
+    ];
+    return Boolean(
+      typeof item.id === 'string' &&
+      item.id.length > 0 &&
+      typeof item.productName === 'string' &&
+      typeof item.skuName === 'string' &&
+      OrdersService.isRecord(item.skuAttributes) &&
+      Number.isSafeInteger(item.quantity) &&
+      (item.quantity as number) > 0 &&
+      lineMoneyFields.every(OrdersService.isUnsignedInteger) &&
+      item.lineGoodsTotalCents ===
+        (item.unitPriceCents as number) * (item.quantity as number) &&
+      item.linePayableCents ===
+        (item.lineGoodsTotalCents as number) -
+          (item.lineMembershipDiscountCents as number),
+    );
+  }
+
+  private static isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+  }
+
+  private static isUnsignedInteger(value: unknown): value is number {
+    return Number.isSafeInteger(value) && (value as number) >= 0;
+  }
+
+  private static orderQuoteStale(): ConflictException {
+    return new ConflictException({
+      code: ApiErrorCode.ORDER_QUOTE_STALE,
+      message: '订单报价已失效，请重新获取报价',
+    });
   }
 
   private static formatAddress(address: Address): string {
@@ -530,11 +896,5 @@ export class OrdersService {
     throw new ConflictException(
       'Failed to allocate a unique order number, please retry.',
     );
-  }
-
-  private static isUniqueViolation(err: unknown): boolean {
-    if (!err || typeof err !== 'object') return false;
-    const code = (err as { code?: string }).code;
-    return code === UNIQUE_VIOLATION_CODE;
   }
 }

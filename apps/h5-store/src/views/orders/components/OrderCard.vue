@@ -36,9 +36,9 @@ defineEmits<{ (event: 'open', order: OrderView): void }>();
       >
       <span class="orders__item-foot"
         ><time>{{ formatOrderDate(order.createdAt) }}</time
-        ><span class="orders__item-total">{{
-          formatMoney(order.goodsTotalCents)
-        }}</span></span
+        ><span class="orders__item-total"
+          >实付 {{ formatMoney(order.payableTotalCents) }}</span
+        ></span
       >
     </button>
   </li>

@@ -7,16 +7,23 @@ export type OrderQuoteTokenPayload = {
   userId: string;
   cart: Array<{
     cartItemId: string;
+    skuId: string;
     quantity: number;
     stockVersion: number;
   }>;
   requestedCreditCents: number;
   membershipId: string | null;
+  membershipVersion: string | null;
   accountVersion: number | null;
   pricingVersion: number;
 };
 
 type SignedOrderQuoteTokenPayload = OrderQuoteTokenPayload & {
+  expiresAt: number;
+};
+
+export type IssuedOrderQuoteToken = {
+  token: string;
   expiresAt: number;
 };
 
@@ -37,14 +44,18 @@ export class OrderQuoteTokenService {
     }
   }
 
-  issue(payload: OrderQuoteTokenPayload): string {
+  issue(payload: OrderQuoteTokenPayload): IssuedOrderQuoteToken {
+    const expiresAt = Math.floor(this.nowSeconds()) + this.ttlSeconds;
     const encodedPayload = Buffer.from(
       JSON.stringify({
         ...payload,
-        expiresAt: this.nowSeconds() + this.ttlSeconds,
+        expiresAt,
       } satisfies SignedOrderQuoteTokenPayload),
     ).toString('base64url');
-    return `${encodedPayload}.${this.sign(encodedPayload)}`;
+    return {
+      token: `${encodedPayload}.${this.sign(encodedPayload)}`,
+      expiresAt,
+    };
   }
 
   verify(token: string, expectedUserId: string): SignedOrderQuoteTokenPayload {

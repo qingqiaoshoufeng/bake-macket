@@ -67,6 +67,14 @@ const createLevelRepository = () => {
           ),
       ),
     ),
+    findOne: vi.fn(
+      async ({ where }: { where: Partial<MembershipLevel> }) =>
+        records.find((record) =>
+          Object.entries(where).every(
+            ([key, value]) => record[key as keyof MembershipLevel] === value,
+          ),
+        ) ?? null,
+    ),
     findOneBy: vi.fn(
       async (where: Partial<MembershipLevel>) =>
         records.find((record) =>
@@ -374,7 +382,25 @@ describe('Membership levels (e2e)', () => {
       .expect(404);
   });
 
-  it('deletes an unsold level and rejects deleting a sold level', async () => {
+  it('only deletes an inactive unsold level', async () => {
+    const active = await request(app.getHttpServer())
+      .post('/api/v1/admin/membership-levels')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        ...levelRequest,
+        code: 'ACTIVE_DELETE_GUARD',
+        name: '不可删除的上架会员',
+        rank: 30,
+      })
+      .expect(201);
+    await request(app.getHttpServer())
+      .delete(`/api/v1/admin/membership-levels/${active.body.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(422)
+      .expect(({ body }) => {
+        expect(body.message).toBe('已售会员等级不可删除，请改为下架');
+      });
+
     const unsold = await request(app.getHttpServer())
       .post('/api/v1/admin/membership-levels')
       .set('Authorization', `Bearer ${adminToken}`)

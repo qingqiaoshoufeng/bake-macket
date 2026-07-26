@@ -58,11 +58,40 @@ defineProps<{ order: OrderView }>();
           <span>单价 {{ formatMoney(item.unitPriceCents) }}</span
           ><span>× {{ item.quantity }}</span>
         </div>
+        <div class="order-detail__item-pricing">
+          <span>行原价 {{ formatMoney(item.lineGoodsTotalCents) }}</span>
+          <span v-if="item.lineMembershipDiscountCents > 0"
+            >优惠 -{{ formatMoney(item.lineMembershipDiscountCents) }}</span
+          >
+          <strong>折后 {{ formatMoney(item.linePayableCents) }}</strong>
+        </div>
       </li>
     </ul>
-    <p class="order-detail__total">
-      <span>合计</span><span>{{ formatMoney(order.goodsTotalCents) }}</span>
-    </p>
+    <dl class="order-detail__pricing">
+      <div>
+        <dt>商品原价</dt>
+        <dd>{{ formatMoney(order.goodsTotalCents) }}</dd>
+      </div>
+      <div v-if="order.membershipId">
+        <dt>会员等级</dt>
+        <dd>
+          {{ order.membershipName }} ·
+          {{ order.membershipDiscountBasisPoints / 1000 }} 折
+        </dd>
+      </div>
+      <div v-if="order.membershipDiscountCents > 0">
+        <dt>会员优惠</dt>
+        <dd>-{{ formatMoney(order.membershipDiscountCents) }}</dd>
+      </div>
+      <div v-if="order.creditAppliedCents > 0">
+        <dt>消费金抵扣</dt>
+        <dd>-{{ formatMoney(order.creditAppliedCents) }}</dd>
+      </div>
+      <div class="order-detail__total">
+        <dt>应付金额</dt>
+        <dd>{{ formatMoney(order.payableTotalCents) }}</dd>
+      </div>
+    </dl>
   </section>
 </template>
 
@@ -171,7 +200,8 @@ defineProps<{ order: OrderView }>();
   font-size: 12px;
 }
 .order-detail__item-row,
-.order-detail__total {
+.order-detail__item-pricing,
+.order-detail__pricing div {
   display: flex;
   justify-content: space-between;
   gap: var(--mall-space-3);
@@ -181,15 +211,40 @@ defineProps<{ order: OrderView }>();
   color: var(--mall-text);
   font-size: 13px;
 }
-.order-detail__total {
-  margin-top: var(--mall-space-3) !important;
-  padding-top: var(--mall-space-3);
-  align-items: baseline;
-  border-top: 1px solid var(--mall-border);
-  color: var(--mall-text) !important;
-  font-weight: 700;
+.order-detail__item-pricing {
+  margin-top: var(--mall-space-1);
+  flex-wrap: wrap;
+  color: var(--mall-text-muted);
+  font-size: 12px;
 }
-.order-detail__total span:last-child {
+.order-detail__item-pricing strong {
+  color: var(--mall-text);
+}
+.order-detail__pricing {
+  display: grid;
+  gap: var(--mall-space-2);
+  margin: var(--mall-space-3) 0 0;
+  padding-top: var(--mall-space-3);
+  border-top: 1px solid var(--mall-border);
+}
+.order-detail__pricing dt,
+.order-detail__pricing dd {
+  margin: 0;
+}
+.order-detail__pricing dt {
+  color: var(--mall-text-muted);
+}
+.order-detail__pricing dd {
+  color: var(--mall-text);
+  font-weight: 700;
+  text-align: right;
+}
+.order-detail__total {
+  padding-top: var(--mall-space-2);
+  align-items: baseline;
+  border-top: 1px dashed var(--mall-border);
+}
+.order-detail__total dd {
   color: var(--mall-accent);
   font-size: 20px;
 }

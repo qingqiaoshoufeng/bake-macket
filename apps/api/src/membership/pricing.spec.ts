@@ -3,6 +3,14 @@ import { describe, expect, it } from 'vitest';
 import { calculateMembershipPricing, calculatePricedLine } from './pricing.js';
 
 describe('membership pricing', () => {
+  it('keeps a one-cent line payable when its discount rounds down', () => {
+    expect(calculatePricedLine(1, 1, 9_500)).toEqual({
+      lineGoodsTotalCents: 1,
+      lineMembershipDiscountCents: 0,
+      linePayableCents: 1,
+    });
+  });
+
   it('rounds each discounted line to the nearest cent', () => {
     expect(calculatePricedLine(101, 1, 9_500)).toEqual({
       lineGoodsTotalCents: 101,

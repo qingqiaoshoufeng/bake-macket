@@ -10,6 +10,7 @@ import {
   CheckoutContact,
   CheckoutFulfillment,
   CheckoutItems,
+  CheckoutMembershipPricing,
   CheckoutSubmit,
   useCheckout,
 } from './checkout/index.js';
@@ -83,6 +84,16 @@ async function submit(): Promise<void> {
           checkout.methods.updateValues({ contactPhone: $event })
         "
       />
+      <CheckoutMembershipPricing
+        :quote="checkout.data.quote.value"
+        :credit-text="checkout.data.requestedCreditText.value"
+        :loading="checkout.quoteLoading.value"
+        :validation-error="checkout.data.quoteValidationError.value"
+        :quote-error="checkout.data.quoteError.value"
+        :requires-confirmation="checkout.data.quoteRequiresConfirmation.value"
+        @update:credit-text="checkout.methods.updateRequestedCreditText"
+        @confirm="checkout.methods.confirmQuote"
+      />
       <CheckoutSubmit
         :remark="checkout.data.values.value.remark"
         :remark-max-length="REMARK_MAX_LENGTH"
@@ -90,7 +101,10 @@ async function submit(): Promise<void> {
         :submit-error="checkout.data.submitError.value"
         :disabled="!checkout.canSubmit.value"
         :submitting="checkout.submitting.value"
-        :total-cents="checkout.data.cartTotalCents.value"
+        :total-cents="
+          checkout.data.quote.value?.payableTotalCents ??
+          checkout.data.cartTotalCents.value
+        "
         @update:remark="checkout.methods.updateValues({ remark: $event })"
         @submit="submit"
       />

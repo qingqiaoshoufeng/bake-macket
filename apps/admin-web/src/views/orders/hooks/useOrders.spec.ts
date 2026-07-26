@@ -37,11 +37,18 @@ const row: AdminOrderListItem = {
   contactName: '张三',
   contactPhone: '13800000000',
   goodsTotalCents: 6800,
+  membershipDiscountCents: 0,
+  creditAppliedCents: 0,
+  payableTotalCents: 6800,
   createdAt: '2026-07-18T08:00:00.000Z',
   updatedAt: '2026-07-18T08:00:00.000Z',
 };
 const detail: OrderView = {
   ...row,
+  membershipDiscountCents: 0,
+  creditAppliedCents: 0,
+  payableTotalCents: 6800,
+  pricingVersion: 1,
   pickupTimeText: '2026-07-19 10:00',
   remark: '少糖',
   items: [
@@ -52,6 +59,9 @@ const detail: OrderView = {
       skuAttributes: { size: '6寸' },
       unitPriceCents: 6800,
       quantity: 1,
+      lineGoodsTotalCents: 6800,
+      lineMembershipDiscountCents: 0,
+      linePayableCents: 6800,
     },
   ],
 };

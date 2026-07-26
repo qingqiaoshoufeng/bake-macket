@@ -11,8 +11,14 @@ const router = useRouter();
 const route = useRoute();
 const navItems = ADMIN_NAV_GROUPS.flatMap(({ items }) => items);
 
-const activePath = computed(() =>
-  route.path.startsWith('/products/') ? '/products' : route.path,
+const activePath = computed(
+  () =>
+    navItems
+      .map(({ path }) => path)
+      .filter(
+        (path) => route.path === path || route.path.startsWith(`${path}/`),
+      )
+      .sort((left, right) => right.length - left.length)[0] ?? route.path,
 );
 const pageTitle = computed(() => {
   const matchedTitle = [...route.matched]
@@ -278,6 +284,18 @@ async function onSelect(path: string): Promise<void> {
 
 .admin-layout__nav-icon[data-icon='order'] {
   border-radius: 3px 3px 7px 7px;
+}
+
+.admin-layout__nav-icon[data-icon='membership'] {
+  border-radius: 9px 4px 9px 4px;
+  box-shadow: inset 0 0 0 3px transparent;
+  transform: rotate(-3deg);
+}
+
+.admin-layout__nav-icon[data-icon='membership-purchase'] {
+  border-radius: 4px;
+  box-shadow: inset 0 -5px 0 transparent;
+  transform: rotate(2deg);
 }
 
 .admin-layout__sidebar-footer {

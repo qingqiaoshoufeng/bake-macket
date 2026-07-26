@@ -14,6 +14,7 @@ import {
 } from '../../../constants/labels.js';
 import { formatPriceCents } from '../../../utils/money.js';
 import { orderColumns } from '../config/columns.js';
+import { displayedOrderTotalCents } from '../hooks/formatters.js';
 
 const props = defineProps<{
   orders: readonly AdminOrderListItem[];
@@ -64,7 +65,12 @@ const statusTagType = (value: OrderStatus) => ORDER_STATUS_TAG_TYPE[value];
         :width="orderColumns[3].width"
       >
         <template #default="{ row }">{{
-          formatPriceCents(row.goodsTotalCents)
+          formatPriceCents(
+            displayedOrderTotalCents(
+              row.goodsTotalCents,
+              row.payableTotalCents,
+            ),
+          )
         }}</template>
       </ElTableColumn>
       <ElTableColumn

@@ -12,7 +12,7 @@ import {
   type OrderView,
 } from '@bake-mall/contracts';
 import request from 'supertest';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { AuthModule } from '../src/auth/auth.module.js';
 import {
@@ -32,6 +32,7 @@ import { MemberCreditEntry } from '../src/database/entities/member-credit-entry.
 import { MemberCreditGrant } from '../src/database/entities/member-credit-grant.entity.js';
 import { MembershipEntitlementSegment } from '../src/database/entities/membership-entitlement-segment.entity.js';
 import { MembershipLevel } from '../src/database/entities/membership-level.entity.js';
+import { OrderQuoteTokenService } from '../src/membership/order-quote-token.service.js';
 import { MembershipPurchaseOrder } from '../src/database/entities/membership-purchase-order.entity.js';
 import { Order } from '../src/database/entities/order.entity.js';
 import { OrderItem } from '../src/database/entities/order-item.entity.js';
@@ -256,6 +257,8 @@ function buildFakeDataSource(stubs: Record<string, any>) {
             Product: stubs.products,
             Category: stubs.categories,
             AdminUser: stubs.adminUsers,
+            MemberAccount: stubs.memberAccounts,
+            UserMembership: stubs.memberships,
           };
           const repo = map[entity.name];
           if (!repo) throw new Error(`Unknown entity ${entity.name}`);
@@ -324,6 +327,8 @@ describe('Orders domain (e2e)', () => {
   let app: INestApplication;
   let userHeaders: Record<string, string>;
   let adminHeaders: Record<string, string>;
+  let fakeDataSource: ReturnType<typeof buildFakeDataSource>;
+  let quoteTokens: OrderQuoteTokenService;
   let stubs: {
     users: any;
     orders: any;
@@ -336,6 +341,8 @@ describe('Orders domain (e2e)', () => {
     products: any;
     categories: any;
     adminUsers: any;
+    memberAccounts: any;
+    memberships: any;
   };
 
   beforeAll(async () => {
@@ -360,6 +367,8 @@ describe('Orders domain (e2e)', () => {
       products: memoryRepository<Product>(),
       categories: memoryRepository<Category>(),
       adminUsers: memoryRepository<AdminUser>(),
+      memberAccounts: memoryRepository<MemberAccount>(),
+      memberships: memoryRepository<UserMembership>(),
     };
 
     await stubs.users.save({
@@ -403,6 +412,7 @@ describe('Orders domain (e2e)', () => {
       attributes: { size: '6' },
       priceCents: 6800,
       stock: 2,
+      stockVersion: 1,
       imageUrl: null,
       isActive: true,
     } as unknown as Sku);
@@ -434,8 +444,9 @@ describe('Orders domain (e2e)', () => {
       isActive: true,
     } as AdminUser);
 
-    const fakeDataSource = buildFakeDataSource(stubs);
+    fakeDataSource = buildFakeDataSource(stubs);
     fakeDataSourceRef = fakeDataSource;
+    quoteTokens = new OrderQuoteTokenService('x'.repeat(32), 300);
 
     const moduleRef = await Test.createTestingModule({
       imports: [
@@ -495,6 +506,8 @@ describe('Orders domain (e2e)', () => {
       .useValue({})
       .overrideProvider(getRepositoryToken(MembershipEntitlementSegment))
       .useValue({})
+      .overrideProvider(OrderQuoteTokenService)
+      .useValue(quoteTokens)
       .compile();
 
     app = moduleRef.createNestApplication();
@@ -557,6 +570,36 @@ describe('Orders domain (e2e)', () => {
     sku.stock = stock;
   }
 
+  function quoteIntent(cartItemIds: string[]) {
+    const cart = cartItemIds.map((cartItemId) => {
+      const cartItem = stubs.cartItems.records.find(
+        (item: CartItem) => item.id === cartItemId,
+      );
+      const sku = stubs.skus.records.find(
+        (item: Sku) => item.id === cartItem?.skuId,
+      );
+      if (!cartItem || !sku) throw new Error('Cart or SKU fixture is missing');
+      return {
+        cartItemId,
+        skuId: cartItem.skuId,
+        quantity: cartItem.quantity,
+        stockVersion: sku.stockVersion,
+      };
+    });
+    return {
+      requestedCreditCents: 0,
+      quoteToken: quoteTokens.issue({
+        userId: 'user-1',
+        cart,
+        requestedCreditCents: 0,
+        membershipId: null,
+        membershipVersion: null,
+        accountVersion: null,
+        pricingVersion: 1,
+      }).token,
+    };
+  }
+
   function pickupRequest(
     cartItemIds: string[],
     overrides: Partial<{
@@ -572,6 +615,7 @@ describe('Orders domain (e2e)', () => {
       contactName: overrides.contactName ?? 'Alice',
       contactPhone: overrides.contactPhone ?? '13800000000',
       pickupTimeText: overrides.pickupTimeText ?? 'tomorrow 10am',
+      ...quoteIntent(cartItemIds),
       ...(overrides.remark ? { remark: overrides.remark } : {}),
     };
   }
@@ -591,9 +635,53 @@ describe('Orders domain (e2e)', () => {
       contactName: overrides.contactName ?? 'Alice',
       contactPhone: overrides.contactPhone ?? '13800000000',
       addressId: overrides.addressId ?? 'address-1',
+      ...quoteIntent(cartItemIds),
       ...(overrides.remark ? { remark: overrides.remark } : {}),
     };
   }
+
+  it('rejects missing quote intent with 400 before opening a transaction', async () => {
+    stubs.cartItems.records.length = 0;
+    const cart = await seedCart('user-1', [{ skuId: 'sku-1', quantity: 1 }]);
+    const transaction = vi.spyOn(fakeDataSource, 'transaction');
+
+    const { requestedCreditCents, quoteToken, ...requestWithoutQuote } =
+      pickupRequest(cart.map(({ id }) => id));
+
+    await request(app.getHttpServer())
+      .post('/api/v1/orders')
+      .set(userHeaders)
+      .set('Idempotency-Key', 'missing-quote-intent')
+      .send(requestWithoutQuote)
+      .expect(400);
+    void requestedCreditCents;
+    void quoteToken;
+
+    expect(transaction).not.toHaveBeenCalled();
+    transaction.mockRestore();
+    stubs.cartItems.records.length = 0;
+  });
+
+  it('rejects explicit null quote fields with 400 before opening a transaction', async () => {
+    stubs.cartItems.records.length = 0;
+    const cart = await seedCart('user-1', [{ skuId: 'sku-1', quantity: 1 }]);
+    const transaction = vi.spyOn(fakeDataSource, 'transaction');
+
+    await request(app.getHttpServer())
+      .post('/api/v1/orders')
+      .set(userHeaders)
+      .set('Idempotency-Key', 'null-quote-fields')
+      .send({
+        ...pickupRequest(cart.map(({ id }) => id)),
+        requestedCreditCents: null,
+        quoteToken: null,
+      })
+      .expect(400);
+
+    expect(transaction).not.toHaveBeenCalled();
+    transaction.mockRestore();
+    stubs.cartItems.records.length = 0;
+  });
 
   it('rolls back every SKU decrement when one cart item has insufficient stock', async () => {
     setStock('sku-1', 1);
@@ -631,11 +719,12 @@ describe('Orders domain (e2e)', () => {
       (c: CartItem) => (c as CartItem & { id: string }).id,
     );
 
+    const requestBody = pickupRequest(cartIds);
     const first = await request(app.getHttpServer())
       .post('/api/v1/orders')
       .set(userHeaders)
       .set('Idempotency-Key', 'stable-key')
-      .send(pickupRequest(cartIds))
+      .send(requestBody)
       .expect(201);
     const firstBody = first.body as OrderView;
 
@@ -643,7 +732,7 @@ describe('Orders domain (e2e)', () => {
       .post('/api/v1/orders')
       .set(userHeaders)
       .set('Idempotency-Key', 'stable-key')
-      .send(pickupRequest(cartIds))
+      .send(requestBody)
       .expect(201);
     const secondBody = second.body as OrderView;
 
@@ -837,7 +926,9 @@ describe('Orders domain (e2e)', () => {
     const refetched = listed.body.find(
       (o: OrderView) => o.id === pickupOrder.id,
     ) as OrderView;
-    expect(refetched.items[0].unitPriceCents).toBe(6800);
+    expect(
+      refetched.items.find((item) => item.skuName === '6 inch')?.unitPriceCents,
+    ).toBe(6800);
 
     // Re-seed the cart for the DELIVERY flow since the pickup order cleared
     // the source items.

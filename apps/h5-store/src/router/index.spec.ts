@@ -54,6 +54,24 @@ const expectedViews = [
     meta: { requiresAuth: true },
   },
   {
+    path: '/membership-cards',
+    routeName: 'membership-cards',
+    componentName: 'MembershipCenterView',
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/membership-cards/level-1',
+    routeName: 'membership-card-detail',
+    componentName: 'MembershipDetailView',
+    meta: { requiresVerifiedPhone: true },
+  },
+  {
+    path: '/membership-purchases/purchase-1',
+    routeName: 'membership-purchase-result',
+    componentName: 'MembershipPurchaseResultView',
+    meta: { requiresAuth: true },
+  },
+  {
     path: '/login',
     routeName: 'login',
     componentName: 'LoginView',

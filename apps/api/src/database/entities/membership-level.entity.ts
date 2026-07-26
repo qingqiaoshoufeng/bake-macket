@@ -9,10 +9,7 @@ import {
   VersionColumn,
 } from 'typeorm';
 
-import {
-  MembershipTheme,
-  type MembershipBenefit,
-} from '@bake-mall/contracts';
+import { MembershipTheme, type MembershipBenefit } from '@bake-mall/contracts';
 
 @Entity({ name: 'membership_levels' })
 @Index('uniq_membership_levels_code', ['code'], { unique: true })

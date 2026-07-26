@@ -71,8 +71,24 @@ const attributesText = (attributes: Record<string, string>): string =>
             <ElDescriptionsItem label="履约快照">
               {{ order.pickupTimeText ?? order.deliveryAddressText ?? '—' }}
             </ElDescriptionsItem>
-            <ElDescriptionsItem label="商品总额">
+            <ElDescriptionsItem label="商品原价">
               {{ formatPriceCents(order.goodsTotalCents) }}
+            </ElDescriptionsItem>
+            <ElDescriptionsItem label="会员优惠">
+              -{{ formatPriceCents(order.membershipDiscountCents) }}
+            </ElDescriptionsItem>
+            <ElDescriptionsItem label="消费金抵扣">
+              -{{ formatPriceCents(order.creditAppliedCents) }}
+            </ElDescriptionsItem>
+            <ElDescriptionsItem label="应付金额">
+              {{ formatPriceCents(order.payableTotalCents) }}
+            </ElDescriptionsItem>
+            <ElDescriptionsItem label="会员快照">
+              {{
+                order.membershipId
+                  ? `${order.membershipName} · ${order.membershipDiscountBasisPoints / 1000} 折（${order.membershipCode}）`
+                  : '未使用会员'
+              }}
             </ElDescriptionsItem>
             <ElDescriptionsItem label="买家备注">{{
               order.remark ?? '无'
@@ -104,6 +120,21 @@ const attributesText = (attributes: Record<string, string>): string =>
                 }}</template>
               </ElTableColumn>
               <ElTableColumn prop="quantity" label="数量" width="80" />
+              <ElTableColumn label="行原价" width="110">
+                <template #default="{ row }">{{
+                  formatPriceCents(row.lineGoodsTotalCents)
+                }}</template>
+              </ElTableColumn>
+              <ElTableColumn label="行优惠" width="110">
+                <template #default="{ row }">{{
+                  formatPriceCents(row.lineMembershipDiscountCents)
+                }}</template>
+              </ElTableColumn>
+              <ElTableColumn label="折后金额" width="110">
+                <template #default="{ row }">{{
+                  formatPriceCents(row.linePayableCents)
+                }}</template>
+              </ElTableColumn>
             </ElTable>
           </div>
         </section>

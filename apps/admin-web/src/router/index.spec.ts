@@ -10,6 +10,9 @@ import OrderFlowGuide from '../views/dashboard/components/OrderFlowGuide.vue';
 import { ORDER_FLOW } from '../views/dashboard/config/order-flow.js';
 import { DASHBOARD_ENTRY_PREVIEW } from '../views/dashboard/mock/entries.mock.js';
 import BannersView from '../views/banners/BannersView.vue';
+import MembershipCardEditorView from '../views/membership-cards/MembershipCardEditorView.vue';
+import MembershipCardsView from '../views/membership-cards/MembershipCardsView.vue';
+import MembershipPurchasesView from '../views/membership-purchases/MembershipPurchasesView.vue';
 import OrdersView from '../views/orders/OrdersView.vue';
 import ProductEditorView from '../views/products/ProductEditorView.vue';
 import ProductsView from '../views/products/ProductsView.vue';
@@ -66,6 +69,60 @@ describe('admin order route', () => {
 
     const loaded = await (component as LazyViewLoader)();
     expect(loaded.default).toBe(OrdersView);
+  });
+});
+
+describe('admin membership card routes', () => {
+  it.each([
+    [
+      '/membership-cards',
+      'admin-membership-cards',
+      '会员卡配置',
+      MembershipCardsView,
+    ],
+    [
+      '/membership-cards/new',
+      'admin-membership-card-new',
+      '新建会员卡',
+      MembershipCardEditorView,
+    ],
+    [
+      '/membership-cards/level-1/edit',
+      'admin-membership-card-edit',
+      '编辑会员卡',
+      MembershipCardEditorView,
+    ],
+  ])(
+    'resolves %s to a protected real view',
+    async (path, name, title, view) => {
+      const resolved = router.resolve(path);
+      const routeRecord = resolved.matched.find(
+        (record) => record.name === name,
+      );
+      const component = routeRecord?.components?.default;
+
+      expect(resolved.meta.requiresAdminAuth).toBe(true);
+      expect(resolved.meta.title).toBe(title);
+      expect(typeof component).toBe('function');
+      expect((await (component as LazyViewLoader)()).default).toBe(view);
+    },
+  );
+});
+
+describe('admin membership purchase route', () => {
+  it('lazy-loads the protected purchase records view', async () => {
+    const resolved = router.resolve('/membership-purchases');
+    const routeRecord = resolved.matched.find(
+      (record) => record.name === 'admin-membership-purchases',
+    );
+    const component = routeRecord?.components?.default;
+
+    expect(resolved.meta.requiresAdminAuth).toBe(true);
+    expect(resolved.meta.title).toBe('购卡记录');
+    expect(typeof component).toBe('function');
+    expect((await (component as LazyViewLoader)()).default).toBe(
+      MembershipPurchasesView,
+    );
   });
 });
 

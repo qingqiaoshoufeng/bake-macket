@@ -80,6 +80,34 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '订单管理' },
       },
       {
+        path: 'membership-cards',
+        name: 'admin-membership-cards',
+        component: () =>
+          import('../views/membership-cards/MembershipCardsView.vue'),
+        meta: { title: '会员卡配置' },
+      },
+      {
+        path: 'membership-purchases',
+        name: 'admin-membership-purchases',
+        component: () =>
+          import('../views/membership-purchases/MembershipPurchasesView.vue'),
+        meta: { title: '购卡记录' },
+      },
+      {
+        path: 'membership-cards/new',
+        name: 'admin-membership-card-new',
+        component: () =>
+          import('../views/membership-cards/MembershipCardEditorView.vue'),
+        meta: { title: '新建会员卡' },
+      },
+      {
+        path: 'membership-cards/:id/edit',
+        name: 'admin-membership-card-edit',
+        component: () =>
+          import('../views/membership-cards/MembershipCardEditorView.vue'),
+        meta: { title: '编辑会员卡' },
+      },
+      {
         path: ':pathMatch(.*)*',
         name: 'admin-not-found',
         component: () => import('../views/NotFoundView.vue'),

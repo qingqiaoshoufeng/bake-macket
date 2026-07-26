@@ -29,6 +29,7 @@ const apiMocks = vi.hoisted(() => ({
   cartRemove: vi.fn(),
   cartUpsert: vi.fn(),
   checkoutCreate: vi.fn(),
+  checkoutQuote: vi.fn(),
   login: vi.fn(),
   orderGetOne: vi.fn(),
   orderList: vi.fn(),
@@ -66,7 +67,10 @@ vi.mock('./cart/api/index.js', () => ({
   },
 }));
 vi.mock('./checkout/api/index.js', () => ({
-  checkoutFeatureApi: { create: apiMocks.checkoutCreate },
+  checkoutFeatureApi: {
+    create: apiMocks.checkoutCreate,
+    quote: apiMocks.checkoutQuote,
+  },
 }));
 vi.mock('./login/api/index.js', () => ({
   loginFeatureApi: { login: apiMocks.login },
@@ -154,6 +158,20 @@ beforeEach(() => {
   apiMocks.addressList.mockResolvedValue([address]);
   apiMocks.cartList.mockResolvedValue([cartItem]);
   apiMocks.checkoutCreate.mockResolvedValue(order);
+  apiMocks.checkoutQuote.mockResolvedValue({
+    lines: [],
+    goodsTotalCents: 6800,
+    membershipDiscountCents: 0,
+    discountedTotalCents: 6800,
+    requestedCreditCents: 0,
+    creditAppliedCents: 0,
+    payableTotalCents: 6800,
+    availableCreditCents: 0,
+    maxCreditCents: 0,
+    membership: null,
+    quoteToken: 'quote-token',
+    expiresAt: '2099-01-01T00:00:00.000Z',
+  });
   apiMocks.login.mockResolvedValue({ accessToken: 'token' });
   apiMocks.orderGetOne.mockResolvedValue(order);
   apiMocks.orderList.mockResolvedValue([order]);
@@ -431,8 +449,16 @@ describe('feature hooks consume their feature API', () => {
       fulfillmentType: FulfillmentType.PICKUP,
       pickupTimeText: '明天上午十点',
     });
+    await new Promise((resolve) => setTimeout(resolve, 350));
     await checkout.methods.submit();
 
+    expect(apiMocks.checkoutCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestedCreditCents: 0,
+        quoteToken: 'quote-token',
+      }),
+      expect.any(String),
+    );
     expect(apiMocks.cartList).toHaveBeenCalledTimes(2);
     expect(apiMocks.addressList).toHaveBeenCalledOnce();
     expect(apiMocks.checkoutCreate).toHaveBeenCalledOnce();
