@@ -3,6 +3,9 @@ import { onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { Search, showToast } from 'vant';
 
+import StorePage from '../components/layout/StorePage.vue';
+import StorePageHeader from '../components/layout/StorePageHeader.vue';
+import StoreStatePanel from '../components/feedback/StoreStatePanel.vue';
 import ProductCard from './catalog/components/ProductCard.vue';
 import StoreTabbar from './catalog/components/StoreTabbar.vue';
 import { useCatalog } from './catalog/hooks/useCatalog.js';
@@ -27,28 +30,56 @@ onMounted(refresh);
 watch(() => route.params.id, refresh);
 
 function submitSearch(): void {
-  void router.replace({ query: query.value.trim() ? { q: query.value.trim() } : {} });
+  void router.replace({
+    query: query.value.trim() ? { q: query.value.trim() } : {},
+  });
   void refresh();
 }
 </script>
 
 <template>
-  <main class="category-view">
-    <header>
-      <button type="button" @click="router.back()">‹</button>
-      <div><small>在这个分类里</small><h1>挑选喜欢的烘焙</h1></div>
-    </header>
-    <Search
-      v-model="query"
-      shape="round"
-      placeholder="搜索商品名称"
-      data-testid="catalog-search"
-      @search="submitSearch"
-      @clear="submitSearch"
+  <StorePage with-tabbar class="category-view">
+    <StorePageHeader
+      back
+      eyebrow="在这个分类里"
+      title="挑选喜欢的烘焙"
+      description="按名称快速找到今天想吃的口味。"
+      @back="router.back()"
     />
-    <p v-if="catalog.loading.value" class="state-copy">正在查找…</p>
-    <p v-else-if="!catalog.products.value.length" class="state-copy">没有找到对应商品，换个关键词试试。</p>
-    <section v-else class="product-grid">
+
+    <section class="category-tools" aria-label="商品筛选工具">
+      <Search
+        v-model="query"
+        shape="round"
+        placeholder="搜索商品名称"
+        data-testid="catalog-search"
+        @search="submitSearch"
+        @clear="submitSearch"
+      />
+      <p class="category-tools__summary" aria-live="polite">
+        <template v-if="catalog.loading.value">正在查找合适的烘焙…</template>
+        <template v-else-if="query.trim()">
+          “{{ query.trim() }}”共找到 {{ catalog.products.value.length }} 款
+        </template>
+        <template v-else
+          >共找到 {{ catalog.products.value.length }} 款商品</template
+        >
+      </p>
+    </section>
+
+    <StoreStatePanel
+      v-if="catalog.loading.value"
+      state="loading"
+      title="正在查找"
+      description="马上为你呈现这个分类的商品。"
+    />
+    <StoreStatePanel
+      v-else-if="!catalog.products.value.length"
+      state="empty"
+      title="没有找到对应商品"
+      description="换个关键词试试。"
+    />
+    <section v-else class="product-grid" aria-label="商品列表">
       <ProductCard
         v-for="product in catalog.products.value"
         :key="product.id"
@@ -56,17 +87,56 @@ function submitSearch(): void {
         @open="router.push(`/products/${$event}`)"
       />
     </section>
-    <StoreTabbar />
-  </main>
+
+    <StoreTabbar :active-path="route.path" @navigate="router.push" />
+  </StorePage>
 </template>
 
 <style scoped>
-.category-view { width: min(100%, 560px); min-height: 100%; margin: 0 auto; padding: 18px 16px 96px; }
-header { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
-header button { width: 38px; height: 38px; border: 0; border-radius: 50%; background: #e1eddd; color: #52795a; font-size: 27px; }
-small { color: #78917a; letter-spacing: .12em; }
-h1 { margin: 2px 0 0; font: 700 23px/1.2 Georgia, 'Songti SC', serif; }
-:deep(.van-search) { padding: 8px 0 18px; background: transparent; }
-.product-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.state-copy { padding: 48px 12px; text-align: center; color: var(--mall-muted); }
+.category-view {
+  overflow-x: hidden;
+}
+
+.category-tools {
+  margin-bottom: var(--mall-space-5);
+  padding: var(--mall-space-2) var(--mall-space-4) var(--mall-space-3);
+  border: 1px solid var(--mall-border);
+  border-radius: var(--mall-radius-feature);
+  background: var(--mall-surface);
+  box-shadow: var(--mall-shadow-card);
+}
+
+:deep(.van-search) {
+  padding: var(--mall-space-2) 0;
+  background: transparent;
+}
+
+:deep(.van-search__content) {
+  border: 1px solid transparent;
+  background: var(--mall-surface-soft);
+}
+
+:deep(.van-search__content:focus-within) {
+  border-color: var(--mall-primary);
+}
+
+.category-tools__summary {
+  margin: var(--mall-space-1) 0 0;
+  color: var(--mall-text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.product-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  min-width: 0;
+}
+
+@media (max-width: 380px) {
+  .product-grid {
+    gap: 10px;
+  }
+}
 </style>

@@ -1,6 +1,12 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { ElButton, ElInput } from 'element-plus';
+
+import {
+  isAllowedImageUrl,
+  isAllowedLinkUrl,
+  sanitizeRichTextHtml,
+} from './richTextHtml.js';
 
 /**
  * Minimalist rich-text editor for product detail HTML.
@@ -10,8 +16,8 @@ import { ElButton, ElInput } from 'element-plus';
  * saved HTML through `v-html`. We therefore ship a thin
  * `contenteditable`-backed surface:
  *
- * - Toolbar buttons wrap the selection in `b`, `i`, `u` and `p` tags and
- *   allow inserting links and image URLs.
+ * - Toolbar buttons wrap the selection in `b`, `i` and `p` tags and allow
+ *   inserting links and image URLs.
  * - The component owns the inner DOM via `contenteditable` and re-emits
  *   `update:modelValue` whenever the inner HTML changes (`input` event).
  * - For headless environments (vitest's jsdom does not render focus or
@@ -36,15 +42,16 @@ const editorRef = ref<HTMLDivElement | null>(null);
 
 const isFallback = computed(() => typeof document === 'undefined');
 
-watch(
-  () => props.modelValue,
-  (next) => {
-    if (editorRef.value && editorRef.value.innerHTML !== next) {
-      editorRef.value.innerHTML = next;
-    }
-    textareaValue.value = next;
-  },
-);
+function syncHtml(next: string): void {
+  const sanitizedHtml = sanitizeRichTextHtml(next);
+  if (editorRef.value && editorRef.value.innerHTML !== sanitizedHtml) {
+    editorRef.value.innerHTML = sanitizedHtml;
+  }
+  textareaValue.value = sanitizedHtml;
+}
+
+onMounted(() => syncHtml(props.modelValue));
+watch(() => props.modelValue, syncHtml);
 
 function emitValue(value: string): void {
   if (value === props.modelValue) return;
@@ -53,70 +60,89 @@ function emitValue(value: string): void {
 
 function onInput(event: Event): void {
   const target = event.target as HTMLDivElement;
-  emitValue(target.innerHTML);
+  const sanitizedHtml = sanitizeRichTextHtml(target.innerHTML);
+  if (target.innerHTML !== sanitizedHtml) target.innerHTML = sanitizedHtml;
+  textareaValue.value = sanitizedHtml;
+  emitValue(sanitizedHtml);
 }
 
 function onTextareaInput(value: string): void {
-  textareaValue.value = value;
-  emitValue(value);
+  const sanitizedHtml = sanitizeRichTextHtml(value);
+  textareaValue.value = sanitizedHtml;
+  emitValue(sanitizedHtml);
+}
+
+function getTransferredHtml(event: ClipboardEvent | DragEvent): string {
+  const transfer =
+    'clipboardData' in event ? event.clipboardData : event.dataTransfer;
+  return (
+    transfer?.getData('text/html') || transfer?.getData('text/plain') || ''
+  );
+}
+
+function insertSanitizedTransferredHtml(
+  event: ClipboardEvent | DragEvent,
+): void {
+  event.preventDefault();
+  const html = getTransferredHtml(event);
+  if (!html || isFallback.value) return;
+  exec('insertHTML', sanitizeRichTextHtml(html));
 }
 
 function exec(command: string, value?: string): void {
   if (isFallback.value) return;
   editorRef.value?.focus();
   // execCommand is deprecated but the only portable way to wrap selection
-  // across browsers without shipping a full editor. The server-side
-  // sanitizer in NestJS still strips anything dangerous before persisting.
+  // across browsers without shipping a full editor. Its resulting HTML is
+  // still cleaned before it can leave this component.
   document.execCommand(command, false, value);
-  if (editorRef.value) emitValue(editorRef.value.innerHTML);
+  if (editorRef.value)
+    emitValue(sanitizeRichTextHtml(editorRef.value.innerHTML));
 }
 
 function onLink(): void {
   const url = window.prompt('请输入链接地址(以 https:// 开头)');
-  if (!url) return;
+  if (!url || !isAllowedLinkUrl(url)) return;
   exec('createLink', url);
 }
 
 function onImage(): void {
   const url = window.prompt('请输入图片地址(以 https:// 开头)');
-  if (!url) return;
+  if (!url || !isAllowedImageUrl(url)) return;
   exec('insertImage', url);
 }
 </script>
 
 <template>
   <div class="rich-editor">
-    <div v-if="!isFallback" class="rich-editor__toolbar" role="toolbar">
+    <div
+      v-if="!isFallback"
+      class="rich-editor__toolbar"
+      role="toolbar"
+      aria-label="富文本格式工具"
+    >
       <ElButton size="small" @click="exec('bold')">
         <span style="font-weight: 700">B</span>
       </ElButton>
       <ElButton size="small" @click="exec('italic')">
         <span style="font-style: italic">I</span>
       </ElButton>
-      <ElButton size="small" @click="exec('underline')">
-        <span style="text-decoration: underline">U</span>
-      </ElButton>
-      <ElButton size="small" @click="exec('formatBlock', 'p')">
-        段落
-      </ElButton>
-      <ElButton size="small" @click="onLink">
-        链接
-      </ElButton>
-      <ElButton size="small" @click="onImage">
-        图片
-      </ElButton>
+      <ElButton size="small" @click="exec('formatBlock', 'p')"> 段落 </ElButton>
+      <ElButton size="small" @click="onLink"> 链接 </ElButton>
+      <ElButton size="small" @click="onImage"> 图片 </ElButton>
     </div>
 
     <div
       v-if="!isFallback"
       ref="editorRef"
       class="rich-editor__surface"
+      data-testid="rich-editor-surface"
       :data-placeholder="placeholder ?? '请输入商品详情'"
       contenteditable="true"
       @input="onInput"
-    >
-      {{ modelValue }}
-    </div>
+      @paste="insertSanitizedTransferredHtml"
+      @drop="insertSanitizedTransferredHtml"
+    ></div>
 
     <ElInput
       v-else
@@ -131,38 +157,57 @@ function onImage(): void {
 
 <style scoped>
 .rich-editor {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  overflow: hidden;
+  border: 1px solid var(--admin-border);
+  border-radius: 14px;
+  background: var(--admin-surface);
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.rich-editor:focus-within {
+  border-color: var(--admin-primary);
+  box-shadow: 0 0 0 4px rgb(121 101 184 / 10%);
 }
 
 .rich-editor__toolbar {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  background: var(--admin-lilac);
-  padding: 6px 8px;
-  border-radius: var(--el-border-radius-base);
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--admin-border);
+  background: var(--admin-surface-soft);
+}
+
+.rich-editor__toolbar :deep(.el-button + .el-button) {
+  margin-left: 0;
+}
+
+.rich-editor__toolbar :deep(.el-button) {
+  min-width: 34px;
+  border-color: transparent;
+  background: var(--admin-surface);
 }
 
 .rich-editor__surface {
-  min-height: 200px;
-  border: 1px solid #ece6f7;
-  border-radius: var(--el-border-radius-base);
-  padding: 12px 14px;
-  background: #fff;
-  color: #2f2a3d;
+  min-height: 240px;
+  padding: 16px 18px;
+  background: var(--admin-surface);
+  color: var(--admin-text);
   font-size: 14px;
-  line-height: 1.6;
+  line-height: 1.75;
   outline: none;
-}
-
-.rich-editor__surface:focus {
-  border-color: var(--el-color-primary);
+  overflow-wrap: anywhere;
 }
 
 .rich-editor__surface:empty::before {
   content: attr(data-placeholder);
-  color: #b6aecf;
+  color: var(--admin-muted);
+}
+
+.rich-editor__surface :deep(img) {
+  max-width: 100%;
+  height: auto;
 }
 </style>

@@ -1,3 +1,3 @@
-import type { CartItemView } from '../../../api/customer.js';
+import type { CartItemView } from '@bake-mall/contracts';
 
 export type CartRow = CartItemView;

@@ -11,24 +11,46 @@
  */
 
 import { onMounted, reactive, ref, watch } from 'vue';
-import { ElButton, ElMessage, ElMessageBox } from 'element-plus';
+import {
+  ElAlert,
+  ElButton,
+  ElMessage,
+  ElMessageBox,
+  ElPagination,
+} from 'element-plus';
 
+import AdminDataPanel from '../components/layout/AdminDataPanel.vue';
+import AdminPage from '../components/layout/AdminPage.vue';
+import AdminPageHeader from '../components/layout/AdminPageHeader.vue';
+import CategoryFilters from './categories/components/CategoryFilters.vue';
 import CategoryTable from './categories/components/CategoryTable.vue';
 import CreateCategoryDialog from './categories/components/CreateCategoryDialog.vue';
+import { CATEGORY_PAGINATION } from './categories/config/pagination.js';
 import { useCategories } from './categories/hooks/useCategories.js';
 import type { AdminCategoryView } from '../api/catalog.js';
 import type {
   CategoryFormShape,
   CategoryInlineEdit,
 } from './categories/type/form.js';
+import type { CategoryFilterForm } from './categories/type/list.js';
 
 const {
   categories,
+  draftFilters,
+  advancedCount,
+  hasAppliedFilters,
+  page,
+  pageSize,
+  total,
   loading,
   lastError,
   editingId,
   editingDraft,
   refresh,
+  search,
+  reset,
+  setPage,
+  setPageSize,
   blankForm,
   startEdit,
   cancelEdit,
@@ -59,6 +81,10 @@ watch(lastError, showLoadError);
 
 function patchDraft(patch: Partial<CategoryInlineEdit>): void {
   Object.assign(editingDraft, patch);
+}
+
+function patchFilters(patch: Partial<CategoryFilterForm>): void {
+  Object.assign(draftFilters, patch);
 }
 
 function patchForm(patch: Partial<CategoryFormShape>): void {
@@ -137,33 +163,70 @@ async function onRemove(category: AdminCategoryView): Promise<void> {
 </script>
 
 <template>
-  <section class="categories">
-    <header class="categories__head">
-      <div>
-        <h1>分类管理</h1>
-        <p>单层分类:名称、图片、排序、启用状态。</p>
-      </div>
-      <ElButton
-        type="primary"
-        :data-testid="'new-category'"
-        @click="openCreateDialog"
-      >
-        新增分类
-      </ElButton>
-    </header>
+  <AdminPage>
+    <AdminPageHeader
+      eyebrow="CATALOG"
+      title="分类管理"
+      description="维护单层分类的名称、图片、排序与启用状态。"
+    >
+      <template #actions>
+        <ElButton
+          type="primary"
+          :data-testid="'new-category'"
+          @click="openCreateDialog"
+        >
+          新增分类
+        </ElButton>
+      </template>
+    </AdminPageHeader>
 
-    <CategoryTable
-      :categories="categories"
-      :loading="loading"
-      :editing-id="editingId"
-      :draft="editingDraft"
-      @update:draft="patchDraft"
-      @start-edit="startEdit"
-      @cancel-edit="cancelEdit"
-      @save-edit="onSaveEdit"
-      @toggle-active="onToggleActive"
-      @remove="onRemove"
+    <ElAlert
+      v-if="lastError"
+      type="error"
+      :title="lastError"
+      :closable="false"
+      show-icon
     />
+
+    <AdminDataPanel>
+      <template #toolbar>
+        <CategoryFilters
+          :filters="draftFilters"
+          :loading="loading"
+          :advanced-count="advancedCount"
+          @change="patchFilters"
+          @search="search"
+          @reset="reset"
+        />
+      </template>
+
+      <CategoryTable
+        :categories="categories"
+        :loading="loading"
+        :editing-id="editingId"
+        :draft="editingDraft"
+        :has-applied-filters="hasAppliedFilters"
+        @update:draft="patchDraft"
+        @start-edit="startEdit"
+        @cancel-edit="cancelEdit"
+        @save-edit="onSaveEdit"
+        @toggle-active="onToggleActive"
+        @remove="onRemove"
+      />
+
+      <template v-if="total > 0" #footer>
+        <ElPagination
+          background
+          layout="total, sizes, prev, pager, next"
+          :total="total"
+          :current-page="page"
+          :page-size="pageSize"
+          :page-sizes="[...CATEGORY_PAGINATION.pageSizes]"
+          @update:current-page="setPage"
+          @update:page-size="setPageSize"
+        />
+      </template>
+    </AdminDataPanel>
 
     <CreateCategoryDialog
       v-model:open="dialogOpen"
@@ -172,31 +235,5 @@ async function onRemove(category: AdminCategoryView): Promise<void> {
       @update:form="patchForm"
       @submit="onSubmitCreate"
     />
-  </section>
+  </AdminPage>
 </template>
-
-<style scoped>
-.categories {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.categories__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.categories__head h1 {
-  margin: 0;
-  font-size: 22px;
-  color: #2f2a3d;
-}
-
-.categories__head p {
-  margin: 4px 0 0;
-  color: #8a83a3;
-  font-size: 13px;
-}
-</style>

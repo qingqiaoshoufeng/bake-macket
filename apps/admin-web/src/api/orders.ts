@@ -42,10 +42,7 @@ export const adminOrdersApi = {
    * the updated order so the caller can refresh its UI without a second
    * round-trip.
    */
-  updateStatus(
-    id: string,
-    body: UpdateOrderStatusRequest,
-  ): Promise<OrderView> {
+  updateStatus(id: string, body: UpdateOrderStatusRequest): Promise<OrderView> {
     return apiClient.patch<OrderView>(`/admin/orders/${id}/status`, body);
   },
 };

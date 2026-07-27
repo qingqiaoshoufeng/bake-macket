@@ -18,9 +18,10 @@ import {
   ElTag,
 } from 'element-plus';
 
+import AdminEmptyState from '../../../components/feedback/AdminEmptyState.vue';
 import { CATEGORY_COLUMNS } from '../config/columns.js';
 import { ACTIVE_LABEL, INACTIVE_LABEL } from '../config/defaults.js';
-import type { AdminCategoryView } from '../../../api/catalog.js';
+import type { AdminCategoryView } from '@bake-mall/contracts';
 import type { CategoryInlineEdit } from '../type/form.js';
 
 const props = defineProps<{
@@ -28,6 +29,7 @@ const props = defineProps<{
   loading: boolean;
   editingId: string | null;
   draft: CategoryInlineEdit;
+  hasAppliedFilters?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -36,7 +38,7 @@ const emit = defineEmits<{
   'cancel-edit': [];
   'save-edit': [category: AdminCategoryView];
   'toggle-active': [category: AdminCategoryView];
-  'remove': [category: AdminCategoryView];
+  remove: [category: AdminCategoryView];
 }>();
 
 const [
@@ -60,20 +62,20 @@ function asCategory(row: unknown): AdminCategoryView {
     v-loading="loading"
     :data="[...categories]"
     row-key="id"
-    :empty-text="'暂无分类'"
+    class="admin-table category-table"
+    :empty-text="'暂无分类，先创建一个商品分类'"
     :data-testid="'categories-table'"
   >
-    <ElTableColumn
-      :label="nameColumn.label"
-      :min-width="nameColumn.minWidth"
-    >
+    <ElTableColumn :label="nameColumn.label" :min-width="nameColumn.minWidth">
       <template #default="{ row }">
         <template v-if="editingId === row.id">
           <ElInput
             :model-value="draft.name"
             size="small"
             :data-testid="`edit-name-${row.id}`"
-            @update:model-value="(v) => emit('update:draft', { name: String(v) })"
+            @update:model-value="
+              (v) => emit('update:draft', { name: String(v) })
+            "
           />
         </template>
         <template v-else>
@@ -82,10 +84,7 @@ function asCategory(row: unknown): AdminCategoryView {
       </template>
     </ElTableColumn>
 
-    <ElTableColumn
-      :label="imageColumn.label"
-      :min-width="imageColumn.minWidth"
-    >
+    <ElTableColumn :label="imageColumn.label" :min-width="imageColumn.minWidth">
       <template #default="{ row }">
         <template v-if="editingId === row.id">
           <ElInput
@@ -93,7 +92,9 @@ function asCategory(row: unknown): AdminCategoryView {
             size="small"
             placeholder="https://..."
             :data-testid="`edit-image-${row.id}`"
-            @update:model-value="(v) => emit('update:draft', { imageUrl: String(v) })"
+            @update:model-value="
+              (v) => emit('update:draft', { imageUrl: String(v) })
+            "
           />
         </template>
         <template v-else>
@@ -106,7 +107,9 @@ function asCategory(row: unknown): AdminCategoryView {
           >
             {{ row.imageUrl }}
           </a>
-          <ElTag v-else type="info" :data-testid="`category-no-image-${row.id}`">无图</ElTag>
+          <ElTag v-else type="info" :data-testid="`category-no-image-${row.id}`"
+            >无图</ElTag
+          >
         </template>
       </template>
     </ElTableColumn>
@@ -122,7 +125,9 @@ function asCategory(row: unknown): AdminCategoryView {
             size="small"
             :min="0"
             :data-testid="`edit-sort-${row.id}`"
-            @update:model-value="(v) => emit('update:draft', { sortOrder: Number(v ?? 0) })"
+            @update:model-value="
+              (v) => emit('update:draft', { sortOrder: Number(v ?? 0) })
+            "
           />
         </template>
         <template v-else>
@@ -131,23 +136,18 @@ function asCategory(row: unknown): AdminCategoryView {
       </template>
     </ElTableColumn>
 
-    <ElTableColumn
-      :label="activeColumn.label"
-      :width="activeColumn.width"
-    >
+    <ElTableColumn :label="activeColumn.label" :width="activeColumn.width">
       <template #default="{ row }">
         <ElSwitch
           :model-value="row.isActive"
+          :disabled="editingId === row.id"
           :data-testid="`category-active-${row.id}`"
           @change="() => emit('toggle-active', asCategory(row))"
         />
       </template>
     </ElTableColumn>
 
-    <ElTableColumn
-      :label="statusColumn.label"
-      :width="statusColumn.width"
-    >
+    <ElTableColumn :label="statusColumn.label" :width="statusColumn.width">
       <template #default="{ row }">
         <ElTag
           :type="row.isActive ? 'success' : 'info'"
@@ -158,10 +158,23 @@ function asCategory(row: unknown): AdminCategoryView {
       </template>
     </ElTableColumn>
 
+    <template #empty>
+      <AdminEmptyState
+        :title="hasAppliedFilters ? '当前筛选无结果' : '暂无分类'"
+        :description="
+          hasAppliedFilters
+            ? '请调整筛选条件后重新查询。'
+            : '先创建一个分类，再为商品安排归属。'
+        "
+        tone="mint"
+      />
+    </template>
+
     <ElTableColumn
       :label="actionsColumn.label"
       :width="actionsColumn.width"
       :align="actionsColumn.align"
+      fixed="right"
     >
       <template #default="{ row }">
         <template v-if="editingId === row.id">
@@ -204,6 +217,10 @@ function asCategory(row: unknown): AdminCategoryView {
 </template>
 
 <style scoped>
+.category-table {
+  min-width: 980px;
+}
+
 :deep(.admin-row) td {
   vertical-align: middle;
 }

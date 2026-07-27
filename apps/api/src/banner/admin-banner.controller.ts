@@ -8,12 +8,22 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 
+import type {
+  AdminBannerListResult,
+  AdminBannerView,
+  SaveBannerRequest,
+} from '@bake-mall/contracts';
+
 import { JwtAdminGuard } from '../auth/admin-jwt.guard.js';
+import type { AuthenticatedAdmin } from '../auth/auth.types.js';
+import { CurrentAdmin } from '../auth/current-user.decorator.js';
 import { BannerService } from './banner.service.js';
-import { CreateBannerDto, UpdateBannerDto } from './dto.js';
+import { AdminBannerListQueryDto } from './dto/admin-banner-list-query.dto.js';
+import { SaveBannerDto } from './dto.js';
 
 @Controller('admin/banners')
 @UseGuards(JwtAdminGuard)
@@ -21,23 +31,35 @@ export class AdminBannerController {
   constructor(private readonly banners: BannerService) {}
 
   @Get()
-  list() {
-    return this.banners.list();
+  list(
+    @Query() query: AdminBannerListQueryDto,
+  ): Promise<AdminBannerListResult> {
+    return this.banners.list(query);
   }
 
   @Post()
-  create(@Body() dto: CreateBannerDto) {
-    return this.banners.create(dto);
+  create(
+    @Body() dto: SaveBannerDto,
+    @CurrentAdmin() admin: AuthenticatedAdmin,
+  ): Promise<AdminBannerView> {
+    return this.banners.create(dto as SaveBannerRequest, admin.id);
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateBannerDto) {
-    return this.banners.update(id, dto);
+  update(
+    @Param('id') id: string,
+    @Body() dto: SaveBannerDto,
+    @CurrentAdmin() admin: AuthenticatedAdmin,
+  ): Promise<AdminBannerView> {
+    return this.banners.update(id, dto as SaveBannerRequest, admin.id);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async remove(@Param('id') id: string) {
-    await this.banners.remove(id);
+  async remove(
+    @Param('id') id: string,
+    @CurrentAdmin() admin: AuthenticatedAdmin,
+  ) {
+    await this.banners.remove(id, admin.id);
   }
 }

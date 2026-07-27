@@ -5,9 +5,7 @@ export type MediaAsset = {
 
 export type PresignUploadScope = 'products' | 'banners';
 export type PresignUploadContentType =
-  | 'image/jpeg'
-  | 'image/png'
-  | 'image/webp';
+  'image/jpeg' | 'image/png' | 'image/webp';
 
 export type PresignUploadRequest = {
   scope: PresignUploadScope;

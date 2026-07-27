@@ -10,12 +10,7 @@
 
 export type ColumnDef = {
   readonly key:
-    | 'name'
-    | 'image'
-    | 'sortOrder'
-    | 'isActive'
-    | 'status'
-    | 'actions';
+    'name' | 'image' | 'sortOrder' | 'isActive' | 'status' | 'actions';
   readonly label: string;
   readonly minWidth?: number;
   readonly width?: number;

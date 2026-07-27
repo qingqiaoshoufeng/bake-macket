@@ -1,17 +1,33 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { validateOrReject } from 'class-validator';
 import { DataSource, Repository } from 'typeorm';
 
-import type {
-  AdminProductDetailView,
-  SaveProductRequest,
+import {
+  ApiErrorCode,
+  BooleanFilter,
+  ProductStockFilter,
+  type AdminCategoryListQuery,
+  type AdminCategoryListResult,
+  type AdminCategoryView,
+  type AdminProductDetailView,
+  type AdminProductListQuery,
+  type AdminProductListResult,
+  type PublicProductDetailView,
+  type PublicProductSummaryView,
+  type SaveProductRequest,
 } from '@bake-mall/contracts';
 
+import {
+  escapeLike,
+  toPaginatedView,
+} from '../common/query/admin-query.helpers.js';
 import { HtmlSanitizerService } from '../content/html-sanitizer.service.js';
 import { AuditLog } from '../database/entities/audit-log.entity.js';
 import { Category } from '../database/entities/category.entity.js';
@@ -22,6 +38,35 @@ import { CreateCategoryDto, UpdateCategoryDto } from './dto/category.dto.js';
 import { CreateProductDto, UpdateProductDto } from './dto/product.dto.js';
 import { CreateSkuDto, UpdateSkuDto } from './dto/sku.dto.js';
 import { PublicProductsQueryDto } from './dto/public-products-query.dto.js';
+import { MediaAssetPolicyService } from './media-asset-policy.service.js';
+import {
+  toAdminProductDetailView,
+  toAdminProductSummaryView,
+  toPublicProductDetailView,
+  toPublicProductSummaryView,
+} from './product.mapper.js';
+
+const hasNonEmptyId = <T extends { id?: unknown }>(
+  value: T,
+): value is T & { id: string } =>
+  typeof value.id === 'string' && value.id.length > 0;
+
+const hasSkuIdentity = (
+  sku: SaveProductRequest['skus'][number],
+): sku is Extract<SaveProductRequest['skus'][number], { id: string }> =>
+  hasNonEmptyId(sku) && Number.isInteger(sku.stockVersion);
+
+const hasInvalidSkuIdentity = (
+  sku: SaveProductRequest['skus'][number],
+): boolean => {
+  const hasId = hasNonEmptyId(sku);
+  const hasVersion = Number.isInteger(sku.stockVersion);
+  return (
+    hasId !== hasVersion ||
+    (sku.id !== undefined && !hasId) ||
+    (sku.stockVersion !== undefined && !hasVersion)
+  );
+};
 
 @Injectable()
 export class CatalogService {
@@ -33,13 +78,62 @@ export class CatalogService {
     @InjectRepository(ProductImage)
     private readonly images: Repository<ProductImage>,
     private readonly sanitizer: HtmlSanitizerService,
+    private readonly mediaAssetPolicy: MediaAssetPolicyService,
     private readonly dataSource?: DataSource,
   ) {}
 
-  listCategories(): Promise<Category[]> {
-    return this.categories.find({
-      order: { sortOrder: 'ASC', createdAt: 'DESC' },
-    });
+  async listAdminCategories(
+    query: AdminCategoryListQuery,
+  ): Promise<AdminCategoryListResult> {
+    const builder = this.categories.createQueryBuilder('category');
+    if (query.q?.trim()) {
+      builder.andWhere("category.name LIKE :q ESCAPE '\\\\'", {
+        q: `%${escapeLike(query.q.trim())}%`,
+      });
+    }
+    if (query.isActive) {
+      builder.andWhere('category.isActive = :isActive', {
+        isActive: query.isActive === BooleanFilter.YES,
+      });
+    }
+    if (query.hasImage) {
+      builder.andWhere(
+        query.hasImage === BooleanFilter.YES
+          ? 'category.imageUrl IS NOT NULL'
+          : 'category.imageUrl IS NULL',
+      );
+    }
+    if (query.hasProducts) {
+      builder.andWhere(
+        `${query.hasProducts === BooleanFilter.NO ? 'NOT ' : ''}EXISTS (
+          SELECT 1 FROM products category_product
+          WHERE category_product.category_id = category.id
+        )`,
+      );
+    }
+    if (query.createdAtFrom) {
+      builder.andWhere('category.createdAt >= :createdAtFrom', {
+        createdAtFrom: new Date(query.createdAtFrom),
+      });
+    }
+    if (query.createdAtBefore) {
+      builder.andWhere('category.createdAt < :createdAtBefore', {
+        createdAtBefore: new Date(query.createdAtBefore),
+      });
+    }
+    const [categories, total] = await builder
+      .orderBy('category.sortOrder', 'ASC')
+      .addOrderBy('category.createdAt', 'DESC')
+      .addOrderBy('category.id', 'DESC')
+      .skip((query.page - 1) * query.pageSize)
+      .take(query.pageSize)
+      .getManyAndCount();
+    return toPaginatedView(
+      categories.map((category) => this.toAdminCategoryView(category)),
+      total,
+      query.page,
+      query.pageSize,
+    );
   }
   listPublicCategories(): Promise<Category[]> {
     return this.categories.find({
@@ -71,11 +165,121 @@ export class CatalogService {
     await this.categories.delete(id);
   }
 
-  listProducts(): Promise<Product[]> {
-    return this.products.find({
-      relations: { category: true },
-      order: { sortOrder: 'ASC', createdAt: 'DESC' },
-    });
+  async listAdminProducts(
+    query: AdminProductListQuery,
+  ): Promise<AdminProductListResult> {
+    const builder = this.products
+      .createQueryBuilder('product')
+      .innerJoinAndSelect('product.category', 'category');
+    if (query.q?.trim()) {
+      builder.andWhere("product.name LIKE :q ESCAPE '\\\\'", {
+        q: `%${escapeLike(query.q.trim())}%`,
+      });
+    }
+    if (query.categoryId?.trim()) {
+      builder.andWhere('product.categoryId = :categoryId', {
+        categoryId: query.categoryId.trim(),
+      });
+    }
+    if (query.isActive) {
+      builder.andWhere('product.isActive = :isActive', {
+        isActive: query.isActive === BooleanFilter.YES,
+      });
+    }
+    if (query.hasActiveSku) {
+      builder.andWhere(
+        `${query.hasActiveSku === BooleanFilter.NO ? 'NOT ' : ''}EXISTS (
+          SELECT 1 FROM skus active_sku
+          WHERE active_sku.product_id = product.id
+            AND active_sku.is_active = TRUE
+        )`,
+      );
+    }
+    if (query.stock) {
+      const maxActiveStock = `COALESCE((SELECT MAX(sku_stock.stock)
+        FROM skus sku_stock
+        WHERE sku_stock.product_id = product.id
+          AND sku_stock.is_active = TRUE), 0)`;
+      const stockPredicate =
+        query.stock === ProductStockFilter.IN_STOCK
+          ? `${maxActiveStock} > :lowStockThreshold`
+          : query.stock === ProductStockFilter.LOW_STOCK
+            ? `${maxActiveStock} BETWEEN 1 AND :lowStockThreshold`
+            : `${maxActiveStock} = 0`;
+      builder.andWhere(
+        stockPredicate,
+        query.stock === ProductStockFilter.OUT_OF_STOCK
+          ? undefined
+          : { lowStockThreshold: query.lowStockThreshold ?? 10 },
+      );
+    }
+    if (query.hasCoverImage) {
+      builder.andWhere(
+        query.hasCoverImage === BooleanFilter.YES
+          ? 'product.coverImageUrl IS NOT NULL'
+          : 'product.coverImageUrl IS NULL',
+      );
+    }
+    if (
+      query.minPriceCents !== undefined ||
+      query.maxPriceCents !== undefined
+    ) {
+      const pricePredicates = [
+        ...(query.minPriceCents !== undefined
+          ? ['sku_price.price_cents >= :minPriceCents']
+          : []),
+        ...(query.maxPriceCents !== undefined
+          ? ['sku_price.price_cents <= :maxPriceCents']
+          : []),
+      ];
+      builder.andWhere(
+        `EXISTS (
+          SELECT 1 FROM skus sku_price
+          WHERE sku_price.product_id = product.id
+            AND ${pricePredicates.join(' AND ')}
+        )`,
+        {
+          ...(query.minPriceCents !== undefined
+            ? { minPriceCents: query.minPriceCents }
+            : {}),
+          ...(query.maxPriceCents !== undefined
+            ? { maxPriceCents: query.maxPriceCents }
+            : {}),
+        },
+      );
+    }
+    if (query.createdAtFrom) {
+      builder.andWhere('product.createdAt >= :createdAtFrom', {
+        createdAtFrom: new Date(query.createdAtFrom),
+      });
+    }
+    if (query.createdAtBefore) {
+      builder.andWhere('product.createdAt < :createdAtBefore', {
+        createdAtBefore: new Date(query.createdAtBefore),
+      });
+    }
+    const [products, total] = await builder
+      .orderBy('product.sortOrder', 'ASC')
+      .addOrderBy('product.createdAt', 'DESC')
+      .addOrderBy('product.id', 'DESC')
+      .skip((query.page - 1) * query.pageSize)
+      .take(query.pageSize)
+      .getManyAndCount();
+    const activeSkuCounts = await this.loadActiveSkuCounts(
+      products.map(({ id }) => id),
+    );
+    return toPaginatedView(
+      products.map((product) =>
+        toAdminProductSummaryView(
+          product,
+          product.category,
+          activeSkuCounts.get(product.id) ?? 0,
+        ),
+      ),
+      total,
+      query.page,
+      query.pageSize,
+    );
   }
   async createProduct(dto: CreateProductDto): Promise<Product> {
     await this.requireCategory(dto.categoryId);
@@ -120,6 +324,14 @@ export class CatalogService {
     if (dto.isActive && !dto.skus.some((sku) => sku.isActive)) {
       throw new BadRequestException('上架商品至少需要一个启用 SKU');
     }
+    const assets = [
+      ...(dto.coverImage ? [dto.coverImage] : []),
+      ...dto.images,
+      ...dto.skus
+        .map(({ image }) => image)
+        .filter((image): image is NonNullable<typeof image> => image !== null),
+    ];
+    assets.forEach((asset) => this.mediaAssetPolicy.assertProductAsset(asset));
     if (!this.dataSource) {
       throw new Error('DataSource is required for aggregate product saves');
     }
@@ -130,13 +342,48 @@ export class CatalogService {
       const skuRepository = manager.getRepository(Sku);
       const imageRepository = manager.getRepository(ProductImage);
       const auditRepository = manager.getRepository(AuditLog);
-      const category = await categoryRepository.findOneBy({
-        id: dto.categoryId,
-      });
+      const [category, existing] = await Promise.all([
+        categoryRepository.findOneBy({ id: dto.categoryId }),
+        id ? productRepository.findOneBy({ id }) : Promise.resolve(null),
+      ]);
       if (!category) throw new NotFoundException('Category not found');
-
-      const existing = id ? await productRepository.findOneBy({ id }) : null;
       if (id && !existing) throw new NotFoundException('Product not found');
+
+      const [existingSkus, existingImages] = id
+        ? await Promise.all([
+            skuRepository.find({ where: { productId: id } }),
+            imageRepository.find({ where: { productId: id } }),
+          ])
+        : [[], []];
+      const ownedSkuIds = new Set(
+        existingSkus
+          .filter(({ productId }) => productId === id)
+          .map(({ id: skuId }) => skuId),
+      );
+      const ownedImageIds = new Set(
+        existingImages
+          .filter(({ productId }) => productId === id)
+          .map(({ id: imageId }) => imageId),
+      );
+      const hasInvalidOwnership =
+        dto.skus.some(
+          (sku) =>
+            hasInvalidSkuIdentity(sku) ||
+            (hasNonEmptyId(sku) && !ownedSkuIds.has(sku.id)),
+        ) ||
+        dto.images.some(
+          (image) =>
+            (image.id !== undefined && !hasNonEmptyId(image)) ||
+            (hasNonEmptyId(image) && !ownedImageIds.has(image.id)),
+        ) ||
+        dto.deletedSkuIds.some((skuId) => !ownedSkuIds.has(skuId));
+      if (hasInvalidOwnership) {
+        throw new UnprocessableEntityException({
+          code: ApiErrorCode.PRODUCT_ASSET_OWNERSHIP_INVALID,
+          message: 'SKU 或商品图片不属于当前商品',
+        });
+      }
+
       const product = productRepository.create({
         ...(existing ?? {}),
         ...(id ? { id } : {}),
@@ -151,11 +398,24 @@ export class CatalogService {
       });
       const savedProduct = await productRepository.save(product);
 
-      await imageRepository.delete({ productId: savedProduct.id });
+      const submittedImageIds = new Set(
+        dto.images.filter(hasNonEmptyId).map(({ id: imageId }) => imageId),
+      );
+      const removedImageIds = [...ownedImageIds].filter(
+        (imageId) => !submittedImageIds.has(imageId),
+      );
+      if (removedImageIds.length) {
+        await imageRepository.delete(
+          removedImageIds.map((imageId) => ({
+            id: imageId,
+            productId: savedProduct.id,
+          })),
+        );
+      }
       const savedImages = await imageRepository.save(
         dto.images.map((image) =>
           imageRepository.create({
-            ...(image.id ? { id: image.id } : {}),
+            ...(hasNonEmptyId(image) ? { id: image.id } : {}),
             productId: savedProduct.id,
             url: image.publicUrl,
             objectKey: image.objectKey,
@@ -172,10 +432,60 @@ export class CatalogService {
           })),
         );
       }
-      const savedSkus = await skuRepository.save(
-        dto.skus.map((sku) =>
+      const existingSkuInputs = dto.skus.filter(hasSkuIdentity);
+      const updatedSkus = await Promise.all(
+        existingSkuInputs.map(async (sku) => {
+          const result = await skuRepository
+            .createQueryBuilder()
+            .update(Sku)
+            .set({
+              name: sku.name,
+              attributes: { ...sku.attributes },
+              priceCents: sku.priceCents,
+              stock: sku.stock,
+              imageUrl: sku.image?.publicUrl ?? null,
+              imageObjectKey: sku.image?.objectKey ?? null,
+              isActive: sku.isActive,
+              // TypeORM renders this as stock_version = stock_version + 1.
+              stockVersion: () => 'stock_version + 1',
+            })
+            .where(
+              'id = :id AND product_id = :productId AND stock_version = :stockVersion',
+              {
+                id: sku.id,
+                productId: savedProduct.id,
+                stockVersion: sku.stockVersion,
+              },
+            )
+            .execute();
+          if (result.affected !== 1) {
+            throw new ConflictException({
+              code: ApiErrorCode.PRODUCT_STOCK_CONFLICT,
+              message: '库存已发生变化，请重新加载后再保存',
+              details: { skuId: sku.id },
+            });
+          }
+          const previous = existingSkus.find(
+            ({ id: skuId }) => skuId === sku.id,
+          );
+          return skuRepository.create({
+            ...previous,
+            productId: savedProduct.id,
+            name: sku.name,
+            attributes: { ...sku.attributes },
+            priceCents: sku.priceCents,
+            stock: sku.stock,
+            imageUrl: sku.image?.publicUrl ?? null,
+            imageObjectKey: sku.image?.objectKey ?? null,
+            isActive: sku.isActive,
+            stockVersion: sku.stockVersion + 1,
+          });
+        }),
+      );
+      const newSkus = dto.skus.filter((sku) => !hasSkuIdentity(sku));
+      const insertedSkus = await skuRepository.save(
+        newSkus.map((sku) =>
           skuRepository.create({
-            ...(sku.id ? { id: sku.id } : {}),
             productId: savedProduct.id,
             name: sku.name,
             attributes: { ...sku.attributes },
@@ -187,6 +497,7 @@ export class CatalogService {
           }),
         ),
       );
+      const savedSkus = [...updatedSkus, ...insertedSkus];
 
       await auditRepository.save(
         auditRepository.create({
@@ -202,7 +513,15 @@ export class CatalogService {
         }),
       );
 
-      return toAdminProductDetail(savedProduct, category, savedImages, savedSkus);
+      return toAdminProductDetailView(
+        {
+          ...savedProduct,
+          detailHtml: this.sanitizer.sanitize(savedProduct.detailHtml),
+        },
+        category,
+        savedImages,
+        savedSkus,
+      );
     });
   }
 
@@ -222,7 +541,12 @@ export class CatalogService {
         order: { createdAt: 'DESC' },
       }),
     ]);
-    return toAdminProductDetail(product, product.category, images, skus);
+    return toAdminProductDetailView(
+      { ...product, detailHtml: this.sanitizer.sanitize(product.detailHtml) },
+      product.category,
+      images,
+      skus,
+    );
   }
 
   async createSku(productId: string, dto: CreateSkuDto): Promise<Sku> {
@@ -265,7 +589,9 @@ export class CatalogService {
     await this.skus.delete({ id: skuId, productId });
   }
 
-  async listPublicProducts(query: PublicProductsQueryDto): Promise<Product[]> {
+  async listPublicProducts(
+    query: PublicProductsQueryDto,
+  ): Promise<PublicProductSummaryView[]> {
     const products = await this.products.find({
       relations: { category: true },
       order: { sortOrder: 'ASC', createdAt: 'DESC' },
@@ -279,10 +605,21 @@ export class CatalogService {
         product.isActive && categoryIsActive && categoryMatches && queryMatches
       );
     });
-    return this.attachPublicSkus(publicProducts);
+    return Promise.all(
+      publicProducts.map(async (product) =>
+        toPublicProductSummaryView(
+          product,
+          product.category,
+          await this.skus.find({
+            where: { productId: product.id, isActive: true },
+            order: { createdAt: 'DESC' },
+          }),
+        ),
+      ),
+    );
   }
 
-  async getPublicProduct(id: string): Promise<Product> {
+  async getPublicProduct(id: string): Promise<PublicProductDetailView> {
     const product = await this.products.findOne({
       where: { id },
       relations: { category: true },
@@ -300,22 +637,47 @@ export class CatalogService {
         order: { sortOrder: 'ASC', createdAt: 'DESC' },
       }),
     ]);
-    return Object.assign(product, { skus, images });
+    return toPublicProductDetailView(
+      { ...product, detailHtml: this.sanitizer.sanitize(product.detailHtml) },
+      product.category,
+      images,
+      skus,
+    );
+  }
+  private toAdminCategoryView(category: Category): AdminCategoryView {
+    return {
+      id: category.id,
+      name: category.name,
+      ...(category.imageUrl ? { imageUrl: category.imageUrl } : {}),
+      sortOrder: category.sortOrder,
+      isActive: category.isActive,
+      createdAt: category.createdAt.toISOString(),
+      updatedAt: category.updatedAt.toISOString(),
+    };
   }
 
-  private async attachPublicSkus(products: Product[]): Promise<Product[]> {
-    const withSkus = await Promise.all(
-      products.map(async (product) =>
-        Object.assign(product, {
-          skus: await this.skus.find({
-            where: { productId: product.id, isActive: true },
-            order: { createdAt: 'DESC' },
-          }),
-        }),
-      ),
+  private async loadActiveSkuCounts(
+    productIds: string[],
+  ): Promise<Map<string, number>> {
+    if (!productIds.length) return new Map();
+    const rows = await this.skus
+      .createQueryBuilder('sku')
+      .select('sku.productId', 'productId')
+      .addSelect(
+        'SUM(CASE WHEN sku.isActive = TRUE THEN 1 ELSE 0 END)',
+        'activeSkuCount',
+      )
+      .where('sku.productId IN (:...productIds)', { productIds })
+      .groupBy('sku.productId')
+      .getRawMany<{ productId: string; activeSkuCount: string }>();
+    return new Map(
+      rows.map(({ productId, activeSkuCount }) => [
+        String(productId),
+        Number(activeSkuCount),
+      ]),
     );
-    return withSkus;
   }
+
   private async validateSku(dto: CreateSkuDto): Promise<void> {
     try {
       await validateOrReject(Object.assign(new CreateSkuDto(), dto));
@@ -333,51 +695,4 @@ export class CatalogService {
     if (!product) throw new NotFoundException('Product not found');
     return product;
   }
-}
-
-function toAdminProductDetail(
-  product: Product,
-  category: Category,
-  images: ProductImage[],
-  skus: Sku[],
-): AdminProductDetailView {
-  return {
-    id: product.id,
-    name: product.name,
-    categoryId: product.categoryId,
-    categoryName: category.name,
-    ...(product.summary ? { summary: product.summary } : {}),
-    detailHtml: product.detailHtml,
-    coverImage:
-      product.coverImageUrl && product.coverImageObjectKey
-        ? {
-            objectKey: product.coverImageObjectKey,
-            publicUrl: product.coverImageUrl,
-          }
-        : null,
-    images: images
-      .filter((image) => Boolean(image.objectKey))
-      .map((image) => ({
-        id: image.id,
-        objectKey: image.objectKey as string,
-        publicUrl: image.url,
-        sortOrder: image.sortOrder,
-      })),
-    skus: skus.map((sku) => ({
-      id: sku.id,
-      name: sku.name,
-      attributes: { ...sku.attributes },
-      priceCents: sku.priceCents,
-      stock: sku.stock,
-      isActive: sku.isActive,
-      image:
-        sku.imageUrl && sku.imageObjectKey
-          ? { objectKey: sku.imageObjectKey, publicUrl: sku.imageUrl }
-          : null,
-    })),
-    sortOrder: product.sortOrder,
-    isActive: product.isActive,
-    createdAt: product.createdAt.toISOString(),
-    updatedAt: product.updatedAt.toISOString(),
-  };
 }

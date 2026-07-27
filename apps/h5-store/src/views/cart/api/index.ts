@@ -1,7 +1,10 @@
 import { customerApi } from '../../../api/customer.js';
 
 export const cartFeatureApi = {
-  list: customerApi.listCart.bind(customerApi),
-  upsert: customerApi.upsertCartItem.bind(customerApi),
-  remove: customerApi.removeCartItem.bind(customerApi),
+  list: () => customerApi.listCart(),
+  upsert: (
+    body: Parameters<typeof customerApi.upsertCartItem>[0],
+    idempotencyKey?: string,
+  ) => customerApi.upsertCartItem(body, idempotencyKey),
+  remove: (id: string) => customerApi.removeCartItem(id),
 };

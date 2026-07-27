@@ -48,8 +48,57 @@
 
 ## 工作约定
 
-- 与用户沟通及 `docs/superpowers/specs/`、`docs/superpowers/plans/`、`.superpowers/sdd/` 中的规格、计划、任务简报和报告默认使用中文；代码、命令、路径、API、标识符及必要技术术语保留英文。即使上游 skill 提供英文模板，也必须保留其结构并将自然语言内容本地化为中文。
-- 长任务使用 `TaskCreate` / `TaskUpdate` 维护少量用户可见的顶层任务,用户可用 `/tasks` 查看;子代理内部步骤不得创建为顶层任务。每完成一个顶层任务,主动播报 `进度 N/M`、结果和下一步;`.superpowers/sdd/progress.md` 仅用于会话恢复,不替代可见任务和里程碑播报。
+- 与用户沟通以及所有需求与研发流程文档默认使用中文,包括需求分析、brainstorming 记录、设计规格、实施计划、任务简报、进度记录、实施报告、审查报告、验收记录和交接说明;该规则适用于 `docs/superpowers/specs/`、`docs/superpowers/plans/`、`.superpowers/sdd/` 及后续新增的同类目录。代码、命令、路径、API、标识符及必要技术术语保留英文。即使上游 skill 提供英文模板,也必须保留其结构并将标题、章节名、任务描述、步骤、预期结果和说明等自然语言内容本地化为中文。
+- 仅当任务包含至少 3 个实质步骤或预计超过 20 分钟时,使用 `TaskCreate` / `TaskUpdate` 维护少量用户可见的顶层待办,用户可按 `Ctrl+T` 显示或隐藏待办列表,也可直接要求列出全部待办;`/tasks` 仅用于后台 shell 与 subagent。子代理内部步骤不得创建为顶层待办。每完成一个顶层待办,主动播报 `进度 N/M`、结果和下一步;`.superpowers/sdd/progress.md` 仅用于确有跨会话恢复需求的长任务,不替代结构化待办和里程碑播报。
+
+### Superpowers 流程分级
+
+Superpowers 保持启用,但不得对所有任务机械执行完整流程。用户当前明确要求与本文件中的项目级流程规则优先于 Superpowers skill 的默认建议。
+
+#### 默认快速流程
+
+当需求明确、风险较低且预计修改不超过 3 个主要文件时:
+
+1. 直接检查相关代码并用少量文字说明实现思路。
+2. 不调用 `superpowers:brainstorming`,不进入 Plan Mode,不生成独立 spec、plan、brief 或 report。
+3. 不创建额外 worktree;当前已在 worktree 或独立分支时尤其不得重复创建。
+4. 不派发 subagent,不自动调用额外 code review 或 simplify agent。
+5. 修改后仅运行受影响包的最小相关测试、typecheck、lint 或格式检查。
+6. 文档、文案、样式、配置及无行为变化的机械重构不要求严格执行 red-green TDD。
+
+#### 标准流程
+
+普通业务功能或中等范围 bug 修复:
+
+1. 仅当需求存在会影响实现的实质性歧义时调用 `superpowers:brainstorming`。
+2. 在对话中给出简短实现步骤,不生成独立计划文档。
+3. 对业务行为执行 TDD,实现后运行定向测试和相关包 typecheck。
+4. 除非改动复杂、需要大范围搜索或用户明确要求,否则不使用 subagent 和额外 review。
+
+#### 完整流程
+
+仅在以下任一情况使用 brainstorming、书面计划、严格 TDD、必要的 subagent、专项 review 与完整验证:
+
+- 数据库 schema 或迁移;
+- `@bake-mall/contracts` 共享契约;
+- 订单、库存、金额、鉴权、幂等或状态机;
+- 跨 API、H5、Admin 或小程序的接口变更;
+- 预计修改超过 5 个主要文件;
+- 需求存在重要产品或架构决策;
+- 用户明确要求完整 Superpowers 流程。
+
+完整流程也应避免重复产物与重复检查:已有权威 spec 或 plan 时不重新生成;同一改动默认只运行一轮相应层级的 review;开发中优先定向验证,提交或 PR 前再执行全量检查。
+
+#### 单项 skill 使用规则
+
+- `superpowers:systematic-debugging`:仅用于原因未知的故障、测试失败或异常行为。
+- `superpowers:test-driven-development`:用于行为变更与 bug 修复;文档、纯视觉调整、配置及无行为机械重构可跳过严格 red-green 顺序。
+- `superpowers:writing-plans`:仅用于完整流程任务;已有用户认可的实施计划时直接沿用。
+- `superpowers:using-git-worktrees`:仅在用户明确要求 worktree 时使用;当前已在 worktree 或独立分支时不得重复创建。
+- `superpowers:subagent-driven-development`:仅用于多个可独立并行的任务或主上下文无法有效覆盖的大范围工作。
+- `superpowers:requesting-code-review`:仅用于高风险改动、重大功能或提交 / PR 前;不得与其他同类 reviewer 机械串行重复审查。
+- `superpowers:finishing-a-development-branch`:仅在用户准备提交、创建 PR、合并或清理分支时使用。
+- `superpowers:verification-before-completion`:代码行为变更仍需使用,但验证范围应匹配改动影响,不默认运行全仓检查。
 - 任何跨 API 或应用边界的 DTO 必须使用 `@bake-mall/contracts` 中的类型,不得重复定义。
 - 金额字段使用整数分(`priceCents`、`unitPriceCents`、`goodsTotalCents`);严禁对金额使用浮点数。
 - 订单快照不可变:`CreateOrderRequest` 按 `FulfillmentType` 构成可辨识联合;`OrderView` 同时保留可选的 `pickupTimeText` / `deliveryAddressText`,以便消费者按需读取。
@@ -57,17 +106,3 @@
 - 身份令牌分两种:`mall-user` 用于顾客,`mall-admin` 用于商家员工;不允许任一 audience 访问另一方的接口。
 - 按计划遵循 TDD:先写失败的测试,跑一遍,然后实现,最后提交。
 - 前端硬约束:任何对 `apps/h5-store/` 与 `apps/admin-web/` 的改动都必须先读 `.claude/skills/frontend-page-generator/SKILL.md` 与 `.claude/skills/js-functional-style/SKILL.md`。五模块拆分(`components/` `hooks/` `mock/` `config/` `type/` `api/`)与不可变/ES6 编码规则是强制要求,不是建议。
-
-<!-- claude-superpowers-kit:start -->
-
-## Claude Code + Superpowers 协作规范
-
-- 用户沟通以及 `docs/superpowers/specs/`、`docs/superpowers/plans/`、`.superpowers/sdd/` 中的规格、计划、任务简报和报告默认使用中文；代码、命令、路径、API、标识符及必要技术术语保留英文。即使上游 skill 提供英文模板，也必须保留结构并将自然语言本地化为中文。
-- 长任务使用 `TaskCreate` / `TaskUpdate` 维护少量用户可见的顶层任务，用户可通过 `/tasks` 查看；顶层任务按用户可理解的成果划分，子代理内部实现步骤不得创建为顶层任务。
-- 每完成一个顶层任务，主动播报 `进度 N/M`、当前结果和下一步；发生阻塞时立即说明阻塞点，并将当前任务恢复为 pending/open，避免任务长期停留在 in_progress。
-- `.superpowers/sdd/progress.md` 只用于会话压缩或恢复后的持久账本，不能替代 `/tasks` 和里程碑播报。
-- 每份新实施计划的“全局约束”必须重复关键语言与任务可见性规则，确保隔离子代理收到约束。
-- 遇到反复出现且可跨会话复用的规范缺口时，先向用户说明原因和拟新增规则；用户批准后再沉淀到项目 `CLAUDE.md`。一次性问题不写成永久规则。
-- 不直接修改 `~/.claude/plugins/cache/` 中的 Superpowers 或其他第三方插件缓存；项目覆盖规则写入项目 `CLAUDE.md`，需要定制插件时使用独立 fork 或项目工具。
-
-<!-- claude-superpowers-kit:end -->

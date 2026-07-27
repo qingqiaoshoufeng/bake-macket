@@ -9,6 +9,15 @@
  */
 
 import type { CategoryFormShape } from '../type/form.js';
+import type { CategoryFilterForm } from '../type/list.js';
+
+export const createCategoryFilterDefaults = (): CategoryFilterForm => ({
+  q: '',
+  isActive: '',
+  hasImage: '',
+  hasProducts: '',
+  createdAtRange: null,
+});
 
 export const createCategoryDefaults = (): CategoryFormShape => ({
   name: '',

@@ -21,6 +21,7 @@ Use whenever writing or reviewing JavaScript / TypeScript anywhere in the Bake M
 ## Hard rules
 
 ### 1. Immutability by default
+
 - `const` everywhere, including in `for` loops (`for (const x of xs)` not `for (let i=0;...)`).
 - Treat all updates as "return a new value":
   - arrays → spread `[...arr, item]`, `[arr.filter(x => …)]`, never `arr.push(item)` when the function name implies a transform.
@@ -28,32 +29,36 @@ Use whenever writing or reviewing JavaScript / TypeScript anywhere in the Bake M
 - Avoid mutating parameters inside helpers; either clone first or return derived.
 
 ### 2. ES6-first iteration
+
 Prefer in this order:
 
-| Need | Prefer | Avoid |
-|---|---|---|
-| Build a new array | `xs.map(fn)` | `for` + `arr.push` |
-| Filter | `xs.filter(pred)` | `for` + `if (pred) push` |
-| Reduce | `xs.reduce(fn, init)` | manual accumulators |
-| Search | `xs.find` / `xs.some` / `xs.every` | `for` + index tracking |
-| Sort immutably | `[...xs].sort(cmp)` | `xs.sort()` in-place |
-| Group | `xs.reduce((m, x) => ({ ...m, [k(x)]: [...(m[k(x)] ?? []), x] }), {})` | mutation map |
-| Dedupe by key | `Array.from(new Map(xs.map(x => [k(x), x])).values())` | `Set + filter` |
-| Flatten | `xs.flat()` | recursive reduce |
+| Need              | Prefer                                                                 | Avoid                    |
+| ----------------- | ---------------------------------------------------------------------- | ------------------------ |
+| Build a new array | `xs.map(fn)`                                                           | `for` + `arr.push`       |
+| Filter            | `xs.filter(pred)`                                                      | `for` + `if (pred) push` |
+| Reduce            | `xs.reduce(fn, init)`                                                  | manual accumulators      |
+| Search            | `xs.find` / `xs.some` / `xs.every`                                     | `for` + index tracking   |
+| Sort immutably    | `[...xs].sort(cmp)`                                                    | `xs.sort()` in-place     |
+| Group             | `xs.reduce((m, x) => ({ ...m, [k(x)]: [...(m[k(x)] ?? []), x] }), {})` | mutation map             |
+| Dedupe by key     | `Array.from(new Map(xs.map(x => [k(x), x])).values())`                 | `Set + filter`           |
+| Flatten           | `xs.flat()`                                                            | recursive reduce         |
 
 Helper collector: when you reuse a pattern across modules, add it to `src/utils/array.ts` (e.g. `groupBy`, `sortBy`, `partition`, `pluck`). No copy-pasted reducer literals.
 
 ### 3. Composition over mutation
+
 - Pipeline style: `pipe(map, filter, take)`.
 - Prefer `Promise.all([...])` to parallelise independent side effects.
 - Use `structuredClone(value)` or `[...arr]`/`{...obj}` for deep cloning when you genuinely need a copy.
 
 ### 4. Function style
+
 - Prefer small named functions with explicit inputs/returns.
 - Side effects (logging, persistence, navigation) live at the edges of the pipeline, not inside helpers.
 - Avoid anonymous `=>` for anything that a reader cannot understand in 1 line; prefer `function name(...)` declarations for top-level named helpers.
 
 ### 5. Avoid
+
 - `array.push(x)` when the surrounding function is named `create*`/`build*`/`map*`/`transform*`.
 - `for (let i = 0; i < arr.length; i++)` loops purely for filtering or mapping.
 - Mutating variables inside `Array.reduce` callbacks.
@@ -66,17 +71,22 @@ export const groupBy = <T, K extends string>(
   xs: readonly T[],
   key: (x: T) => K,
 ): Record<K, T[]> =>
-  xs.reduce((m, x) => ({ ...m, [key(x)]: [...(m[key(x)] ?? []), x] }), {} as Record<K, T[]>);
+  xs.reduce(
+    (m, x) => ({ ...m, [key(x)]: [...(m[key(x)] ?? []), x] }),
+    {} as Record<K, T[]>,
+  );
 
 export const sortBy = <T>(
   xs: readonly T[],
   key: (x: T) => number | string,
   dir: 'asc' | 'desc' = 'asc',
-): T[] => [...xs].sort((a, b) => {
-  const ka = key(a); const kb = key(b);
-  if (ka === kb) return 0;
-  return (ka > kb ? 1 : -1) * (dir === 'asc' ? 1 : -1);
-});
+): T[] =>
+  [...xs].sort((a, b) => {
+    const ka = key(a);
+    const kb = key(b);
+    if (ka === kb) return 0;
+    return (ka > kb ? 1 : -1) * (dir === 'asc' ? 1 : -1);
+  });
 ```
 
 These belong under `src/utils/` in each app (H5, admin-web) and `packages/shared-contracts/src` only when truly cross-package.

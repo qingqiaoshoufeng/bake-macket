@@ -1,37 +1,12 @@
 import type {
   BannerView,
   CategoryView,
-  ProductView,
-  SkuView,
+  PublicProductDetailView,
+  PublicProductSummaryView,
 } from '@bake-mall/contracts';
 
 import { apiClient } from './http.js';
 
-/**
- * Wire-shape returned by `GET /api/v1/public/products` and
- * `GET /api/v1/public/products/:id`.
- *
- * The backend's `CatalogService` returns hydrated TypeORM rows where the
- * price-bearing variant data lives on `skus`. The shared contract type
- * `ProductView` declares `skus: SkuView[]` and `images: ProductImageView[]`,
- * but in practice the list endpoint may not populate `images` (only the
- * detail endpoint does). The storefront only reads `skus` / `images` when
- * they are present, so we widen `ProductView` to mark both as optional —
- * the contract type is still imported for the rest of the row.
- */
-export type ProductListItem = Omit<ProductView, 'skus' | 'images'> & {
-  skus?: SkuView[];
-  images?: ProductView['images'];
-};
-
-/**
- * Wire-shape returned by `GET /api/v1/public/categories`.
- *
- * The backend's `Category` entity stores `name`, optional `imageUrl`,
- * `sortOrder` and `isActive`. `imageUrl` is the only field beyond the
- * contract's `CategoryView` and is left as the optional field declared in
- * the shared type.
- */
 export type CategoryListItem = CategoryView;
 
 export const catalogApi = {
@@ -60,12 +35,12 @@ export const catalogApi = {
    */
   listProducts(
     params: { categoryId?: string; q?: string } = {},
-  ): Promise<ProductListItem[]> {
+  ): Promise<PublicProductSummaryView[]> {
     const search = new URLSearchParams();
     if (params.categoryId) search.set('categoryId', params.categoryId);
     if (params.q) search.set('q', params.q);
     const query = search.toString();
-    return apiClient.get<ProductListItem[]>(
+    return apiClient.get<PublicProductSummaryView[]>(
       query ? `/public/products?${query}` : '/public/products',
     );
   },
@@ -74,7 +49,7 @@ export const catalogApi = {
    * `GET /api/v1/public/products/:id` — full product detail including the
    * `skus` array and `images` carousel.
    */
-  getProduct(id: string): Promise<ProductListItem> {
-    return apiClient.get<ProductListItem>(`/public/products/${id}`);
+  getProduct(id: string): Promise<PublicProductDetailView> {
+    return apiClient.get<PublicProductDetailView>(`/public/products/${id}`);
   },
 };

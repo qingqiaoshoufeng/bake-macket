@@ -7,7 +7,13 @@ type CreateOrderRequestCommon = {
   remark?: string;
 };
 
+type CreateOrderQuoteIntent = {
+  requestedCreditCents: number;
+  quoteToken: string;
+};
+
 export type CreateOrderRequest = CreateOrderRequestCommon &
+  CreateOrderQuoteIntent &
   (
     | {
         fulfillmentType: FulfillmentType.PICKUP;
@@ -29,9 +35,26 @@ export type OrderItemView = {
   imageUrl?: string;
   unitPriceCents: number;
   quantity: number;
+  lineGoodsTotalCents: number;
+  lineMembershipDiscountCents: number;
+  linePayableCents: number;
 };
 
-export type OrderView = {
+type OrderMembershipSnapshot =
+  | {
+      membershipId?: never;
+      membershipCode?: never;
+      membershipName?: never;
+      membershipDiscountBasisPoints?: never;
+    }
+  | {
+      membershipId: string;
+      membershipCode: string;
+      membershipName: string;
+      membershipDiscountBasisPoints: number;
+    };
+
+export type OrderView = OrderMembershipSnapshot & {
   id: string;
   orderNo: string;
   status: OrderStatus;
@@ -41,6 +64,10 @@ export type OrderView = {
   pickupTimeText?: string;
   deliveryAddressText?: string;
   goodsTotalCents: number;
+  membershipDiscountCents: number;
+  creditAppliedCents: number;
+  payableTotalCents: number;
+  pricingVersion: number;
   remark?: string;
   items: OrderItemView[];
   createdAt: string;
@@ -70,6 +97,8 @@ const _validPickup: CreateOrderRequest = {
   contactName: 'Alice',
   contactPhone: '13800000000',
   pickupTimeText: 'tomorrow 10am',
+  requestedCreditCents: 0,
+  quoteToken: 'signed-quote',
 };
 
 const _validDelivery: CreateOrderRequest = {
@@ -78,6 +107,37 @@ const _validDelivery: CreateOrderRequest = {
   contactName: 'Alice',
   contactPhone: '13800000000',
   addressId: 'address-1',
+  requestedCreditCents: 500,
+  quoteToken: 'signed-quote',
+};
+
+// @ts-expect-error Every order requires quote intent.
+const _pickupWithoutQuote: CreateOrderRequest = {
+  cartItemIds: ['cart-item-1'],
+  fulfillmentType: FulfillmentType.PICKUP,
+  contactName: 'Alice',
+  contactPhone: '13800000000',
+  pickupTimeText: 'tomorrow 10am',
+};
+
+// @ts-expect-error requestedCreditCents requires quoteToken.
+const _creditWithoutQuote: CreateOrderRequest = {
+  cartItemIds: ['cart-item-1'],
+  fulfillmentType: FulfillmentType.PICKUP,
+  contactName: 'Alice',
+  contactPhone: '13800000000',
+  pickupTimeText: 'tomorrow 10am',
+  requestedCreditCents: 500,
+};
+
+// @ts-expect-error quoteToken requires requestedCreditCents.
+const _quoteWithoutCredit: CreateOrderRequest = {
+  cartItemIds: ['cart-item-1'],
+  fulfillmentType: FulfillmentType.PICKUP,
+  contactName: 'Alice',
+  contactPhone: '13800000000',
+  pickupTimeText: 'tomorrow 10am',
+  quoteToken: 'signed-quote',
 };
 
 // @ts-expect-error PICKUP must include pickupTimeText.
@@ -119,6 +179,9 @@ const _deliveryWithPickupTime: CreateOrderRequest = {
 void [
   _validPickup,
   _validDelivery,
+  _pickupWithoutQuote,
+  _creditWithoutQuote,
+  _quoteWithoutCredit,
   _pickupMissingTime,
   _pickupWithAddress,
   _deliveryMissingAddress,

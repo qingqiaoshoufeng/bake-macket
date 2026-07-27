@@ -7,11 +7,10 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { OrderStatus } from '@bake-mall/contracts';
-
 import { CurrentAdmin } from '../auth/current-user.decorator.js';
 import type { AuthenticatedAdmin } from '../auth/auth.types.js';
 import { JwtAdminGuard } from '../auth/admin-jwt.guard.js';
+import { AdminOrderListQueryDto } from './dto/admin-order-list-query.dto.js';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto.js';
 import { OrdersService } from './orders.service.js';
 
@@ -27,8 +26,8 @@ export class AdminOrdersController {
   constructor(private readonly orders: OrdersService) {}
 
   @Get()
-  list(@Query('status') status?: OrderStatus) {
-    return this.orders.listAll(status);
+  list(@Query() query: AdminOrderListQueryDto) {
+    return this.orders.listAll(query);
   }
 
   @Get(':id')

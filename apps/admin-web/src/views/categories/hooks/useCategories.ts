@@ -1,36 +1,60 @@
-/**
- * Encapsulated business logic for the category management view.
- *
- * The hook owns the table state (loading flag, error message, categories
- * list) plus the inline-edit draft. Every mutation reuses
- * {@link categoriesApi}; never touches `fetch` directly. State transitions
- * follow the immutable / spread convention so reactive Vue consumers
- * always observe a brand-new reference.
- */
+import type {
+  AdminCategoryListQuery,
+  AdminCategoryView,
+} from '@bake-mall/contracts';
+import { computed, reactive, ref, type Ref } from 'vue';
 
-import { reactive, ref, type Ref } from 'vue';
-
-import {
-  categoriesApi,
-} from '../api/index.js';
+import { countActiveFilters } from '../../../utils/list-query.js';
+import { categoriesApi } from '../api/index.js';
 import {
   createCategoryDefaults,
+  createCategoryFilterDefaults,
 } from '../config/defaults.js';
-import type {
-  AdminCategoryView,
-} from '../../../api/catalog.js';
-import type {
-  CategoryFormShape,
-  CategoryInlineEdit,
-} from '../type/form.js';
+import { CATEGORY_PAGINATION } from '../config/pagination.js';
+import type { CategoryFormShape, CategoryInlineEdit } from '../type/form.js';
+import type { CategoryFilterForm } from '../type/list.js';
+
+const cloneFilters = (filters: CategoryFilterForm): CategoryFilterForm => ({
+  ...filters,
+  createdAtRange: filters.createdAtRange ? [...filters.createdAtRange] : null,
+});
+
+const toQuery = (
+  filters: CategoryFilterForm,
+  page: number,
+  pageSize: number,
+): AdminCategoryListQuery => ({
+  ...(filters.q.trim() ? { q: filters.q.trim() } : {}),
+  ...(filters.isActive ? { isActive: filters.isActive } : {}),
+  ...(filters.hasImage ? { hasImage: filters.hasImage } : {}),
+  ...(filters.hasProducts ? { hasProducts: filters.hasProducts } : {}),
+  ...(filters.createdAtRange
+    ? {
+        createdAtFrom: filters.createdAtRange[0],
+        createdAtBefore: filters.createdAtRange[1],
+      }
+    : {}),
+  page,
+  pageSize,
+});
 
 export type UseCategoriesResult = {
   readonly categories: Ref<readonly AdminCategoryView[]>;
+  readonly draftFilters: CategoryFilterForm;
+  readonly advancedCount: Readonly<Ref<number>>;
+  readonly hasAppliedFilters: Readonly<Ref<boolean>>;
+  readonly page: Ref<number>;
+  readonly pageSize: Ref<number>;
+  readonly total: Ref<number>;
   readonly loading: Ref<boolean>;
   readonly lastError: Ref<string | null>;
   readonly editingId: Ref<string | null>;
   readonly editingDraft: CategoryInlineEdit;
   readonly refresh: () => Promise<void>;
+  readonly search: () => Promise<void>;
+  readonly reset: () => Promise<void>;
+  readonly setPage: (value: number) => Promise<void>;
+  readonly setPageSize: (value: number) => Promise<void>;
   readonly nextSortOrder: () => number;
   readonly blankForm: () => CategoryFormShape;
   readonly startEdit: (category: AdminCategoryView) => void;
@@ -47,35 +71,93 @@ export type UseCategoriesResult = {
 
 export function useCategories(): UseCategoriesResult {
   const categories = ref<readonly AdminCategoryView[]>([]);
+  const draftFilters = reactive<CategoryFilterForm>(
+    createCategoryFilterDefaults(),
+  );
+  const appliedFilters = ref<CategoryFilterForm>(
+    createCategoryFilterDefaults(),
+  );
+  const page = ref<number>(CATEGORY_PAGINATION.defaultPage);
+  const pageSize = ref<number>(CATEGORY_PAGINATION.defaultPageSize);
+  const total = ref(0);
   const loading = ref(false);
   const lastError = ref<string | null>(null);
   const editingId = ref<string | null>(null);
-
   const editingDraft = reactive<CategoryInlineEdit>({
     name: '',
     imageUrl: '',
     sortOrder: 0,
     isActive: true,
   });
+  let refreshSequence = 0;
+
+  const advancedCount = computed(() =>
+    countActiveFilters({
+      hasImage: appliedFilters.value.hasImage,
+      hasProducts: appliedFilters.value.hasProducts,
+      createdAtRange: appliedFilters.value.createdAtRange,
+    }),
+  );
+  const hasAppliedFilters = computed(
+    () =>
+      countActiveFilters({
+        ...appliedFilters.value,
+        createdAtRange: appliedFilters.value.createdAtRange,
+      }) > 0,
+  );
 
   async function refresh(): Promise<void> {
+    const sequence = refreshSequence + 1;
+    refreshSequence = sequence;
     loading.value = true;
     lastError.value = null;
     try {
-      categories.value = await categoriesApi.list();
+      const result = await categoriesApi.list(
+        toQuery(appliedFilters.value, page.value, pageSize.value),
+      );
+      if (sequence !== refreshSequence) return;
+      categories.value = [...result.items];
+      page.value = result.page;
+      pageSize.value = result.pageSize;
+      total.value = result.total;
     } catch (error) {
-      lastError.value =
-        error instanceof Error ? error.message : '分类加载失败';
+      if (sequence === refreshSequence) {
+        lastError.value =
+          error instanceof Error ? error.message : '分类加载失败';
+      }
     } finally {
-      loading.value = false;
+      if (sequence === refreshSequence) loading.value = false;
     }
+  }
+
+  async function search(): Promise<void> {
+    appliedFilters.value = cloneFilters(draftFilters);
+    page.value = 1;
+    await refresh();
+  }
+
+  async function reset(): Promise<void> {
+    const defaults = createCategoryFilterDefaults();
+    Object.assign(draftFilters, defaults);
+    appliedFilters.value = defaults;
+    page.value = 1;
+    await refresh();
+  }
+
+  async function setPage(value: number): Promise<void> {
+    page.value = value;
+    await refresh();
+  }
+
+  async function setPageSize(value: number): Promise<void> {
+    pageSize.value = value;
+    page.value = 1;
+    await refresh();
   }
 
   function nextSortOrder(): number {
     if (categories.value.length === 0) return 0;
-    const max = Math.max(
-      ...categories.value.map((row) => row.sortOrder ?? 0),
-    );
+    const max = Math.max(...categories.value.map((row) => row.sortOrder ?? 0));
     return Number.isFinite(max) ? max + 1 : 0;
   }
 
@@ -85,10 +167,12 @@ export function useCategories(): UseCategoriesResult {
 
   function startEdit(category: AdminCategoryView): void {
     editingId.value = category.id;
-    editingDraft.name = category.name;
-    editingDraft.imageUrl = category.imageUrl ?? '';
-    editingDraft.sortOrder = category.sortOrder;
-    editingDraft.isActive = category.isActive;
+    Object.assign(editingDraft, {
+      name: category.name,
+      imageUrl: category.imageUrl ?? '',
+      sortOrder: category.sortOrder,
+      isActive: category.isActive,
+    });
   }
 
   function cancelEdit(): void {
@@ -99,9 +183,7 @@ export function useCategories(): UseCategoriesResult {
     category: AdminCategoryView,
   ): Promise<AdminCategoryView> {
     const trimmedName = editingDraft.name.trim();
-    if (!trimmedName) {
-      throw new Error('分类名称不能为空');
-    }
+    if (!trimmedName) throw new Error('分类名称不能为空');
     const trimmedImage = editingDraft.imageUrl.trim();
     const updated = await categoriesApi.update(category.id, {
       name: trimmedName,
@@ -116,9 +198,7 @@ export function useCategories(): UseCategoriesResult {
 
   async function create(form: CategoryFormShape): Promise<AdminCategoryView> {
     const trimmedName = form.name.trim();
-    if (!trimmedName) {
-      throw new Error('分类名称不能为空');
-    }
+    if (!trimmedName) throw new Error('分类名称不能为空');
     const trimmedImage = form.imageUrl.trim();
     const created = await categoriesApi.create({
       name: trimmedName,
@@ -147,11 +227,21 @@ export function useCategories(): UseCategoriesResult {
 
   return {
     categories,
+    draftFilters,
+    advancedCount,
+    hasAppliedFilters,
+    page,
+    pageSize,
+    total,
     loading,
     lastError,
     editingId,
     editingDraft,
     refresh,
+    search,
+    reset,
+    setPage,
+    setPageSize,
     nextSortOrder,
     blankForm,
     startEdit,

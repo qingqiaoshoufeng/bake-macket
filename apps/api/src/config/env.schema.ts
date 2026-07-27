@@ -32,6 +32,10 @@ export interface AppEnv {
    * sessions share the same lifetime for simplicity.
    */
   JWT_EXPIRES_IN_SECONDS: number;
+  /** Explicitly enables simulated membership payments outside production. */
+  SIMULATED_PAYMENT_ENABLED: boolean;
+  ORDER_QUOTE_TOKEN_SECRET: string;
+  ORDER_QUOTE_TTL_SECONDS: number;
 
   /**
    * Optional initial administrator provisioned from environment variables on
@@ -45,6 +49,7 @@ export interface AppEnv {
   OBJECT_STORAGE_REGION: string;
   OBJECT_STORAGE_BUCKET: string;
   OBJECT_STORAGE_PUBLIC_BASE_URL: string;
+  PRODUCT_MEDIA_ALLOWED_ORIGINS: string[];
   OBJECT_STORAGE_ACCESS_KEY: string;
   OBJECT_STORAGE_SECRET_KEY: string;
   OBJECT_STORAGE_FORCE_PATH_STYLE: boolean;
@@ -70,6 +75,8 @@ export const FALLBACK_USER_SECRET =
   'dev-only-user-jwt-secret-do-not-use-in-prod';
 export const FALLBACK_ADMIN_SECRET =
   'dev-only-admin-jwt-secret-do-not-use-in-prod';
+const FALLBACK_ORDER_QUOTE_TOKEN_SECRET =
+  'dev-only-order-quote-secret-must-be-at-least-32';
 
 export const envSchema = Joi.object<AppEnv, true>({
   NODE_ENV: Joi.string()
@@ -94,6 +101,18 @@ export const envSchema = Joi.object<AppEnv, true>({
     .integer()
     .positive()
     .default(60 * 60 * 24),
+  SIMULATED_PAYMENT_ENABLED: Joi.boolean()
+    .truthy('true')
+    .falsy('false')
+    .default(false),
+  ORDER_QUOTE_TOKEN_SECRET: Joi.string()
+    .min(32)
+    .default(FALLBACK_ORDER_QUOTE_TOKEN_SECRET)
+    .when('NODE_ENV', {
+      is: 'production',
+      then: Joi.string().invalid(FALLBACK_ORDER_QUOTE_TOKEN_SECRET).required(),
+    }),
+  ORDER_QUOTE_TTL_SECONDS: Joi.number().integer().positive().default(300),
 
   ADMIN_EMAIL: Joi.string().email().optional(),
   ADMIN_PASSWORD: Joi.string().min(8).optional(),
@@ -106,6 +125,24 @@ export const envSchema = Joi.object<AppEnv, true>({
   OBJECT_STORAGE_PUBLIC_BASE_URL: Joi.string()
     .uri({ scheme: ['http', 'https'] })
     .default('http://127.0.0.1:9000/bake-mall'),
+  PRODUCT_MEDIA_ALLOWED_ORIGINS: Joi.array()
+    .items(Joi.string())
+    .custom((rawValue: unknown[], helpers) => {
+      const origins = rawValue
+        .flatMap((value) => String(value).split(','))
+        .map((origin) => origin.trim())
+        .filter(Boolean);
+      const containsInvalidOrigin = origins.some((origin) => {
+        try {
+          return !['http:', 'https:'].includes(new URL(origin).protocol);
+        } catch {
+          return true;
+        }
+      });
+      return containsInvalidOrigin ? helpers.error('any.invalid') : origins;
+    })
+    .single()
+    .default(['http://127.0.0.1:9000']),
   OBJECT_STORAGE_ACCESS_KEY: Joi.string().default('minioadmin'),
   OBJECT_STORAGE_SECRET_KEY: Joi.string().default('minioadmin'),
   OBJECT_STORAGE_FORCE_PATH_STYLE: Joi.boolean()
@@ -194,6 +231,7 @@ export function buildDataSourceOptions(env: AppEnv) {
     timezone: 'Z' as const,
     synchronize: false,
     migrationsRun: false,
+    migrationsTransactionMode: 'each' as const,
   };
 
   if (url) {

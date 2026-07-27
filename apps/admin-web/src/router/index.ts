@@ -52,17 +52,60 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'products',
         name: 'admin-products',
-        component: () => import('../views/PlaceholderView.vue'),
+        component: () => import('../views/products/ProductsView.vue'),
+        meta: { title: '商品管理' },
+      },
+      {
+        path: 'products/new',
+        name: 'admin-product-new',
+        component: () => import('../views/products/ProductEditorView.vue'),
+        meta: { title: '新建商品' },
+      },
+      {
+        path: 'products/:id/edit',
+        name: 'admin-product-edit',
+        component: () => import('../views/products/ProductEditorView.vue'),
+        meta: { title: '编辑商品' },
       },
       {
         path: 'banners',
         name: 'admin-banners',
-        component: () => import('../views/PlaceholderView.vue'),
+        component: () => import('../views/banners/BannersView.vue'),
+        meta: { title: 'Banner 管理' },
       },
       {
         path: 'orders',
         name: 'admin-orders',
-        component: () => import('../views/PlaceholderView.vue'),
+        component: () => import('../views/orders/OrdersView.vue'),
+        meta: { title: '订单管理' },
+      },
+      {
+        path: 'membership-cards',
+        name: 'admin-membership-cards',
+        component: () =>
+          import('../views/membership-cards/MembershipCardsView.vue'),
+        meta: { title: '会员卡配置' },
+      },
+      {
+        path: 'membership-purchases',
+        name: 'admin-membership-purchases',
+        component: () =>
+          import('../views/membership-purchases/MembershipPurchasesView.vue'),
+        meta: { title: '购卡记录' },
+      },
+      {
+        path: 'membership-cards/new',
+        name: 'admin-membership-card-new',
+        component: () =>
+          import('../views/membership-cards/MembershipCardEditorView.vue'),
+        meta: { title: '新建会员卡' },
+      },
+      {
+        path: 'membership-cards/:id/edit',
+        name: 'admin-membership-card-edit',
+        component: () =>
+          import('../views/membership-cards/MembershipCardEditorView.vue'),
+        meta: { title: '编辑会员卡' },
       },
       {
         path: ':pathMatch(.*)*',
@@ -105,5 +148,6 @@ router.beforeEach((to) => {
 declare module 'vue-router' {
   interface RouteMeta {
     requiresAdminAuth?: boolean;
+    title?: string;
   }
 }

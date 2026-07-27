@@ -6,9 +6,12 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import { InjectRepository } from '@nestjs/typeorm';
 import type { Request } from 'express';
+import { Repository } from 'typeorm';
 
 import { type AppConfig } from '../config/env.schema.js';
+import { User } from '../database/entities/user.entity.js';
 import { JWT_ADMIN_AUDIENCE, JWT_USER_AUDIENCE } from './auth.constants.js';
 import { type AuthenticatedUser, type UserJwtPayload } from './auth.types.js';
 
@@ -30,6 +33,7 @@ export class JwtUserGuard implements CanActivate {
   constructor(
     private readonly jwt: JwtService,
     private readonly config: ConfigService<AppConfig, true>,
+    @InjectRepository(User) private readonly users: Repository<User>,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -55,9 +59,13 @@ export class JwtUserGuard implements CanActivate {
     ) {
       throw new UnauthorizedException('Invalid or expired token');
     }
+    const user = await this.users.findOneBy({ id: payload.sub });
+    if (!user) {
+      throw new UnauthorizedException('Invalid or expired token');
+    }
     const principal: AuthenticatedUser = {
-      id: payload.sub,
-      phone: payload.phone ?? null,
+      id: user.id,
+      phone: user.phone,
     };
     (request as Request & { user?: AuthenticatedUser }).user = principal;
     return true;

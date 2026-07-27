@@ -6,10 +6,16 @@ import { createMemoryHistory, createRouter, type Router } from 'vue-router';
 import CheckoutView from './CheckoutView.vue';
 import { useAuthStore } from '../stores/auth.js';
 import { useCartStore } from '../stores/cart.js';
-import { useOrdersStore } from '../stores/orders.js';
-import { useAddressesStore } from '../stores/addresses.js';
-import type { CartItemView, AddressView } from '../api/customer.js';
-import { ApiClientError } from '../api/http.js';
+import { customerApi } from '../api/customer.js';
+import { ordersApi } from '../api/orders.js';
+import {
+  FulfillmentType,
+  OrderStatus,
+  type AddressView,
+  type CartItemView,
+  type OrderQuoteView,
+} from '@bake-mall/contracts';
+import { apiClient, ApiClientError } from '../api/http.js';
 
 /**
  * Checkout view contract pinned by Task 10.
@@ -65,7 +71,9 @@ const savedAddresses: AddressView[] = [
   },
 ];
 
-function mountCheckout(): {
+function mountCheckout(
+  prepareStore: (pinia: Pinia) => void = () => undefined,
+): {
   wrapper: VueWrapper;
   pinia: Pinia;
   router: Router;
@@ -83,10 +91,31 @@ function mountCheckout(): {
   // Bind the test's store mutations to the SAME pinia the component
   // resolves `useCartStore()` etc. against.
   setActivePinia(pinia);
+  useAuthStore().profile = verifiedProfile();
+  prepareStore(pinia);
   const wrapper = mount(CheckoutView, {
     global: { plugins: [pinia, router] },
   });
   return { wrapper, pinia, router };
+}
+
+const quote: OrderQuoteView = {
+  lines: [],
+  goodsTotalCents: 6800,
+  membershipDiscountCents: 0,
+  discountedTotalCents: 6800,
+  requestedCreditCents: 0,
+  creditAppliedCents: 0,
+  payableTotalCents: 6800,
+  availableCreditCents: 0,
+  maxCreditCents: 0,
+  membership: null,
+  quoteToken: 'checkout-test-quote-token',
+  expiresAt: '2099-01-01T00:00:00.000Z',
+};
+
+function seedQuoteApi(): void {
+  vi.spyOn(apiClient, 'post').mockResolvedValue(quote);
 }
 
 function verifiedProfile() {
@@ -98,22 +127,20 @@ function verifiedProfile() {
   };
 }
 
-function seedStores(opts?: {
+function seedApis(opts?: {
   cart?: CartItemView[];
   addresses?: AddressView[];
   cartRefresh?: ReturnType<typeof vi.fn>;
   addressesRefresh?: ReturnType<typeof vi.fn>;
 }) {
-  const cartStore = useCartStore();
-  cartStore.items = opts?.cart ?? cart;
-  cartStore.refresh =
+  const cartRefresh =
     opts?.cartRefresh ?? vi.fn().mockResolvedValue(opts?.cart ?? cart);
-  const addressesStore = useAddressesStore();
-  addressesStore.items = opts?.addresses ?? savedAddresses;
-  addressesStore.refresh =
+  const addressesRefresh =
     opts?.addressesRefresh ??
     vi.fn().mockResolvedValue(opts?.addresses ?? savedAddresses);
-  return { cartStore, addressesStore };
+  vi.spyOn(customerApi, 'listCart').mockImplementation(cartRefresh);
+  vi.spyOn(customerApi, 'listAddresses').mockImplementation(addressesRefresh);
+  return { cartRefresh, addressesRefresh };
 }
 
 describe('CheckoutView', () => {
@@ -142,16 +169,23 @@ describe('CheckoutView', () => {
   });
 
   it('requires pickup time for PICKUP and an address for DELIVERY', async () => {
-    useAuthStore().profile = verifiedProfile();
-    const { wrapper } = mountCheckout();
     // Start with no saved addresses so the auto-default-fill doesn't
     // satisfy the DELIVERY address requirement on mode switch.
-    seedStores({ addresses: [] });
+    seedApis({ addresses: [] });
+    const { wrapper } = mountCheckout();
+    await flushPromises();
 
     // Fill the always-required contact fields so the validation falls
     // through to the per-mode required-field check.
     await wrapper.get('[data-testid="contact-name"]').setValue('小明');
     await wrapper.get('[data-testid="contact-phone"]').setValue('13800000000');
+
+    expect(wrapper.findAll('.store-form-card').length).toBeGreaterThanOrEqual(
+      3,
+    );
+    expect(
+      wrapper.get('[data-testid="submit"]').attributes('aria-disabled'),
+    ).toBeDefined();
 
     const pickupRadio = wrapper.get(
       '[data-testid="fulfillment-pickup"]',
@@ -174,26 +208,75 @@ describe('CheckoutView', () => {
     expect(wrapper.text()).toContain('请选择配送地址');
   });
 
-  it('submits a valid PICKUP order with a stable Idempotency-Key', async () => {
-    useAuthStore().profile = verifiedProfile();
-    const { wrapper } = mountCheckout();
-    const refreshSpy = vi.fn().mockResolvedValue(cart);
-    seedStores({ cartRefresh: refreshSpy });
-    const ordersStore = useOrdersStore();
-    const createSpy = vi.fn().mockResolvedValue({
-      id: 'order-1',
-      orderNo: 'BM2026071200000001',
-      status: 'NEW',
-      fulfillmentType: 'PICKUP',
+  it('keeps the cart selection while refreshing and submits only selected items', async () => {
+    const secondItem: CartItemView = {
+      ...cart[0],
+      id: 'cart-2',
+      sku: { ...cart[0].sku, id: 'sku-2' },
+      product: { ...cart[0].product, id: 'product-2', name: '海盐可颂' },
+    };
+    const items = [cart[0], secondItem];
+    seedApis({ cart: items });
+    seedQuoteApi();
+    const { wrapper } = mountCheckout(() => {
+      const store = useCartStore();
+      store.applyItems(items);
+      store.setSelected('cart-2', false);
+    });
+    await waitForQuote();
+    const createSpy = vi.spyOn(ordersApi, 'create').mockResolvedValue({
+      id: 'order-selected',
+      orderNo: 'BM2026071200000099',
+      status: OrderStatus.NEW,
+      fulfillmentType: FulfillmentType.PICKUP,
       contactName: '小明',
       contactPhone: '13800000000',
       pickupTimeText: '明天上午十点',
       goodsTotalCents: 6800,
+      membershipDiscountCents: 0,
+      creditAppliedCents: 0,
+      payableTotalCents: 6800,
+      pricingVersion: 1,
       items: [],
       createdAt: '2026-07-12T10:00:00.000Z',
       updatedAt: '2026-07-12T10:00:00.000Z',
     });
-    ordersStore.create = createSpy;
+
+    expect(wrapper.text()).toContain('示例蛋糕');
+    expect(wrapper.text()).not.toContain('海盐可颂');
+    await wrapper.get('[data-testid="fulfillment-pickup"]').trigger('click');
+    await wrapper.get('[data-testid="contact-name"]').setValue('小明');
+    await wrapper.get('[data-testid="contact-phone"]').setValue('13800000000');
+    await wrapper.get('[data-testid="pickup-time"]').setValue('明天上午十点');
+    await wrapper.get('form').trigger('submit.prevent');
+    await flushPromises();
+
+    expect(createSpy.mock.calls[0][0].cartItemIds).toEqual(['cart-1']);
+  });
+
+  it('submits a valid PICKUP order with a stable Idempotency-Key', async () => {
+    const refreshSpy = vi.fn().mockResolvedValue(cart);
+    seedApis({ cartRefresh: refreshSpy });
+    seedQuoteApi();
+    const { wrapper, router } = mountCheckout();
+    await waitForQuote();
+    const createSpy = vi.spyOn(ordersApi, 'create').mockResolvedValue({
+      id: 'order-1',
+      orderNo: 'BM2026071200000001',
+      status: OrderStatus.NEW,
+      fulfillmentType: FulfillmentType.PICKUP,
+      contactName: '小明',
+      contactPhone: '13800000000',
+      pickupTimeText: '明天上午十点',
+      goodsTotalCents: 6800,
+      membershipDiscountCents: 0,
+      creditAppliedCents: 0,
+      payableTotalCents: 6800,
+      pricingVersion: 1,
+      items: [],
+      createdAt: '2026-07-12T10:00:00.000Z',
+      updatedAt: '2026-07-12T10:00:00.000Z',
+    });
 
     await wrapper.get('[data-testid="fulfillment-pickup"]').trigger('click');
     await wrapper.get('[data-testid="contact-name"]').setValue('小明');
@@ -211,34 +294,66 @@ describe('CheckoutView', () => {
       contactPhone: '13800000000',
       pickupTimeText: '明天上午十点',
     });
+    expect(payload).toMatchObject({
+      requestedCreditCents: 0,
+      quoteToken: 'checkout-test-quote-token',
+    });
     expect(key).toBeTruthy();
     // Cart is refetched on success so the cleared items disappear.
     expect(refreshSpy).toHaveBeenCalled();
+    expect(router.currentRoute.value.fullPath).toBe('/orders/order-1');
+  });
+
+  it('generates a new Idempotency-Key when the payload changes after failure', async () => {
+    seedApis();
+    seedQuoteApi();
+    const { wrapper } = mountCheckout();
+    await waitForQuote();
+    const createSpy = vi
+      .spyOn(ordersApi, 'create')
+      .mockRejectedValue(new ApiClientError(0, '网络异常,请稍后重试'));
+
+    await wrapper.get('[data-testid="fulfillment-pickup"]').trigger('click');
+    await wrapper.get('[data-testid="contact-name"]').setValue('小明');
+    await wrapper.get('[data-testid="contact-phone"]').setValue('13800000000');
+    await wrapper.get('[data-testid="pickup-time"]').setValue('明天上午十点');
+    await wrapper.get('form').trigger('submit.prevent');
+    await flushPromises();
+    const firstKey = createSpy.mock.calls[0][1] as string;
+
+    await wrapper.get('[data-testid="contact-name"]').setValue('小明改名');
+    await wrapper.get('form').trigger('submit.prevent');
+    await flushPromises();
+
+    expect(createSpy.mock.calls[1][1]).not.toBe(firstKey);
   });
 
   it('reuses the same Idempotency-Key across retries until success', async () => {
-    useAuthStore().profile = verifiedProfile();
+    seedApis();
+    seedQuoteApi();
     const { wrapper } = mountCheckout();
-    seedStores();
-    const ordersStore = useOrdersStore();
+    await waitForQuote();
     const networkError = new ApiClientError(0, '网络异常,请稍后重试');
     const createSpy = vi
-      .fn()
+      .spyOn(ordersApi, 'create')
       .mockRejectedValueOnce(networkError)
       .mockResolvedValueOnce({
         id: 'order-2',
         orderNo: 'BM2026071200000002',
-        status: 'NEW',
-        fulfillmentType: 'PICKUP',
+        status: OrderStatus.NEW,
+        fulfillmentType: FulfillmentType.PICKUP,
         contactName: '小明',
         contactPhone: '13800000000',
         pickupTimeText: '明天上午十点',
         goodsTotalCents: 6800,
+        membershipDiscountCents: 0,
+        creditAppliedCents: 0,
+        payableTotalCents: 6800,
+        pricingVersion: 1,
         items: [],
         createdAt: '2026-07-12T10:00:00.000Z',
         updatedAt: '2026-07-12T10:00:00.000Z',
       });
-    ordersStore.create = createSpy;
 
     await wrapper.get('[data-testid="fulfillment-pickup"]').trigger('click');
     await wrapper.get('[data-testid="contact-name"]').setValue('小明');
@@ -262,4 +377,8 @@ describe('CheckoutView', () => {
 
 function flushPromises(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+function waitForQuote(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 350));
 }

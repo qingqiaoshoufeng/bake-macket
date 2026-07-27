@@ -1,7 +1,8 @@
+import type { UpsertCartItemRequest } from '@bake-mall/contracts';
 import { Type } from 'class-transformer';
 import { IsInt, IsString, Min, Max } from 'class-validator';
 
-export class UpsertCartItemDto {
+export class UpsertCartItemDto implements UpsertCartItemRequest {
   @IsString()
   skuId!: string;
 

@@ -23,7 +23,9 @@ export type OrderAction = {
   readonly description: string;
 };
 
-const ACTION_DEFINITIONS: Readonly<Record<OrderAction['key'], Omit<OrderAction, 'key'>>> = {
+export const ORDER_ACTION_DEFINITIONS: Readonly<
+  Record<OrderAction['key'], Omit<OrderAction, 'key'>>
+> = {
   start: {
     status: OrderStatus.PROCESSING,
     label: '开始处理',
@@ -48,15 +50,20 @@ export type UseOrderActionsResult = {
   readonly canCancel: ComputedRef<boolean>;
 };
 
-export function useOrderActions(
-  order: () => OrderView,
-): UseOrderActionsResult {
-  const actions = computed<readonly OrderAction[]>(() => {
-    const current = order().status;
-    return (Object.keys(ACTION_DEFINITIONS) as Array<OrderAction['key']>)
-      .filter((key) => canTransitionOrder(current, ACTION_DEFINITIONS[key].status))
-      .map((key) => ({ key, ...ACTION_DEFINITIONS[key] }));
-  });
+export function deriveOrderActions(
+  status: OrderStatusType,
+): readonly OrderAction[] {
+  return (Object.keys(ORDER_ACTION_DEFINITIONS) as Array<OrderAction['key']>)
+    .filter((key) =>
+      canTransitionOrder(status, ORDER_ACTION_DEFINITIONS[key].status),
+    )
+    .map((key) => ({ key, ...ORDER_ACTION_DEFINITIONS[key] }));
+}
+
+export function useOrderActions(order: () => OrderView): UseOrderActionsResult {
+  const actions = computed<readonly OrderAction[]>(() =>
+    deriveOrderActions(order().status),
+  );
 
   const canStart = computed(() =>
     canTransitionOrder(order().status, OrderStatus.PROCESSING),

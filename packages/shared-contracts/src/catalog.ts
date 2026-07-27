@@ -22,16 +22,22 @@ export type ProductImageView = {
   sortOrder: number;
 };
 
-export type ProductView = {
+export type PublicProductSummaryView = {
   id: string;
   categoryId: string;
   name: string;
   summary?: string;
   coverImageUrl?: string;
-  images: ProductImageView[];
-  detailHtml: string;
   skus: SkuView[];
 };
+
+export type PublicProductDetailView = PublicProductSummaryView & {
+  detailHtml: string;
+  images: ProductImageView[];
+};
+
+/** 兼容现有详情消费者；新边界应使用明确的 Summary/Detail 名称。 */
+export type ProductView = PublicProductDetailView;
 
 type BannerBase = {
   id: string;

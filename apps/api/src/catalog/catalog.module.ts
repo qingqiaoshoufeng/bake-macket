@@ -9,6 +9,7 @@ import { Sku } from '../database/entities/sku.entity.js';
 import { AdminCategoriesController } from './admin-categories.controller.js';
 import { AdminProductsController } from './admin-products.controller.js';
 import { CatalogService } from './catalog.service.js';
+import { MediaAssetPolicyService } from './media-asset-policy.service.js';
 import { PublicCatalogController } from './public-catalog.controller.js';
 
 @Module({
@@ -18,7 +19,7 @@ import { PublicCatalogController } from './public-catalog.controller.js';
     AdminProductsController,
     PublicCatalogController,
   ],
-  providers: [CatalogService, HtmlSanitizerService],
+  providers: [CatalogService, HtmlSanitizerService, MediaAssetPolicyService],
   exports: [CatalogService],
 })
 export class CatalogModule {}

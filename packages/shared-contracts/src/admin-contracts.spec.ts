@@ -107,7 +107,10 @@ describe('Task 12 admin contracts', () => {
       pageSize: query.pageSize,
       total: 0,
     };
-    const update = { order: null, noRestock: true } as unknown as OrderStatusUpdateResult;
+    const update = {
+      order: null,
+      noRestock: true,
+    } as unknown as OrderStatusUpdateResult;
     expect(result.total).toBe(0);
     expect(update.noRestock).toBe(true);
   });

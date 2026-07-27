@@ -1,218 +1,244 @@
-import { reactive, ref, computed, watch, type Ref, type ComputedRef } from 'vue';
+import type { SaveProductSkuInput } from '@bake-mall/contracts';
+import { computed, ref, watch, type ComputedRef, type Ref } from 'vue';
 
-import { yuanToCents } from '../../../utils/money.js';
+import { formatCentsToYuan } from '../../../utils/money.js';
+import type { SkuAttributeRow, SkuFormRow } from '../type/form.js';
 
-/**
- * Pure data shapes consumed by the SKU editor.
- *
- * The view layer mirrors the parent `modelValue` shape so the editor
- * stays a controlled component. Once a row fails validation the parent
- * will *not* receive an `update:modelValue` event — it is up to the
- * parent to keep its in-flight draft and resync the editor when the
- * merchant fixes the offending field.
- */
-export type SkuInput = {
-  id?: string;
-  name: string;
-  priceCents: number;
-  stock: number;
-  enabled: boolean;
-  imageUrl?: string;
-};
-
-export type SkuRow = {
-  /** Stable local id so `v-for` keys survive server-id-less drafts. */
-  rowId: string;
-  id?: string;
-  name: string;
-  /** Free-form yuan string so the UI can show trailing zeros. */
-  priceYuan: string;
-  priceCents: number;
-  stock: number;
-  enabled: boolean;
-  imageUrl?: string;
-};
-
-export type UseSkuEditorResult = {
-  rows: Ref<SkuRow[]>;
-  invalidStock: ReturnType<typeof reactive<Set<string>>>;
+type UseSkuEditorResult = {
+  rows: Ref<SkuFormRow[]>;
   hasInvalidRows: ComputedRef<boolean>;
-  hasEmptyName: ComputedRef<boolean>;
   addRow: () => void;
   removeRow: (rowId: string) => void;
   setName: (rowId: string, value: string) => void;
   setPriceYuan: (rowId: string, value: string) => void;
-  setStock: (rowId: string, value: number | null | undefined) => void;
-  setEnabled: (rowId: string, value: boolean) => void;
-  /** Returns the rows to emit, or `null` if the working copy is invalid. */
-  toInput: () => SkuInput[] | null;
+  setStock: (rowId: string, value: number) => void;
+  setActive: (rowId: string, value: boolean) => void;
+  setAttributes: (
+    rowId: string,
+    attributes: readonly SkuAttributeRow[],
+  ) => void;
+  setImage: (rowId: string, image: SkuFormRow['image']) => void;
+  toInput: () => SaveProductSkuInput[] | null;
 };
 
+const PRICE_YUAN_PATTERN = /^(0|[1-9]\d*)(\.\d{1,2})?$/;
+const MAX_UNSIGNED_INT = 4_294_967_295;
 const rowIdCounter = { value: 0 };
 
 function nextRowId(): string {
   rowIdCounter.value += 1;
-  return `row-${rowIdCounter.value}`;
+  return `sku-row-${rowIdCounter.value}`;
 }
 
-function fromInput(input: SkuInput): SkuRow {
-  const cents = Number.isFinite(input.priceCents) ? input.priceCents : 0;
+function cloneAttribute(attribute: SkuAttributeRow): SkuAttributeRow {
+  return { ...attribute };
+}
+
+function cloneRow(row: SkuFormRow, rowId = row.rowId): SkuFormRow {
   return {
-    rowId: nextRowId(),
-    ...(input.id ? { id: input.id } : {}),
-    name: input.name,
-    priceYuan: (cents / 100).toFixed(2),
-    priceCents: cents,
-    stock: input.stock,
-    enabled: input.enabled,
-    ...(input.imageUrl ? { imageUrl: input.imageUrl } : {}),
+    ...row,
+    rowId,
+    attributes: row.attributes.map(cloneAttribute),
+    image: row.image ? { ...row.image } : null,
   };
 }
 
-function blankRow(): SkuRow {
+function createBlankRow(): SkuFormRow {
   return {
     rowId: nextRowId(),
     name: '',
+    attributes: [],
     priceYuan: '0.00',
-    priceCents: 0,
     stock: 0,
-    enabled: true,
+    isActive: true,
+    image: null,
   };
 }
 
-/**
- * Encapsulated SKU editor state.
- *
- * The hook returns plain setters that the view binds to native form
- * controls; this is the only place where yuan→cent conversion and
- * negative-stock blocking lives so the presentational component can
- * stay declarative and the test surface stays a small contract.
- */
-export function useSkuEditor(
-  initial: () => SkuInput[] = () => [],
-): UseSkuEditorResult {
-  const rows = ref<SkuRow[]>(initial().map(fromInput));
-  const invalidStock = reactive<Set<string>>(new Set());
+function normalizeAttributes(
+  attributes: readonly SkuAttributeRow[],
+): readonly SkuAttributeRow[] {
+  const normalized = attributes.map(({ key, value }) => ({
+    key: key.trim(),
+    value: value.trim(),
+  }));
+  if (normalized.some(({ key }) => key === '')) {
+    throw new Error('SKU 属性键不能为空');
+  }
+  const keys = normalized.map(({ key }) => key);
+  if (new Set(keys).size !== keys.length) {
+    throw new Error('SKU 属性键不能重复');
+  }
+  return normalized;
+}
 
-  const hasInvalidRows = computed(() => invalidStock.size > 0);
-  const hasEmptyName = computed(() =>
-    rows.value.some((row) => row.name.trim() === ''),
+function parsePriceYuan(value: string): number {
+  const normalized = value.trim();
+  if (!PRICE_YUAN_PATTERN.test(normalized)) {
+    throw new Error('价格最多保留两位小数');
+  }
+  const [yuan, decimal = ''] = normalized.split('.');
+  const cents =
+    Number.parseInt(yuan, 10) * 100 +
+    Number.parseInt(decimal.padEnd(2, '0') || '0', 10);
+  if (!Number.isSafeInteger(cents) || cents > MAX_UNSIGNED_INT) {
+    throw new Error('价格超出允许范围');
+  }
+  return cents;
+}
+
+function isValidRow(row: SkuFormRow): boolean {
+  try {
+    parsePriceYuan(row.priceYuan);
+    normalizeAttributes(row.attributes);
+    return (
+      row.name.trim() !== '' && Number.isInteger(row.stock) && row.stock >= 0
+    );
+  } catch {
+    return false;
+  }
+}
+
+function rowSnapshot(row: SkuFormRow): string {
+  return JSON.stringify({
+    id: row.id,
+    stockVersion: row.stockVersion,
+    name: row.name,
+    attributes: row.attributes,
+    priceYuan: row.priceYuan,
+    stock: row.stock,
+    isActive: row.isActive,
+    image: row.image,
+  });
+}
+
+function rowsSnapshot(rows: readonly SkuFormRow[]): string {
+  return JSON.stringify(rows.map(rowSnapshot));
+}
+
+function mergeIncomingRows(
+  current: readonly SkuFormRow[],
+  incoming: readonly SkuFormRow[],
+): SkuFormRow[] {
+  return incoming.map((row, index) => {
+    const matching = row.id
+      ? current.find((candidate) => candidate.id === row.id)
+      : current[index]?.id === undefined
+        ? current[index]
+        : undefined;
+    return cloneRow(row, matching?.rowId ?? row.rowId ?? nextRowId());
+  });
+}
+
+export function useSkuEditor(
+  initialRows: () => readonly SkuFormRow[] = () => [],
+): UseSkuEditorResult {
+  const rows = ref<SkuFormRow[]>(initialRows().map((row) => cloneRow(row)));
+  const hasInvalidRows = computed(() =>
+    rows.value.some((row) => !isValidRow(row)),
   );
 
-  function findRow(rowId: string): SkuRow | undefined {
-    return rows.value.find((row) => row.rowId === rowId);
+  function updateRow(
+    rowId: string,
+    update: (row: SkuFormRow) => SkuFormRow,
+  ): void {
+    rows.value = rows.value.map((row) =>
+      row.rowId === rowId ? update(row) : row,
+    );
   }
 
   function addRow(): void {
-    rows.value = [...rows.value, blankRow()];
+    rows.value = [...rows.value, createBlankRow()];
   }
 
   function removeRow(rowId: string): void {
-    rows.value = rows.value.filter((row) => row.rowId !== rowId);
-    invalidStock.delete(rowId);
+    rows.value = rows.value.flatMap((row) => {
+      if (row.rowId !== rowId) return [row];
+      return row.id ? [{ ...row, isActive: false }] : [];
+    });
   }
 
-  function setName(rowId: string, value: string): void {
-    const row = findRow(rowId);
-    if (!row) return;
-    rows.value = rows.value.map((candidate) =>
-      candidate.rowId === rowId
-        ? { ...candidate, name: value }
-        : candidate,
-    );
+  function setName(rowId: string, name: string): void {
+    updateRow(rowId, (row) => ({ ...row, name }));
   }
 
-  function setPriceYuan(rowId: string, value: string): void {
-    const row = findRow(rowId);
-    if (!row) return;
-    const cleaned = value.trim();
-    if (cleaned === '') {
-      rows.value = rows.value.map((candidate) =>
-        candidate.rowId === rowId
-          ? { ...candidate, priceYuan: '', priceCents: 0 }
-          : candidate,
-      );
-      return;
-    }
-    const cents = yuanToCents(cleaned);
-    rows.value = rows.value.map((candidate) =>
-      candidate.rowId === rowId
-        ? { ...candidate, priceYuan: (cents / 100).toFixed(2), priceCents: cents }
-        : candidate,
-    );
+  function setPriceYuan(rowId: string, priceYuan: string): void {
+    updateRow(rowId, (row) => ({ ...row, priceYuan }));
   }
 
-  function setStock(rowId: string, value: number | null | undefined): void {
-    const row = findRow(rowId);
-    if (!row) return;
-    const numeric = typeof value === 'number' ? value : Number(value ?? 0);
-    if (numeric < 0) {
-      invalidStock.add(rowId);
-      rows.value = rows.value.map((candidate) =>
-        candidate.rowId === rowId ? { ...candidate, stock: numeric } : candidate,
-      );
-      return;
-    }
-    invalidStock.delete(rowId);
-    rows.value = rows.value.map((candidate) =>
-      candidate.rowId === rowId ? { ...candidate, stock: numeric } : candidate,
-    );
+  function setStock(rowId: string, stock: number): void {
+    updateRow(rowId, (row) => ({ ...row, stock }));
   }
 
-  function setEnabled(rowId: string, value: boolean): void {
-    rows.value = rows.value.map((candidate) =>
-      candidate.rowId === rowId ? { ...candidate, enabled: value } : candidate,
-    );
+  function setActive(rowId: string, isActive: boolean): void {
+    updateRow(rowId, (row) => ({ ...row, isActive }));
   }
 
-  function toInput(): SkuInput[] | null {
-    if (hasInvalidRows.value || hasEmptyName.value) return null;
-    // The MVP editor only forwards rows that the merchant has fully
-    // "committed": a non-empty name, a positive integer-cent price and a
-    // strictly positive stock. Rows still being typed (price left at the
-    // `0.00` default or stock at `0`) stay as drafts so the parent never
-    // persists a half-typed SKU.
-    const ready = rows.value.every(
-      (row) =>
-        row.name.trim() !== '' && row.priceCents > 0 && row.stock > 0,
-    );
-    if (!ready) return null;
-    return rows.value.map<SkuInput>((row) => {
-      const input: SkuInput = {
-        name: row.name,
-        priceCents: row.priceCents,
+  function setAttributes(
+    rowId: string,
+    attributes: readonly SkuAttributeRow[],
+  ): void {
+    updateRow(rowId, (row) => ({
+      ...row,
+      attributes: attributes.map(cloneAttribute),
+    }));
+  }
+
+  function setImage(rowId: string, image: SkuFormRow['image']): void {
+    updateRow(rowId, (row) => ({ ...row, image }));
+  }
+
+  function toInput(): SaveProductSkuInput[] | null {
+    if (hasInvalidRows.value) return null;
+    return rows.value.map((row): SaveProductSkuInput => {
+      const fields = {
+        name: row.name.trim(),
+        attributes: Object.fromEntries(
+          normalizeAttributes(row.attributes).map(({ key, value }) => [
+            key,
+            value,
+          ]),
+        ),
+        priceCents: parsePriceYuan(row.priceYuan),
         stock: row.stock,
-        enabled: row.enabled,
+        isActive: row.isActive,
+        image: row.image,
       };
-      if (row.id) input.id = row.id;
-      if (row.imageUrl) input.imageUrl = row.imageUrl;
-      return input;
+      if (row.id !== undefined) {
+        if (row.stockVersion === undefined) {
+          throw new Error('已有 SKU 缺少库存版本');
+        }
+        return { ...fields, id: row.id, stockVersion: row.stockVersion };
+      }
+      if (row.stockVersion !== undefined) {
+        throw new Error('新 SKU 不能包含库存版本');
+      }
+      return fields;
     });
   }
 
   watch(
-    () => initial(),
-    (next) => {
-      const sameShape =
-        next.length === rows.value.length &&
-        next.every((item, index) => item.id === rows.value[index]?.id);
-      if (sameShape) return;
-      rows.value = next.length ? next.map(fromInput) : [];
-      invalidStock.clear();
+    () => rowsSnapshot(initialRows()),
+    () => {
+      const incoming = initialRows();
+      if (rowsSnapshot(incoming) === rowsSnapshot(rows.value)) return;
+      rows.value = mergeIncomingRows(rows.value, incoming);
     },
   );
 
   return {
     rows,
-    invalidStock,
     hasInvalidRows,
-    hasEmptyName,
     addRow,
     removeRow,
     setName,
     setPriceYuan,
     setStock,
-    setEnabled,
+    setActive,
+    setAttributes,
+    setImage,
     toInput,
   };
 }
+
+export { formatCentsToYuan };
