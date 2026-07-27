@@ -7,7 +7,7 @@ import { CatalogModule } from './catalog/catalog.module.js';
 import { CustomerModule } from './customer/customer.module.js';
 import { OrdersModule } from './orders/orders.module.js';
 import { UploadModule } from './upload/upload.module.js';
-import { envSchema } from './config/env.schema.js';
+import { validateEnvironment } from './config/env.schema.js';
 import { DatabaseModule } from './database/database.module.js';
 import { HealthController } from './health/health.controller.js';
 
@@ -22,21 +22,9 @@ import { HealthController } from './health/health.controller.js';
     ConfigModule.forRoot({
       isGlobal: true,
       cache: true,
-      validate: (raw) => {
-        const { value, error } = envSchema.validate(raw ?? process.env, {
-          abortEarly: false,
-          stripUnknown: true,
-        });
-        if (error) {
-          throw new Error(
-            `Invalid environment configuration: ${error.message}`,
-          );
-        }
-        // Nest stores the validator return value under the `appEnv` key so
-        // `config.get('appEnv', { infer: true })` resolves to the typed
-        // AppEnv object.
-        return { appEnv: value };
-      },
+      ignoreEnvFile: process.env.NODE_ENV === 'production',
+      envFilePath: ['../../.env.development', '.env'],
+      validate: (raw) => ({ appEnv: validateEnvironment(raw ?? process.env) }),
       validationOptions: {
         abortEarly: false,
         allowUnknown: true,

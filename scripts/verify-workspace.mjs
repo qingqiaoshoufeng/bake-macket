@@ -8,6 +8,8 @@ const requiredFiles = [
   'tsconfig.base.json',
   'eslint.config.mjs',
   '.env.example',
+  '.env.development.example',
+  '.env.production.example',
   'infra/docker-compose.dev.yml',
 ];
 
@@ -63,7 +65,7 @@ for (const requiredSnippet of [
 }
 
 const environment = Object.fromEntries(
-  readFileSync('.env.example', 'utf8')
+  readFileSync('.env.development.example', 'utf8')
     .split('\n')
     .filter((line) => line && !line.startsWith('#'))
     .map((line) => line.split('=', 2)),
@@ -71,13 +73,17 @@ const environment = Object.fromEntries(
 
 const compose = readFileSync('infra/docker-compose.dev.yml', 'utf8');
 for (const [variable, expected] of Object.entries({
+  PORT: '43015',
+  H5_PORT: '43173',
+  ADMIN_PORT: '43174',
+  MYSQL_PORT: '43306',
   MYSQL_PASSWORD: 'bake_app_password',
-  S3_ACCESS_KEY: 'minioadmin',
-  S3_SECRET_KEY: 'minioadmin',
+  OBJECT_STORAGE_ACCESS_KEY: 'minioadmin',
+  OBJECT_STORAGE_SECRET_KEY: 'minioadmin',
 })) {
   if (environment[variable] !== expected) {
     throw new Error(
-      `.env.example ${variable} must match local Docker Compose credentials`,
+      `.env.development.example ${variable} must match local defaults`,
     );
   }
 }

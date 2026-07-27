@@ -7,10 +7,11 @@ const apiPackage = readJson('apps/api/package.json');
 const apiBuildConfig = readJson('apps/api/tsconfig.build.json');
 const h5ViteConfig = readFileSync('apps/h5-store/vite.config.ts', 'utf8');
 const adminViteConfig = readFileSync('apps/admin-web/vite.config.ts', 'utf8');
+const composeScript = readFileSync('scripts/compose.mjs', 'utf8');
 
 assert.equal(
   rootPackage.scripts.dev,
-  'pnpm services:up && pnpm --filter @bake-mall/api migration:run && pnpm -r --parallel --stream dev',
+  'pnpm services:up && pnpm --filter @bake-mall/contracts build && pnpm --filter @bake-mall/api migration:run && pnpm -r --parallel --stream dev',
 );
 assert.equal(apiPackage.scripts.dev, 'nest start --watch');
 assert.equal(
@@ -18,4 +19,9 @@ assert.equal(
   './dist/tsconfig.build.tsbuildinfo',
 );
 assert.match(h5ViteConfig, /strictPort:\s*true/);
+assert.match(h5ViteConfig, /H5_PORT/);
+assert.match(h5ViteConfig, /12297oy2ga916\.vicp\.fun/);
 assert.match(adminViteConfig, /strictPort:\s*true/);
+assert.match(adminViteConfig, /ADMIN_PORT/);
+assert.match(adminViteConfig, /12297oy2ga916\.vicp\.fun/);
+assert.match(composeScript, /--env-file/);

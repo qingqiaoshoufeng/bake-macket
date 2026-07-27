@@ -29,9 +29,13 @@ pnpm format:check
 Workspace application commands are available at the root:
 
 ```bash
+# Optional: pnpm services:* and pnpm dev create this file when it is missing.
+cp .env.development.example .env.development
 pnpm dev
 pnpm build
 ```
+
+Local defaults are API `43015`, H5 `43173`, Admin `43174`, MySQL `43306`, MinIO API `43900`, and MinIO Console `43901`, all on `127.0.0.1`. H5/Admin dev and preview accept `12297oy2ga916.vicp.fun`; change `allowedHosts` in both Vite configs if the tunnel hostname changes. Use `.env.production.example` as the API deployment contract; production frontends expect the deployment layer to route same-origin `/api/v1` requests to the API.
 
 ## TypeScript configuration
 
@@ -47,11 +51,11 @@ pnpm services:up
 
 These service commands derive an isolated Docker Compose project name from the current Git branch, preventing local service state collisions between worktrees. All published service ports bind to `127.0.0.1` and are local-only.
 
-| Service       | Address                 | Notes                                                     |
-| ------------- | ----------------------- | --------------------------------------------------------- |
-| MySQL 8.4     | `127.0.0.1:3306`        | Database: `bake_mall`; local application user: `bake_app` |
-| MinIO S3 API  | `http://127.0.0.1:9000` | Local-only object-storage endpoint                        |
-| MinIO Console | `http://127.0.0.1:9001` | Local-only administrative console                         |
+| Service       | Address                  | Notes                                                     |
+| ------------- | ------------------------ | --------------------------------------------------------- |
+| MySQL 8.4     | `127.0.0.1:43306`        | Database: `bake_mall`; local application user: `bake_app` |
+| MinIO S3 API  | `http://127.0.0.1:43900` | Local-only object-storage endpoint                        |
+| MinIO Console | `http://127.0.0.1:43901` | Local-only administrative console                         |
 
 Check container status with:
 
@@ -59,7 +63,7 @@ Check container status with:
 pnpm services:ps
 ```
 
-The credentials in `infra/docker-compose.dev.yml` are deliberately local development defaults only. Copy `.env.example` to `.env` to authenticate to the local MySQL and MinIO services; do not reuse these values outside local development or commit real credentials. MySQL and MinIO data are stored in named Docker volumes so they persist across `pnpm services:down`.
+Local credentials and host ports come from the ignored `.env.development`, created exclusively from `.env.development.example` when missing. Do not reuse these values outside development or commit real credentials. MySQL and MinIO data use named Docker volumes and persist across `pnpm services:down`.
 
 Stop the local services with:
 

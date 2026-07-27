@@ -13,6 +13,7 @@ vi.mock('@aws-sdk/s3-presigned-post', () => ({
 
 const env: AppEnv = {
   NODE_ENV: 'test',
+  HOST: '127.0.0.1',
   PORT: 3015,
   MYSQL_HOST: '127.0.0.1',
   MYSQL_PORT: 3306,

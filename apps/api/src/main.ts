@@ -28,12 +28,12 @@ async function bootstrap(): Promise<void> {
   );
 
   const config = app.get<ConfigService<AppConfig, true>>(ConfigService);
-  const { PORT: port } = config.get('appEnv', { infer: true });
+  const { PORT: port, HOST: host } = config.get('appEnv', { infer: true });
 
-  await app.listen(port);
+  await app.listen(port, host);
 
   Logger.log(
-    `API listening on http://localhost:${port}/api/v1 (health: /api/v1/health)`,
+    `API listening on http://${host}:${port}/api/v1 (health: /api/v1/health)`,
     'Bootstrap',
   );
 }

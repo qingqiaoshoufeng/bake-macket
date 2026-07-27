@@ -1,4 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process';
+import { constants, copyFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 export function composeProjectName(branch) {
@@ -23,13 +24,28 @@ function currentBranch() {
   }
 }
 
+function ensureDevelopmentEnv() {
+  try {
+    copyFileSync(
+      '.env.development.example',
+      '.env.development',
+      constants.COPYFILE_EXCL,
+    );
+  } catch (error) {
+    if (error?.code !== 'EEXIST') throw error;
+  }
+}
+
 function main() {
+  ensureDevelopmentEnv();
   const args = process.argv.slice(2);
   const projectName = composeProjectName(currentBranch());
   const result = spawnSync(
     'docker',
     [
       'compose',
+      '--env-file',
+      '.env.development',
       '-p',
       projectName,
       '-f',

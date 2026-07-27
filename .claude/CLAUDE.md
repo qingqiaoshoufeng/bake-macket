@@ -22,8 +22,9 @@
 在 workspace 根目录运行:
 
 - `pnpm install` 然后 `pnpm verify:workspace` — 安装依赖并确认 workspace 文件齐全。
-- `pnpm dev` — 一键启动或复用 MySQL / MinIO,执行迁移,并前台并行运行 API `3015`、H5 `5173`、Admin `5174`;`Ctrl-C` 只停止三个应用,`pnpm services:down` 完全关闭基础设施。
-- 本地默认登录:H5 `13800000000 / 123456`;Admin `admin-local@example.com / admin-password`。凭据仅存于被忽略的应用级环境文件。
+- `pnpm dev` — 首次缺少根 `.env.development` 时从 `.env.development.example` 自动复制,启动或复用 MySQL / MinIO,构建共享契约,执行迁移,并前台并行运行 API `43015`、H5 `43173`、Admin `43174`;`Ctrl-C` 只停止三个应用,`pnpm services:down` 完全关闭基础设施。
+- 本地基础设施默认端口:MySQL `43306`、MinIO API `43900`、MinIO Console `43901`;开发/生产模板分别为 `.env.development.example` 与 `.env.production.example`。H5/Admin dev 与 preview 允许 `12297oy2ga916.vicp.fun`。
+- 本地默认登录:H5 `13800000000 / 123456`;Admin `admin-local@example.com / admin-password`。凭据仅存于被忽略的根 `.env.development`。
 - `pnpm lint` — 对根 `*.mjs`、`scripts/` 以及各子包执行 ESLint。
 - `pnpm typecheck`、`pnpm test`、`pnpm build` — 递归的 workspace 检查。
 - `pnpm format:check` / `pnpm format` — Prettier 校验 / 格式化。
@@ -38,8 +39,9 @@
 - `apps/api` — NestJS 11 服务(CommonJS 输出)。`main.ts` 启动全局 `/api/v1` 前缀和严格的 `ValidationPipe`;health controller 被显式排除在前缀之外,以避免重复应用。`config/env.schema.ts` 是与迁移 CLI 共享的唯一类型化配置源;`database/database.module.ts` 以 `synchronize: false` 装配 TypeORM;`database/migrations/` 存放版本化迁移。测试使用 **vitest**(单元 + e2e 在同一个二进制中,`--root . test/` 隔离 e2e 树)。新增的 Nest 源文件必须使用 **`.js` 导入后缀**(NodeNext 互操作),即使 `tsconfig.json` 输出为 CommonJS —— TS 在编译时会把 `./foo.js` 解析为 `./foo.ts`。
   - **Schema 约定** 由 `database/migrations/0001-initial-schema.ts` 锁定:`utf8mb4` / `utf8mb4_unicode_ci`、`BIGINT UNSIGNED` 主键、金额 / 数量使用 `INT UNSIGNED`、时间戳存为 UTC 的 `DATETIME`(运行时 `timezone: 'Z'`)。新增迁移 / 实体都必须遵守。
 - `packages/shared-contracts` — DTO、枚举、`ApiError`、订单 `canTransitionOrder` 辅助函数,以及 `CreateOrderRequest` 与 `BannerView` 的可辨识联合。包以 ESM 输出;消费者(NestJS)通过 `require` / `import` 读取。测试使用 vitest,并依赖 **`@ts-expect-error` 类型级断言**(见 `src/order.ts`、`src/catalog.ts`)证明可辨识联合的非法形态会被拒绝 —— `canTransitionOrder` 则由运行时测试直接覆盖。
-- `apps/h5-store`、`apps/admin-web`、`apps/miniapp-shell` — Vite / Vue / 小程序前端(撰写本文档时尚未脚手架;预期位于 `apps/` 下)。
-- `infra/docker-compose.dev.yml` + `scripts/compose.mjs` — 基于分支派生的 Compose 项目名,用于本地服务引导。
+- `apps/h5-store`、`apps/admin-web` — Vue 3 + Vite 静态 SPA,从仓库根读取端口配置并代理到 `PORT`;`apps/miniapp-shell` 是小程序薄壳。
+- `.env.development.example` / `.env.production.example` — 分别是可复制的本地默认配置与不含真实 secret 的生产变量清单;实际 `.env.development` 被 Git 忽略。
+- `infra/docker-compose.dev.yml` + `scripts/compose.mjs` — 基于分支派生 Compose 项目名,读取根 `.env.development` 并参数化本地端口与凭据。
 - `scripts/compose-project-name.test.mjs` — 分支名到项目名净化的单元测试辅助;`services:up` / `services:ps` / `services:down` 需要与之保持一致。
 - `docs/superpowers/specs/`、`docs/superpowers/plans/`、`.superpowers/sdd/` — 设计、计划与每个任务的简报 / 报告。`.superpowers` 目录被 `.gitignore` 忽略;重建上下文所需的全部信息也已落地于已提交的 specs / plans / commit 历史中。
 - 根 `eslint.config.mjs` 仅检查根目录下的 JS / 脚本以及 Vue SFC fixture;每个 workspace 的 ESLint 通过 `pnpm -r lint` 负责各自的源码。

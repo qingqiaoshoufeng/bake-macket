@@ -10,6 +10,7 @@ import Joi from 'joi';
  */
 export interface AppEnv {
   NODE_ENV: 'development' | 'test' | 'production';
+  HOST: string;
   PORT: number;
 
   DATABASE_URL?: string;
@@ -74,7 +75,8 @@ export const envSchema = Joi.object<AppEnv, true>({
   NODE_ENV: Joi.string()
     .valid('development', 'test', 'production')
     .default('development'),
-  PORT: Joi.number().port().default(3000),
+  HOST: Joi.string().hostname().default('127.0.0.1'),
+  PORT: Joi.number().port().default(43015),
 
   DATABASE_URL: Joi.string()
     .uri({ scheme: ['mysql', 'mysql2'] })
@@ -116,6 +118,67 @@ export const envSchema = Joi.object<AppEnv, true>({
     'object.missing':
       'Either DATABASE_URL or MYSQL_HOST must be provided to configure the database connection.',
   });
+
+const productionRequiredFields: ReadonlyArray<keyof AppEnv> = [
+  'DATABASE_URL',
+  'JWT_USER_SECRET',
+  'JWT_ADMIN_SECRET',
+  'ADMIN_EMAIL',
+  'ADMIN_PASSWORD',
+  'OBJECT_STORAGE_ENDPOINT',
+  'OBJECT_STORAGE_REGION',
+  'OBJECT_STORAGE_BUCKET',
+  'OBJECT_STORAGE_PUBLIC_BASE_URL',
+  'OBJECT_STORAGE_ACCESS_KEY',
+  'OBJECT_STORAGE_SECRET_KEY',
+  'OBJECT_STORAGE_FORCE_PATH_STYLE',
+];
+
+export function validateEnvironment(raw: Record<string, unknown>): AppEnv {
+  const { value, error } = envSchema.validate(raw, {
+    abortEarly: false,
+    stripUnknown: true,
+  });
+  if (error) {
+    throw new Error(`Invalid environment configuration: ${error.message}`);
+  }
+
+  if (value.NODE_ENV === 'production') {
+    const missing = productionRequiredFields.filter((key) => {
+      const rawValue = raw[key];
+      return rawValue === undefined || rawValue === null || rawValue === '';
+    });
+    const usesLocalAddress = [
+      value.DATABASE_URL,
+      value.OBJECT_STORAGE_ENDPOINT,
+      value.OBJECT_STORAGE_PUBLIC_BASE_URL,
+    ].some((entry) =>
+      ['127.0.0.1', 'localhost'].some((host) => entry?.includes(host)),
+    );
+    const usesPlaceholder = productionRequiredFields.some((key) =>
+      String(raw[key] ?? '').includes('REPLACE_WITH_'),
+    );
+    const usesDevelopmentFallback =
+      value.JWT_USER_SECRET === FALLBACK_USER_SECRET ||
+      value.JWT_ADMIN_SECRET === FALLBACK_ADMIN_SECRET ||
+      value.JWT_USER_SECRET === value.JWT_ADMIN_SECRET ||
+      value.ADMIN_EMAIL === 'admin-local@example.com' ||
+      value.ADMIN_PASSWORD === 'admin-password' ||
+      value.OBJECT_STORAGE_ACCESS_KEY === 'minioadmin' ||
+      value.OBJECT_STORAGE_SECRET_KEY === 'minioadmin' ||
+      usesLocalAddress;
+
+    if (missing.length > 0 || usesPlaceholder || usesDevelopmentFallback) {
+      throw new Error(
+        `Invalid production environment configuration${
+          missing.length > 0 ? `: missing ${missing.join(', ')}` : ''
+        }`,
+      );
+    }
+  }
+
+  return value;
+}
 
 /**
  * Resolve a TypeORM {@link import('typeorm').DataSourceOptions} object from the

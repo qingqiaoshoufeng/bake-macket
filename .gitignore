@@ -5,5 +5,7 @@ coverage/
 .env
 .env.*
 !.env.example
+!.env.development.example
+!.env.production.example
 # TypeScript incremental build cache (emitted next to tsconfig files).
 *.tsbuildinfo

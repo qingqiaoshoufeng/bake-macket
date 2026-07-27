@@ -3,22 +3,21 @@ import 'reflect-metadata';
 import { config as loadDotenv } from 'dotenv';
 import { DataSource } from 'typeorm';
 
-import { buildDataSourceOptions, envSchema } from '../config/env.schema.js';
+import {
+  buildDataSourceOptions,
+  validateEnvironment,
+} from '../config/env.schema.js';
 import * as entities from './entities/index.js';
 import { InitialSchema1718000000000 } from './migrations/0001-initial-schema.js';
 import { ProductSortOrder1718000000001 } from './migrations/0002-product-sort-order.js';
 import { Task12AdminMediaAndOrderIndexes1718000000002 } from './migrations/0003-task12-admin-media-and-order-indexes.js';
 
-loadDotenv();
-
-const { value, error } = envSchema.validate(process.env, {
-  abortEarly: false,
-  stripUnknown: true,
-});
-
-if (error) {
-  throw new Error(`Invalid environment configuration: ${error.message}`);
+if (process.env.NODE_ENV !== 'production') {
+  loadDotenv({ path: '../../.env.development' });
+  loadDotenv();
 }
+
+const environment = validateEnvironment(process.env);
 
 /**
  * Stand-alone TypeORM {@link DataSource} used by the CLI scripts:
@@ -31,7 +30,7 @@ if (error) {
  * options into `TypeOrmModule.forRootAsync` from the validated config.
  */
 export const AppDataSource = new DataSource({
-  ...buildDataSourceOptions(value),
+  ...buildDataSourceOptions(environment),
   entities: Object.values(entities),
   migrations: [
     InitialSchema1718000000000,
