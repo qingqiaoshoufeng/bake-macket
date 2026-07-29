@@ -40,10 +40,13 @@ const emptyResult = {
 const row: AdminOrderListItem = {
   id: 'order-1',
   orderNo: 'BM2026071800000001',
+  userId: 'user-1',
   status: OrderStatus.NEW,
   fulfillmentType: FulfillmentType.PICKUP,
   contactName: '张三',
   contactPhone: '13800000000',
+  itemLineCount: 1,
+  totalQuantity: 1,
   goodsTotalCents: 6800,
   membershipDiscountCents: 0,
   creditAppliedCents: 0,
@@ -53,6 +56,10 @@ const row: AdminOrderListItem = {
 };
 const detail: OrderView = {
   ...row,
+  membershipId: 'membership-1',
+  membershipCode: 'GOLD',
+  membershipName: '金卡',
+  membershipDiscountBasisPoints: 9000,
   membershipDiscountCents: 0,
   creditAppliedCents: 0,
   payableTotalCents: 6800,

@@ -58,36 +58,39 @@ async function voidPurchase(): Promise<void> {
 </script>
 
 <template>
-  <AdminPage class="membership-purchases-view">
-    <AdminPageHeader
-      eyebrow="MEMBERSHIP LEDGER"
-      title="购卡记录"
-      description="筛选独立购卡单，核对会员链、有效期贡献和消费金流水，并安全执行作废。"
-    />
+  <AdminPage workspace class="membership-purchases-view">
+    <template #header>
+      <AdminPageHeader
+        eyebrow="MEMBERSHIP LEDGER"
+        title="购卡记录"
+        description="筛选独立购卡单，核对会员链、有效期贡献和消费金流水，并安全执行作废。"
+      />
+    </template>
 
-    <ElAlert
-      v-if="state.listError.value"
-      type="error"
-      title="购卡记录加载失败"
-      :description="state.listError.value"
-      :closable="false"
-      show-icon
-    >
-      <template #default>
-        <p class="membership-purchases-view__error-copy">
-          {{ state.listError.value }}
-        </p>
-        <ElButton
-          size="small"
-          data-testid="retry-purchase-list"
-          @click="state.load"
-        >
-          重新加载
-        </ElButton>
-      </template>
-    </ElAlert>
+    <template v-if="state.listError.value" #alert>
+      <ElAlert
+        type="error"
+        title="购卡记录加载失败"
+        :description="state.listError.value"
+        :closable="false"
+        show-icon
+      >
+        <template #default>
+          <p class="membership-purchases-view__error-copy">
+            {{ state.listError.value }}
+          </p>
+          <ElButton
+            size="small"
+            data-testid="retry-purchase-list"
+            @click="state.load"
+          >
+            重新加载
+          </ElButton>
+        </template>
+      </ElAlert>
+    </template>
 
-    <AdminDataPanel>
+    <AdminDataPanel fill>
       <template #toolbar>
         <MembershipPurchaseFilters
           :filters="state.filters"

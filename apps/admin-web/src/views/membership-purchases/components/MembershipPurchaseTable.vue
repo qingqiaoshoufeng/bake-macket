@@ -56,6 +56,7 @@ const paymentStatusLabel = (status: MembershipPaymentStatus): string =>
       v-loading="loading"
       :data="[...props.purchases]"
       row-key="id"
+      height="100%"
       class="admin-table membership-purchase-table__table"
     >
       <ElTableColumn
@@ -147,8 +148,14 @@ const paymentStatusLabel = (status: MembershipPaymentStatus): string =>
 </template>
 
 <style scoped>
+.membership-purchase-table {
+  height: 100%;
+  min-height: 0;
+}
+
 .membership-purchase-table__table {
-  min-width: 1120px;
+  height: 100%;
+  min-height: 0;
 }
 
 .membership-purchase-table__secondary {

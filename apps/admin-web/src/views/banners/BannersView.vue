@@ -72,32 +72,35 @@ async function removeBanner(banner: AdminBannerView): Promise<void> {
 </script>
 
 <template>
-  <AdminPage>
-    <AdminPageHeader
-      eyebrow="HOMEPAGE"
-      title="Banner 管理"
-      description="控制首页横幅的图片、顺序、展示状态与跳转目标。"
-    >
-      <template #actions>
-        <ElButton type="primary" @click="state.openCreate">
-          新增 Banner
-        </ElButton>
-      </template>
-    </AdminPageHeader>
+  <AdminPage workspace>
+    <template #header>
+      <AdminPageHeader
+        eyebrow="HOMEPAGE"
+        title="Banner 管理"
+        description="控制首页横幅的图片、顺序、展示状态与跳转目标。"
+      >
+        <template #actions>
+          <ElButton type="primary" @click="state.openCreate">
+            新增 Banner
+          </ElButton>
+        </template>
+      </AdminPageHeader>
+    </template>
 
-    <ElAlert
-      v-if="state.lastError.value"
-      type="error"
-      :title="state.lastError.value"
-      :closable="false"
-      show-icon
-    >
-      <template #default>
-        <ElButton size="small" @click="state.initialize">重新加载</ElButton>
-      </template>
-    </ElAlert>
+    <template v-if="state.lastError.value" #alert>
+      <ElAlert
+        type="error"
+        :title="state.lastError.value"
+        :closable="false"
+        show-icon
+      >
+        <template #default>
+          <ElButton size="small" @click="state.initialize">重新加载</ElButton>
+        </template>
+      </ElAlert>
+    </template>
 
-    <AdminDataPanel>
+    <AdminDataPanel fill>
       <template #toolbar>
         <BannerFilters
           :filters="state.draftFilters"

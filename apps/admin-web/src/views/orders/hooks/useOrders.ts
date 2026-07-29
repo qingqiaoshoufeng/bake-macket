@@ -137,17 +137,41 @@ export function useOrders() {
     }
   }
 
-  async function search(): Promise<void> {
+  function applyFilterDraft(): void {
     appliedFilters.value = copyFilters(filters);
     page.value = 1;
-    await load();
   }
 
-  async function reset(): Promise<void> {
+  function applySharedFilterDraft(): void {
+    appliedFilters.value = {
+      ...copyFilters(filters),
+      status: appliedFilters.value.status,
+    };
+  }
+
+  function resetFilterState(): void {
     const defaults = createOrderFilterDefaults();
     replaceFilters(filters, defaults);
     appliedFilters.value = copyFilters(defaults);
     page.value = 1;
+  }
+
+  function resetSharedFilterState(): void {
+    const defaults = createOrderFilterDefaults();
+    replaceFilters(filters, { ...defaults, status: filters.status });
+    appliedFilters.value = {
+      ...copyFilters(defaults),
+      status: appliedFilters.value.status,
+    };
+  }
+
+  async function search(): Promise<void> {
+    applyFilterDraft();
+    await load();
+  }
+
+  async function reset(): Promise<void> {
+    resetFilterState();
     await load();
   }
 
@@ -218,6 +242,10 @@ export function useOrders() {
     actions,
     advancedCount,
     setFilters,
+    applyFilterDraft,
+    applySharedFilterDraft,
+    resetFilterState,
+    resetSharedFilterState,
     load,
     search,
     reset,

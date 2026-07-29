@@ -22,7 +22,30 @@ type LazyViewModule = {
   readonly default: unknown;
 };
 
+type ExpectedLayoutMode = 'workspace' | 'document';
+
 type LazyViewLoader = () => Promise<LazyViewModule>;
+
+const layoutCases = [
+  ['/categories', 'workspace'],
+  ['/products', 'workspace'],
+  ['/banners', 'workspace'],
+  ['/orders', 'workspace'],
+  ['/membership-cards', 'workspace'],
+  ['/membership-purchases', 'workspace'],
+  ['/dashboard', 'document'],
+  ['/products/new', 'document'],
+  ['/products/product-1/edit', 'document'],
+  ['/membership-cards/new', 'document'],
+  ['/membership-cards/level-1/edit', 'document'],
+  ['/missing', 'document'],
+] as const satisfies readonly (readonly [string, ExpectedLayoutMode])[];
+
+describe('admin route layout modes', () => {
+  it.each(layoutCases)('resolves %s with %s layout', (path, layoutMode) => {
+    expect(router.resolve(path).meta.layoutMode).toBe(layoutMode);
+  });
+});
 
 describe('admin category route', () => {
   it('lazy-loads the real category management view', async () => {

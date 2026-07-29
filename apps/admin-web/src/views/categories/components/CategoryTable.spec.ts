@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { ElTable, ElTableColumn } from 'element-plus';
 import { defineComponent, h, type VNode } from 'vue';
@@ -12,6 +14,21 @@ class ResizeObserverStub {
   observe(): void {}
   unobserve(): void {}
   disconnect(): void {}
+}
+
+function readClassStyle(className: string): CSSStyleDeclaration {
+  const source = readFileSync(
+    `${process.cwd()}/src/views/categories/components/CategoryTable.vue`,
+    'utf8',
+  );
+  const declarations = source.match(
+    new RegExp(`\\.${className}\\s*\\{([^}]*)\\}`),
+  )?.[1];
+  const style = document.createElement('div').style;
+
+  expect(declarations, `缺少 .${className} 样式规则`).toBeDefined();
+  style.cssText = declarations ?? '';
+  return style;
 }
 
 // Scoped-slot adapters only: real Element Plus components remain mounted for contract assertions.
@@ -95,6 +112,12 @@ describe('CategoryTable', () => {
       .map((column) => column.props());
 
     expect(table.props('rowKey')).toBe('id');
+    const tableStyle = readClassStyle('category-table');
+
+    expect(table.props('height')).toBe('100%');
+    expect(tableStyle.height).toBe('100%');
+    expect(tableStyle.minHeight).toBe('0');
+    expect(tableStyle.minWidth).toBe('');
     expect(table.classes()).toContain('admin-table');
     expect(table.props('data')).toEqual(categoryListMock);
     expect(table.props('data')).not.toBe(categoryListMock);

@@ -22,6 +22,8 @@ import {
 } from 'element-plus';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import AdminDataPanel from '../../components/layout/AdminDataPanel.vue';
+import AdminPage from '../../components/layout/AdminPage.vue';
 import { membershipPurchasesApi } from './api/index.js';
 import MembershipPurchasesView from './MembershipPurchasesView.vue';
 
@@ -199,6 +201,9 @@ describe('MembershipPurchasesView', () => {
 
     expect(wrapper.find('.admin-page').exists()).toBe(true);
     expect(wrapper.find('.admin-data-panel').exists()).toBe(true);
+    expect(wrapper.getComponent(AdminPage).props('workspace')).toBe(true);
+    expect(wrapper.getComponent(AdminDataPanel).props('fill')).toBe(true);
+    wrapper.get('[data-region="page-alert"]');
     expect(wrapper.text()).toContain('购卡列表网络失败');
     expect(wrapper.get('[data-testid="retry-purchase-list"]').text()).toContain(
       '重新加载',
@@ -226,6 +231,9 @@ describe('MembershipPurchasesView', () => {
     const wrapper = mountView();
     await flushPromises();
 
+    expect(wrapper.getComponent({ name: 'ElTable' }).props('height')).toBe(
+      '100%',
+    );
     await wrapper
       .get('[data-testid="open-purchase-purchase-1"]')
       .trigger('click');

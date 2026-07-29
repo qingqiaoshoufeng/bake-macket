@@ -8,10 +8,13 @@ export const orderListMock: readonly AdminOrderListItem[] = [
   {
     id: 'order-preview',
     orderNo: 'BM2026071800000001',
+    userId: 'user-preview',
     status: OrderStatus.NEW,
     fulfillmentType: FulfillmentType.PICKUP,
     contactName: '张三',
     contactPhone: '13800000000',
+    itemLineCount: 1,
+    totalQuantity: 1,
     goodsTotalCents: 6800,
     membershipDiscountCents: 680,
     creditAppliedCents: 2000,

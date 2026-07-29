@@ -8,7 +8,6 @@ import {
   ApiErrorCode,
   FulfillmentType,
   OrderStatus,
-  type AdminOrderListQuery,
 } from '@bake-mall/contracts';
 
 import { AuditService } from '../audit/audit.service.js';
@@ -95,6 +94,111 @@ describe('OrdersService', () => {
       const orderBy = vi.fn();
       const addOrderBy = vi.fn();
       const andWhere = vi.fn();
+      const createQueryBuilder = vi.fn(() => {
+        let lastParams: Record<string, unknown> = {};
+        let setValues: Record<string, unknown> = {};
+        const predicates: Array<(record: Record<string, unknown>) => boolean> =
+          [];
+        let offset = 0;
+        let limit = Number.POSITIVE_INFINITY;
+        const builder: Record<string, unknown> = {
+          select: () => builder,
+          addSelect: () => builder,
+          update: () => builder,
+          set: (values: Record<string, unknown>) => {
+            setValues = values;
+            return builder;
+          },
+          where: (_sql: string, params: Record<string, unknown>) => {
+            lastParams = params;
+            return builder;
+          },
+          andWhere: (clause: string, parameters: Record<string, unknown>) => {
+            andWhere(clause, parameters);
+            const predicate = clause.includes('orderNo')
+              ? (record: Record<string, unknown>) =>
+                  String(record.orderNo).includes(
+                    String(parameters.orderNo).replaceAll('%', ''),
+                  )
+              : clause.includes('fulfillmentType')
+                ? (record: Record<string, unknown>) =>
+                    record.fulfillmentType === parameters.fulfillmentType
+                : clause.includes('createdAt >=')
+                  ? (record: Record<string, unknown>) =>
+                      (record.createdAt as Date) >=
+                      (parameters.createdAtFrom as Date)
+                  : clause.includes('createdAt <')
+                    ? (record: Record<string, unknown>) =>
+                        (record.createdAt as Date) <
+                        (parameters.createdAtBefore as Date)
+                    : (record: Record<string, unknown>) =>
+                        record.status === parameters.status;
+            predicates.push(predicate);
+            return builder;
+          },
+          groupBy: () => builder,
+          orderBy: (...args: unknown[]) => {
+            orderBy(...args);
+            return builder;
+          },
+          addOrderBy: (...args: unknown[]) => {
+            addOrderBy(...args);
+            return builder;
+          },
+          skip: (value: number) => {
+            offset = value;
+            return builder;
+          },
+          take: (value: number) => {
+            limit = value;
+            return builder;
+          },
+          getManyAndCount: async () => {
+            const filtered = list.filter((record) =>
+              predicates.every((predicate) => predicate(record)),
+            );
+            return [filtered.slice(offset, offset + limit), filtered.length];
+          },
+          getRawMany: async () => {
+            const orderIds = lastParams.orderIds as string[] | undefined;
+            const currentPageItems = list.filter(
+              ({ orderId }) => orderIds?.includes(String(orderId)) ?? false,
+            );
+            return Array.from(
+              new Set(currentPageItems.map(({ orderId }) => String(orderId))),
+            ).map((orderId) => {
+              const items = currentPageItems.filter(
+                (item) => String(item.orderId) === orderId,
+              );
+              return {
+                orderId,
+                itemLineCount: String(items.length),
+                totalQuantity: String(
+                  items.reduce(
+                    (total, item) => total + Number(item.quantity),
+                    0,
+                  ),
+                ),
+              };
+            });
+          },
+          execute: async () => {
+            // Translate the conditional decrement into the in-memory model.
+            const skuId = lastParams['skuId' as string] as string | undefined;
+            const quantity = Number(lastParams['quantity']);
+            const sku = records.skus.find((s) => s.id === skuId);
+            if (!sku || !sku.isActive || (sku.stock as number) < quantity) {
+              return { affected: 0 };
+            }
+            sku.stock = (sku.stock as number) - quantity;
+            if (typeof setValues.stockVersion === 'function') {
+              sku.stockVersion = Number(sku.stockVersion ?? 1) + 1;
+            }
+            return { affected: 1 };
+          },
+        };
+        return builder;
+      });
       const repo: Record<string, unknown> = {
         orderBy,
         addOrderBy,
@@ -153,86 +257,7 @@ describe('OrdersService', () => {
           return { affected: matching.length };
         },
         create: (value: Record<string, unknown>) => value,
-        createQueryBuilder: () => {
-          let lastParams: Record<string, unknown> = {};
-          let setValues: Record<string, unknown> = {};
-          const predicates: Array<
-            (record: Record<string, unknown>) => boolean
-          > = [];
-          let offset = 0;
-          let limit = Number.POSITIVE_INFINITY;
-          const builder: Record<string, unknown> = {
-            update: () => builder,
-            set: (values: Record<string, unknown>) => {
-              setValues = values;
-              return builder;
-            },
-            where: (_sql: string, params: Record<string, unknown>) => {
-              lastParams = params;
-              return builder;
-            },
-            andWhere: (clause: string, parameters: Record<string, unknown>) => {
-              andWhere(clause, parameters);
-              const predicate = clause.includes('orderNo')
-                ? (record: Record<string, unknown>) =>
-                    String(record.orderNo).includes(
-                      String(parameters.orderNo).replaceAll('%', ''),
-                    )
-                : clause.includes('fulfillmentType')
-                  ? (record: Record<string, unknown>) =>
-                      record.fulfillmentType === parameters.fulfillmentType
-                  : clause.includes('createdAt >=')
-                    ? (record: Record<string, unknown>) =>
-                        (record.createdAt as Date) >=
-                        (parameters.createdAtFrom as Date)
-                    : clause.includes('createdAt <')
-                      ? (record: Record<string, unknown>) =>
-                          (record.createdAt as Date) <
-                          (parameters.createdAtBefore as Date)
-                      : (record: Record<string, unknown>) =>
-                          record.status === parameters.status;
-              predicates.push(predicate);
-              return builder;
-            },
-            orderBy: (...args: unknown[]) => {
-              orderBy(...args);
-              return builder;
-            },
-            addOrderBy: (...args: unknown[]) => {
-              addOrderBy(...args);
-              return builder;
-            },
-            skip: (value: number) => {
-              offset = value;
-              return builder;
-            },
-            take: (value: number) => {
-              limit = value;
-              return builder;
-            },
-            getManyAndCount: async () => {
-              const filtered = list.filter((record) =>
-                predicates.every((predicate) => predicate(record)),
-              );
-              return [filtered.slice(offset, offset + limit), filtered.length];
-            },
-            execute: async () => {
-              // Translate the conditional decrement into the in-memory model.
-              const skuId = lastParams['skuId' as string] as string | undefined;
-              const quantity = Number(lastParams['quantity']);
-              const sku = records.skus.find((s) => s.id === skuId);
-              if (!sku || !sku.isActive || (sku.stock as number) < quantity) {
-                return { affected: 0 };
-              }
-              sku.stock = (sku.stock as number) - quantity;
-              if (typeof setValues.stockVersion === 'function') {
-                sku.stockVersion = Number(sku.stockVersion ?? 1) + 1;
-              }
-              return { affected: 1 };
-            },
-          };
-          return builder;
-        },
+        createQueryBuilder,
       };
       return repo;
     };
@@ -335,6 +360,7 @@ describe('OrdersService', () => {
       verify: vi.fn(),
     };
     const orderRepository = repoFor(records.orders);
+    const orderItemRepository = repoFor(records.orderItems);
     const idempotencyRepository = repoFor(records.idempotency);
     const idempotencyService = new IdempotencyService(
       idempotencyRepository as never,
@@ -353,7 +379,7 @@ describe('OrdersService', () => {
         dataSource as never,
         repoFor(records.users) as never,
         orderRepository as never,
-        repoFor(records.orderItems) as never,
+        orderItemRepository as never,
         repoFor(records.cartItems) as never,
         repoFor(records.skus) as never,
         repoFor(records.addresses) as never,
@@ -380,6 +406,7 @@ describe('OrdersService', () => {
         addOrderBy: orderRepository.addOrderBy,
         andWhere: orderRepository.andWhere,
       },
+      orderItemQueryBuilder: orderItemRepository.createQueryBuilder,
     };
   }
 
@@ -426,6 +453,21 @@ describe('OrdersService', () => {
     cartItems: [
       { id: 'cart-1', userId: 'user-1', skuId: 'sku-1', quantity: 1 },
     ],
+  });
+
+  it('writes immutable product and SKU source IDs into new order items', async () => {
+    const records = buildService(basicOrderRecords());
+
+    await records.service.create('user-1', 'source-id-key', pickupDto());
+
+    expect(records.orderItemCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        productId: 'product-1',
+        skuId: 'sku-1',
+        productName: '草莓蛋糕',
+        skuName: '6寸',
+      }),
+    );
   });
 
   it('returns the completed response snapshot for the same key and semantic request without reloading cart or order', async () => {
@@ -1509,69 +1551,191 @@ describe('OrdersService', () => {
     expect(records.skuRecords.find((s) => s.id === 'sku-1')?.stock).toBe(4);
   });
 
-  it('filters and paginates the lightweight admin order list', async () => {
-    const createdAt = new Date('2026-07-18T08:00:00.000Z');
-    const { service } = buildService({
+  it('paginates orders before one aggregate query and maps complete admin snapshots', async () => {
+    const firstCreatedAt = new Date('2026-07-18T08:00:00.000Z');
+    const secondCreatedAt = new Date('2026-07-18T09:00:00.000Z');
+    const thirdCreatedAt = new Date('2026-07-18T10:00:00.000Z');
+    const { service, orderItemQueryBuilder } = buildService({
       orders: [
         {
           id: 'order-1',
           orderNo: 'BM2026071800000001',
+          userId: 'user-1',
           status: OrderStatus.NEW,
           fulfillmentType: FulfillmentType.PICKUP,
           contactName: 'Alice',
           contactPhone: '13800000000',
-          goodsTotalCents: 6800,
+          pickupTimeText: '明天 10:00',
+          deliveryAddressText: null,
+          goodsTotalCents: 6_800,
+          membershipDiscountCents: 0,
+          creditAppliedCents: 0,
+          payableTotalCents: 6_800,
+          membershipCode: null,
+          membershipName: null,
+          membershipDiscountBasisPoints: null,
+          remark: null,
+          createdAt: firstCreatedAt,
+          updatedAt: firstCreatedAt,
+        },
+        {
+          id: 'order-2',
+          orderNo: 'BM2026071800000002',
+          userId: 'user-2',
+          status: OrderStatus.PROCESSING,
+          fulfillmentType: FulfillmentType.DELIVERY,
+          contactName: 'Bob',
+          contactPhone: '13900000000',
+          pickupTimeText: null,
+          deliveryAddressText: '上海市 / 徐汇区',
+          goodsTotalCents: 8_800,
+          membershipDiscountCents: 880,
+          creditAppliedCents: 500,
+          payableTotalCents: 7_420,
+          membershipCode: 'GOLD',
+          membershipName: '金卡',
+          membershipDiscountBasisPoints: 9_000,
+          remark: '少糖',
+          createdAt: secondCreatedAt,
+          updatedAt: secondCreatedAt,
+        },
+        {
+          id: 'order-3',
+          orderNo: 'BM2026071800000003',
+          userId: 'user-3',
+          status: OrderStatus.COMPLETED,
+          fulfillmentType: FulfillmentType.PICKUP,
+          contactName: 'Carol',
+          contactPhone: '13700000000',
+          pickupTimeText: '后天 15:00',
+          deliveryAddressText: null,
+          goodsTotalCents: 12_000,
+          membershipDiscountCents: 0,
+          creditAppliedCents: 0,
+          payableTotalCents: 12_000,
+          membershipCode: null,
+          membershipName: null,
+          membershipDiscountBasisPoints: null,
+          remark: null,
+          createdAt: thirdCreatedAt,
+          updatedAt: thirdCreatedAt,
+        },
+      ],
+      orderItems: [
+        { id: 'item-1', orderId: 'order-1', quantity: 99 },
+        { id: 'item-2', orderId: 'order-2', quantity: 2 },
+        { id: 'item-3', orderId: 'order-2', quantity: 3 },
+        { id: 'item-4', orderId: 'order-3', quantity: 4 },
+      ],
+    });
+
+    await expect(service.listAll({ page: 2, pageSize: 2 })).resolves.toEqual({
+      items: [
+        {
+          id: 'order-3',
+          orderNo: 'BM2026071800000003',
+          userId: 'user-3',
+          status: OrderStatus.COMPLETED,
+          fulfillmentType: FulfillmentType.PICKUP,
+          contactName: 'Carol',
+          contactPhone: '13700000000',
+          itemLineCount: 1,
+          totalQuantity: 4,
+          goodsTotalCents: 12_000,
+          membershipDiscountCents: 0,
+          creditAppliedCents: 0,
+          payableTotalCents: 12_000,
+          pickupTimeText: '后天 15:00',
+          createdAt: thirdCreatedAt.toISOString(),
+          updatedAt: thirdCreatedAt.toISOString(),
+        },
+      ],
+      page: 2,
+      pageSize: 2,
+      total: 3,
+    });
+    expect(orderItemQueryBuilder).toHaveBeenCalledTimes(1);
+  });
+
+  it('aggregates multiple current-page orders without loading item details or defaulting missing aggregates', async () => {
+    const createdAt = new Date('2026-07-18T09:00:00.000Z');
+    const { service, orderItemQueryBuilder } = buildService({
+      orders: [
+        {
+          id: 'order-1',
+          orderNo: 'BM2026071800000001',
+          userId: 'user-1',
+          status: OrderStatus.NEW,
+          fulfillmentType: FulfillmentType.PICKUP,
+          contactName: 'Alice',
+          contactPhone: '13800000000',
+          pickupTimeText: '明天 10:00',
+          deliveryAddressText: null,
+          goodsTotalCents: 6_800,
+          membershipDiscountCents: 0,
+          creditAppliedCents: 0,
+          payableTotalCents: 6_800,
+          membershipCode: null,
+          membershipName: null,
+          membershipDiscountBasisPoints: null,
+          remark: null,
           createdAt,
           updatedAt: createdAt,
         },
         {
           id: 'order-2',
           orderNo: 'BM2026071800000002',
+          userId: 'user-2',
           status: OrderStatus.PROCESSING,
           fulfillmentType: FulfillmentType.DELIVERY,
           contactName: 'Bob',
           contactPhone: '13900000000',
-          goodsTotalCents: 8800,
-          createdAt: new Date('2026-07-18T09:00:00.000Z'),
-          updatedAt: new Date('2026-07-18T09:00:00.000Z'),
+          pickupTimeText: null,
+          deliveryAddressText: '上海市 / 徐汇区',
+          goodsTotalCents: 8_800,
+          membershipDiscountCents: 880,
+          creditAppliedCents: 500,
+          payableTotalCents: 7_420,
+          membershipCode: 'GOLD',
+          membershipName: '金卡',
+          membershipDiscountBasisPoints: 9_000,
+          remark: '少糖',
+          createdAt,
+          updatedAt: createdAt,
         },
       ],
       orderItems: [
-        {
-          id: 'item-1',
-          orderId: 'order-2',
-          productName: '不应加载的详情',
-        },
+        { id: 'item-1', orderId: 'order-1', quantity: 1 },
+        { id: 'item-2', orderId: 'order-1', quantity: 2 },
+        { id: 'item-3', orderId: 'order-2', quantity: 5 },
       ],
     });
-    const query: AdminOrderListQuery = {
-      orderNo: '0002',
-      status: OrderStatus.PROCESSING,
-      fulfillmentType: FulfillmentType.DELIVERY,
-      createdAtFrom: '2026-07-18T08:30:00.000Z',
-      createdAtBefore: '2026-07-19T00:00:00.000Z',
-      page: 1,
-      pageSize: 20,
-    };
 
-    await expect(service.listAll(query)).resolves.toEqual({
-      items: [
-        {
-          id: 'order-2',
-          orderNo: 'BM2026071800000002',
-          status: OrderStatus.PROCESSING,
-          fulfillmentType: FulfillmentType.DELIVERY,
-          contactName: 'Bob',
-          contactPhone: '13900000000',
-          goodsTotalCents: 8800,
-          createdAt: '2026-07-18T09:00:00.000Z',
-          updatedAt: '2026-07-18T09:00:00.000Z',
-        },
-      ],
-      page: 1,
-      pageSize: 20,
-      total: 1,
-    });
+    const result = await service.listAll({ page: 1, pageSize: 20 });
+
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        id: 'order-1',
+        itemLineCount: 2,
+        totalQuantity: 3,
+      }),
+      expect.objectContaining({
+        id: 'order-2',
+        userId: 'user-2',
+        itemLineCount: 1,
+        totalQuantity: 5,
+        goodsTotalCents: 8_800,
+        membershipDiscountCents: 880,
+        creditAppliedCents: 500,
+        payableTotalCents: 7_420,
+        deliveryAddressText: '上海市 / 徐汇区',
+        membershipCode: 'GOLD',
+        membershipName: '金卡',
+        membershipDiscountBasisPoints: 9_000,
+        remark: '少糖',
+      }),
+    ]);
+    expect(orderItemQueryBuilder).toHaveBeenCalledTimes(1);
   });
 
   it('orders admin pagination by createdAt DESC and id DESC', async () => {

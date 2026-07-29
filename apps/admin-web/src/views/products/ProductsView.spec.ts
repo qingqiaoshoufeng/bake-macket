@@ -3,6 +3,8 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import AdminDataPanel from '../../components/layout/AdminDataPanel.vue';
+import AdminPage from '../../components/layout/AdminPage.vue';
 import { categoriesApi } from '../categories/api/index.js';
 import { productsApi } from './api/index.js';
 import ProductsView from './ProductsView.vue';
@@ -69,6 +71,8 @@ describe('ProductsView', () => {
     expect(wrapper.find('.admin-page').exists()).toBe(true);
     expect(wrapper.find('.admin-page-header').exists()).toBe(true);
     expect(wrapper.find('.admin-data-panel').exists()).toBe(true);
+    expect(wrapper.getComponent(AdminPage).props('workspace')).toBe(true);
+    expect(wrapper.getComponent(AdminDataPanel).props('fill')).toBe(true);
   });
 
   it('retries failed loading and navigates to product create and edit pages', async () => {

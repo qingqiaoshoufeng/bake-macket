@@ -11,6 +11,7 @@ const router = useRouter();
 const route = useRoute();
 const navItems = ADMIN_NAV_GROUPS.flatMap(({ items }) => items);
 
+const layoutMode = computed(() => route.meta.layoutMode ?? 'document');
 const activePath = computed(
   () =>
     navItems
@@ -52,7 +53,7 @@ async function onSelect(path: string): Promise<void> {
 </script>
 
 <template>
-  <div class="admin-layout">
+  <div class="admin-layout" :class="`admin-layout--${layoutMode}`">
     <aside class="admin-layout__sidebar">
       <div class="admin-layout__brand">
         <span class="admin-layout__brand-mark" aria-hidden="true">烘</span>
@@ -153,6 +154,12 @@ async function onSelect(path: string): Promise<void> {
   grid-template-columns: var(--admin-sidebar-width) minmax(0, 1fr);
   min-height: 100vh;
   background: var(--admin-canvas);
+}
+
+.admin-layout--workspace {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .admin-layout__sidebar {
@@ -338,6 +345,23 @@ async function onSelect(path: string): Promise<void> {
   flex-direction: column;
 }
 
+.admin-layout--workspace .admin-layout__main {
+  display: grid;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.admin-layout--workspace .admin-layout__canvas,
+.admin-layout--workspace .admin-layout__content {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.admin-layout--workspace .admin-layout__content {
+  height: 100%;
+}
+
 .admin-layout__topbar {
   position: sticky;
   z-index: 10;
@@ -403,6 +427,10 @@ async function onSelect(path: string): Promise<void> {
 }
 
 @media (max-width: 1023px) {
+  .admin-layout--workspace .admin-layout__main {
+    grid-template-rows: auto auto minmax(0, 1fr);
+  }
+
   .admin-layout__narrow-warning {
     position: sticky;
     z-index: 9;

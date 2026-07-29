@@ -62,6 +62,7 @@ function asCategory(row: unknown): AdminCategoryView {
     v-loading="loading"
     :data="[...categories]"
     row-key="id"
+    height="100%"
     class="admin-table category-table"
     :empty-text="'暂无分类，先创建一个商品分类'"
     :data-testid="'categories-table'"
@@ -218,7 +219,8 @@ function asCategory(row: unknown): AdminCategoryView {
 
 <style scoped>
 .category-table {
-  min-width: 980px;
+  height: 100%;
+  min-height: 0;
 }
 
 :deep(.admin-row) td {

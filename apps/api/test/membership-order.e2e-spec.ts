@@ -26,6 +26,7 @@ import { Task12AdminMediaAndOrderIndexes1718000000002 } from '../src/database/mi
 import { SkuStockVersion1718000000003 } from '../src/database/migrations/0004-sku-stock-version.js';
 import { MembershipAndOrderPricing1718000000004 } from '../src/database/migrations/0005-membership-and-order-pricing.js';
 import { MembershipEntitlementSegments1718000000005 } from '../src/database/migrations/0006-membership-entitlement-segments.js';
+import { OrderItemSourceIds1718000000007 } from '../src/database/migrations/0008-order-item-source-ids.js';
 import { IdempotencyService } from '../src/idempotency/idempotency.service.js';
 import { MembershipCreditService } from '../src/membership/membership-credit.service.js';
 import { MembershipEntitlementService } from '../src/membership/membership-entitlement.service.js';
@@ -89,6 +90,7 @@ describe.sequential('membership purchase to order lifecycle (MySQL)', () => {
           SkuStockVersion1718000000003,
           MembershipAndOrderPricing1718000000004,
           MembershipEntitlementSegments1718000000005,
+          OrderItemSourceIds1718000000007,
         ],
         migrationsTableName: 'migrations',
       });

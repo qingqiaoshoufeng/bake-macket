@@ -2,6 +2,8 @@ import { mount } from '@vue/test-utils';
 import { ElMessage } from 'element-plus';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import AdminDataPanel from '../components/layout/AdminDataPanel.vue';
+import AdminPage from '../components/layout/AdminPage.vue';
 import { categoriesApi } from './categories/api/index.js';
 import CategoriesView from './CategoriesView.vue';
 
@@ -36,6 +38,9 @@ describe('CategoriesView', () => {
     expect(wrapper.find('.admin-page').exists()).toBe(true);
     expect(wrapper.find('.admin-page-header').exists()).toBe(true);
     expect(wrapper.find('.admin-data-panel').exists()).toBe(true);
+    expect(wrapper.getComponent(AdminPage).props('workspace')).toBe(true);
+    expect(wrapper.getComponent(AdminDataPanel).props('fill')).toBe(true);
+    wrapper.get('[data-region="page-header"]');
   });
 
   it('shows the initial category loading error to the merchant', async () => {

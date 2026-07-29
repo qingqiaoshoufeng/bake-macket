@@ -30,6 +30,7 @@ const tableData = computed(() => [...props.banners]);
       v-loading="loading"
       :data="tableData"
       row-key="id"
+      height="100%"
       class="admin-table banner-table__table"
     >
       <ElTableColumn
@@ -125,8 +126,14 @@ const tableData = computed(() => [...props.banners]);
 </template>
 
 <style scoped>
+.banner-table {
+  height: 100%;
+  min-height: 0;
+}
+
 .banner-table__table {
-  min-width: 920px;
+  height: 100%;
+  min-height: 0;
 }
 
 .banner-ticket {

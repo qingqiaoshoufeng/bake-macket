@@ -16,6 +16,16 @@ export enum BannerTargetType {
   CATEGORY = 'CATEGORY',
 }
 
+export enum AdminOrderExportView {
+  ORDER = 'ORDER',
+  SUPPLY = 'SUPPLY',
+}
+
+export enum AdminOrderSupplyMatchType {
+  SKU_ID = 'SKU_ID',
+  LEGACY_FALLBACK = 'LEGACY_FALLBACK',
+}
+
 export enum ApiErrorCode {
   PHONE_REQUIRED = 'PHONE_REQUIRED',
   SKU_UNAVAILABLE = 'SKU_UNAVAILABLE',
@@ -38,4 +48,6 @@ export enum ApiErrorCode {
   ORDER_QUOTE_STALE = 'ORDER_QUOTE_STALE',
   IDEMPOTENCY_IN_PROGRESS = 'IDEMPOTENCY_IN_PROGRESS',
   IDEMPOTENCY_CONFLICT = 'IDEMPOTENCY_CONFLICT',
+  EXPORT_TOO_LARGE = 'EXPORT_TOO_LARGE',
+  EXPORT_IN_PROGRESS = 'EXPORT_IN_PROGRESS',
 }

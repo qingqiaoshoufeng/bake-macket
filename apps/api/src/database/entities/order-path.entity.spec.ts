@@ -37,6 +37,8 @@ const EXPECTED_ORDER_COLUMNS = [
 const EXPECTED_ORDER_ITEM_COLUMNS = [
   'id',
   'order_id',
+  'product_id',
+  'sku_id',
   'product_name',
   'sku_name',
   'sku_attributes',

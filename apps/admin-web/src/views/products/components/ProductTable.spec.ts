@@ -1,4 +1,6 @@
 /* eslint-disable vue/one-component-per-file -- local Element Plus stubs */
+import { readFileSync } from 'node:fs';
+
 import { mount } from '@vue/test-utils';
 import { defineComponent, provide } from 'vue';
 import { describe, expect, it } from 'vitest';
@@ -6,9 +8,27 @@ import { describe, expect, it } from 'vitest';
 import { PRODUCT_LIST_MOCK } from '../mock/list.mock.js';
 import ProductTable from './ProductTable.vue';
 
+function readClassStyle(className: string): CSSStyleDeclaration {
+  const source = readFileSync(
+    `${process.cwd()}/src/views/products/components/ProductTable.vue`,
+    'utf8',
+  );
+  const declarations = source.match(
+    new RegExp(`\\.${className}\\s*\\{([^}]*)\\}`),
+  )?.[1];
+  const style = document.createElement('div').style;
+
+  expect(declarations, `缺少 .${className} 样式规则`).toBeDefined();
+  style.cssText = declarations ?? '';
+  return style;
+}
+
 const TableStub = defineComponent({
   name: 'ElTable',
-  props: { data: { type: Array, required: true } },
+  props: {
+    data: { type: Array, required: true },
+    height: { type: String, default: undefined },
+  },
   setup(props) {
     provide('tableRows', props.data);
   },
@@ -76,7 +96,13 @@ describe('ProductTable', () => {
     expect(
       wrapper.get('[data-product-ids]').attributes('data-product-ids'),
     ).toBe('product-1,product-2');
+    const tableStyle = readClassStyle('product-table');
+
     expect(wrapper.get('.el-table').classes()).toContain('admin-table');
+    expect(wrapper.getComponent(TableStub).props('height')).toBe('100%');
+    expect(tableStyle.height).toBe('100%');
+    expect(tableStyle.minHeight).toBe('0');
+    expect(tableStyle.minWidth).toBe('');
     expect(
       wrapper
         .findAll('[data-column-label]')

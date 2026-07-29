@@ -43,74 +43,77 @@ const routes: RouteRecordRaw[] = [
         path: 'dashboard',
         name: 'admin-dashboard',
         component: () => import('../views/DashboardView.vue'),
+        meta: { layoutMode: 'document' },
       },
       {
         path: 'categories',
         name: 'admin-categories',
         component: () => import('../views/CategoriesView.vue'),
+        meta: { layoutMode: 'workspace' },
       },
       {
         path: 'products',
         name: 'admin-products',
         component: () => import('../views/products/ProductsView.vue'),
-        meta: { title: '商品管理' },
+        meta: { title: '商品管理', layoutMode: 'workspace' },
       },
       {
         path: 'products/new',
         name: 'admin-product-new',
         component: () => import('../views/products/ProductEditorView.vue'),
-        meta: { title: '新建商品' },
+        meta: { title: '新建商品', layoutMode: 'document' },
       },
       {
         path: 'products/:id/edit',
         name: 'admin-product-edit',
         component: () => import('../views/products/ProductEditorView.vue'),
-        meta: { title: '编辑商品' },
+        meta: { title: '编辑商品', layoutMode: 'document' },
       },
       {
         path: 'banners',
         name: 'admin-banners',
         component: () => import('../views/banners/BannersView.vue'),
-        meta: { title: 'Banner 管理' },
+        meta: { title: 'Banner 管理', layoutMode: 'workspace' },
       },
       {
         path: 'orders',
         name: 'admin-orders',
         component: () => import('../views/orders/OrdersView.vue'),
-        meta: { title: '订单管理' },
+        meta: { title: '订单管理', layoutMode: 'workspace' },
       },
       {
         path: 'membership-cards',
         name: 'admin-membership-cards',
         component: () =>
           import('../views/membership-cards/MembershipCardsView.vue'),
-        meta: { title: '会员卡配置' },
+        meta: { title: '会员卡配置', layoutMode: 'workspace' },
       },
       {
         path: 'membership-purchases',
         name: 'admin-membership-purchases',
         component: () =>
           import('../views/membership-purchases/MembershipPurchasesView.vue'),
-        meta: { title: '购卡记录' },
+        meta: { title: '购卡记录', layoutMode: 'workspace' },
       },
       {
         path: 'membership-cards/new',
         name: 'admin-membership-card-new',
         component: () =>
           import('../views/membership-cards/MembershipCardEditorView.vue'),
-        meta: { title: '新建会员卡' },
+        meta: { title: '新建会员卡', layoutMode: 'document' },
       },
       {
         path: 'membership-cards/:id/edit',
         name: 'admin-membership-card-edit',
         component: () =>
           import('../views/membership-cards/MembershipCardEditorView.vue'),
-        meta: { title: '编辑会员卡' },
+        meta: { title: '编辑会员卡', layoutMode: 'document' },
       },
       {
         path: ':pathMatch(.*)*',
         name: 'admin-not-found',
         component: () => import('../views/NotFoundView.vue'),
+        meta: { layoutMode: 'document' },
       },
     ],
   },
@@ -149,5 +152,6 @@ declare module 'vue-router' {
   interface RouteMeta {
     requiresAdminAuth?: boolean;
     title?: string;
+    layoutMode?: 'workspace' | 'document';
   }
 }

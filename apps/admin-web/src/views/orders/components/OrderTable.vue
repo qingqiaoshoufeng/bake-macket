@@ -14,7 +14,6 @@ import {
 } from '../../../constants/labels.js';
 import { formatPriceCents } from '../../../utils/money.js';
 import { orderColumns } from '../config/columns.js';
-import { requirePayableTotalCents } from '../hooks/formatters.js';
 
 const props = defineProps<{
   orders: readonly AdminOrderListItem[];
@@ -32,10 +31,10 @@ const statusTagType = (value: OrderStatus) => ORDER_STATUS_TAG_TYPE[value];
 <template>
   <div class="order-table">
     <ElTable
-      v-if="loading || props.orders.length"
       v-loading="loading"
       :data="[...props.orders]"
       row-key="id"
+      height="100%"
       class="admin-table order-table__table"
     >
       <ElTableColumn
@@ -43,46 +42,58 @@ const statusTagType = (value: OrderStatus) => ORDER_STATUS_TAG_TYPE[value];
         :label="orderColumns[0].label"
         :min-width="orderColumns[0].minWidth"
       />
-      <ElTableColumn
-        :label="orderColumns[1].label"
-        :min-width="orderColumns[1].minWidth"
-      >
+      <ElTableColumn :label="orderColumns[1].label" min-width="150">
         <template #default="{ row }">
           <strong>{{ row.contactName }}</strong>
-          <small class="contact-phone">{{ row.contactPhone }}</small>
+          <small class="order-table__secondary">{{ row.contactPhone }}</small>
         </template>
       </ElTableColumn>
-      <ElTableColumn
-        :label="orderColumns[2].label"
-        :width="orderColumns[2].width"
-      >
+      <ElTableColumn :label="orderColumns[2].label" width="110">
         <template #default="{ row }">{{
           fulfillmentLabel(row.fulfillmentType)
         }}</template>
       </ElTableColumn>
-      <ElTableColumn
-        :label="orderColumns[3].label"
-        :width="orderColumns[3].width"
-      >
-        <template #default="{ row }">{{
-          formatPriceCents(requirePayableTotalCents(row.payableTotalCents))
-        }}</template>
-      </ElTableColumn>
-      <ElTableColumn
-        :label="orderColumns[4].label"
-        :width="orderColumns[4].width"
-      >
+      <ElTableColumn :label="orderColumns[3].label" width="120">
         <template #default="{ row }">
-          <ElTag :type="statusTagType(row.status)">
-            {{ statusLabel(row.status) }}
-          </ElTag>
+          {{ row.itemLineCount }} 种 / {{ row.totalQuantity }} 件
         </template>
       </ElTableColumn>
-      <ElTableColumn
-        :label="orderColumns[5].label"
-        :width="orderColumns[5].width"
-      >
+      <ElTableColumn :label="orderColumns[4].label" width="110">
+        <template #default="{ row }">{{
+          formatPriceCents(row.goodsTotalCents)
+        }}</template>
+      </ElTableColumn>
+      <ElTableColumn :label="orderColumns[5].label" width="110">
+        <template #default="{ row }"
+          >-{{ formatPriceCents(row.membershipDiscountCents) }}</template
+        >
+      </ElTableColumn>
+      <ElTableColumn :label="orderColumns[6].label" width="100">
+        <template #default="{ row }"
+          >-{{ formatPriceCents(row.creditAppliedCents) }}</template
+        >
+      </ElTableColumn>
+      <ElTableColumn :label="orderColumns[7].label" width="110">
+        <template #default="{ row }">{{
+          formatPriceCents(row.payableTotalCents)
+        }}</template>
+      </ElTableColumn>
+      <ElTableColumn :label="orderColumns[8].label" width="100">
+        <template #default="{ row }">
+          <ElTag :type="statusTagType(row.status)">{{
+            statusLabel(row.status)
+          }}</ElTag>
+        </template>
+      </ElTableColumn>
+      <ElTableColumn :label="orderColumns[9].label" width="170">
         <template #default="{ row }">{{ formatDate(row.createdAt) }}</template>
+      </ElTableColumn>
+      <ElTableColumn :label="orderColumns[10].label" width="100" fixed="right">
+        <template #default="{ row }">
+          <ElButton link type="primary" @click="emit('open', row.id)">
+            查看详情
+          </ElButton>
+        </template>
       </ElTableColumn>
       <template #empty>
         <AdminEmptyState
@@ -91,36 +102,20 @@ const statusTagType = (value: OrderStatus) => ORDER_STATUS_TAG_TYPE[value];
           tone="mint"
         />
       </template>
-
-      <ElTableColumn
-        :label="orderColumns[6].label"
-        :width="orderColumns[6].width"
-        fixed="right"
-      >
-        <template #default="{ row }">
-          <ElButton link type="primary" @click="emit('open', row.id)"
-            >查看详情</ElButton
-          >
-        </template>
-      </ElTableColumn>
     </ElTable>
-    <AdminEmptyState
-      v-else
-      title="没有符合条件的订单"
-      description="调整筛选条件后再试，或等待顾客提交新订单。"
-      tone="mint"
-    />
   </div>
 </template>
 
 <style scoped>
+.order-table,
 .order-table__table {
-  min-width: 1030px;
+  height: 100%;
+  min-height: 0;
 }
 
-.contact-phone {
+.order-table__secondary {
   display: block;
   margin-top: 4px;
-  color: #938aa7;
+  color: var(--admin-muted);
 }
 </style>

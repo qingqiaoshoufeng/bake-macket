@@ -3,6 +3,8 @@ import { ElButton } from 'element-plus';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import AdminFilterPanel from '../../components/filters/AdminFilterPanel.vue';
+import AdminDataPanel from '../../components/layout/AdminDataPanel.vue';
+import AdminPage from '../../components/layout/AdminPage.vue';
 import { PAGE_SIZE_OPTIONS } from '../../config/pagination.js';
 import { ordersApi } from './api/index.js';
 import OrderFilters from './components/OrderFilters.vue';
@@ -40,6 +42,8 @@ describe('OrdersView', () => {
     expect(wrapper.find('.admin-page').exists()).toBe(true);
     expect(wrapper.find('.admin-page-header').exists()).toBe(true);
     expect(wrapper.find('.admin-data-panel').exists()).toBe(true);
+    expect(wrapper.getComponent(AdminPage).props('workspace')).toBe(true);
+    expect(wrapper.getComponent(AdminDataPanel).props('fill')).toBe(true);
     expect(
       wrapper
         .findComponent(OrderFilters)

@@ -1,19 +1,22 @@
 <script setup lang="ts">
+import { AdminOrderExportView } from '@bake-mall/contracts';
 import { onMounted } from 'vue';
 import { ElAlert, ElMessage, ElMessageBox, ElPagination } from 'element-plus';
 
 import AdminDataPanel from '../../components/layout/AdminDataPanel.vue';
 import AdminPage from '../../components/layout/AdminPage.vue';
 import AdminPageHeader from '../../components/layout/AdminPageHeader.vue';
+import { PAGE_SIZE_OPTIONS } from '../../config/pagination.js';
 import OrderDetailDrawer from './components/OrderDetailDrawer.vue';
 import OrderFilters from './components/OrderFilters.vue';
+import OrderModeSwitch from './components/OrderModeSwitch.vue';
+import OrderSupplyTable from './components/OrderSupplyTable.vue';
 import OrderTable from './components/OrderTable.vue';
-import { PAGE_SIZE_OPTIONS } from '../../config/pagination.js';
 import type { OrderAction } from './hooks/useOrderActions.js';
-import { useOrders } from './hooks/useOrders.js';
+import { useOrderWorkspace } from './hooks/useOrderWorkspace.js';
 
-const state = useOrders();
-onMounted(state.load);
+const state = useOrderWorkspace();
+onMounted(state.initialize);
 
 async function runAction(action: OrderAction): Promise<void> {
   if (action.key === 'cancel') {
@@ -35,7 +38,7 @@ async function runAction(action: OrderAction): Promise<void> {
   }
 
   try {
-    const result = await state.updateStatus(action.status);
+    const result = await state.orderList.updateStatus(action.status);
     ElMessage.success(
       result.noRestock ? '订单已取消，库存未回补' : `${action.label}成功`,
     );
@@ -45,50 +48,99 @@ async function runAction(action: OrderAction): Promise<void> {
     );
   }
 }
+
+async function exportCurrent(): Promise<void> {
+  try {
+    await state.exportCurrent();
+    ElMessage.success('Excel 已开始下载');
+  } catch {
+    ElMessage.error(
+      state.exportState.exportError.value ?? '订单导出失败，请重试',
+    );
+  }
+}
 </script>
 
 <template>
-  <AdminPage>
-    <AdminPageHeader
-      eyebrow="FULFILLMENT"
-      title="订单管理"
-      description="筛选订单、查看不可变快照，并执行合法状态流转。"
-    />
+  <AdminPage workspace>
+    <template #header>
+      <AdminPageHeader
+        eyebrow="FULFILLMENT"
+        title="订单管理"
+        description="逐单处理订单，或按 SKU 汇总待供货数量并导出 Excel。"
+      >
+        <template #actions>
+          <OrderModeSwitch
+            :model-value="state.mode.value"
+            :exporting="state.exportState.exporting.value"
+            @update:model-value="state.switchMode"
+            @export="exportCurrent"
+          />
+        </template>
+      </AdminPageHeader>
+    </template>
 
-    <ElAlert
-      v-if="state.lastError.value"
-      type="error"
-      :title="state.lastError.value"
-      :closable="false"
-      show-icon
-    />
+    <template v-if="state.activeError.value" #alert>
+      <ElAlert
+        type="error"
+        :title="state.activeError.value"
+        :closable="false"
+        show-icon
+      />
+    </template>
 
-    <AdminDataPanel>
+    <AdminDataPanel fill>
       <template #toolbar>
         <OrderFilters
           :filters="state.filters"
-          :loading="state.loading.value"
+          :loading="state.activeLoading.value"
           :advanced-count="state.advancedCount.value"
-          @change="state.setFilters"
+          :supply-mode="state.mode.value === AdminOrderExportView.SUPPLY"
+          :supply-statuses="state.supplyList.supplyStatuses.value"
+          @change="state.orderList.setFilters"
+          @supply-statuses-change="state.setSupplyStatuses"
           @search="state.search"
           @reset="state.reset"
         />
       </template>
 
       <OrderTable
-        :orders="state.orders.value"
-        :loading="state.loading.value"
-        @open="state.openDetail"
+        v-if="state.mode.value === AdminOrderExportView.ORDER"
+        :orders="state.orderList.orders.value"
+        :loading="state.orderList.loading.value"
+        @open="state.orderList.openDetail"
+      />
+      <OrderSupplyTable
+        v-else
+        :items="state.supplyList.items.value"
+        :details="state.supplyList.details.value"
+        :loading="state.supplyList.loading.value"
+        @expand="
+          (groupKey) =>
+            state.supplyList.loadDetail(groupKey, state.appliedFilters.value)
+        "
+        @retry="
+          (groupKey) =>
+            state.supplyList.retryDetail(groupKey, state.appliedFilters.value)
+        "
+        @detail-page="
+          (groupKey, page) =>
+            state.supplyList.loadDetail(
+              groupKey,
+              state.appliedFilters.value,
+              page,
+            )
+        "
       />
 
-      <template v-if="state.total.value > 0" #footer>
+      <template v-if="state.activeTotal.value > 0" #footer>
         <ElPagination
           class="orders-page__pagination"
           background
           layout="total, sizes, prev, pager, next"
-          :total="state.total.value"
-          :current-page="state.page.value"
-          :page-size="state.pageSize.value"
+          :total="state.activeTotal.value"
+          :current-page="state.activePage.value"
+          :page-size="state.activePageSize.value"
           :page-sizes="[...PAGE_SIZE_OPTIONS]"
           @update:current-page="state.setPage"
           @update:page-size="state.setPageSize"
@@ -97,12 +149,12 @@ async function runAction(action: OrderAction): Promise<void> {
     </AdminDataPanel>
 
     <OrderDetailDrawer
-      :visible="state.detailVisible.value"
-      :order="state.detail.value"
-      :actions="state.actions.value"
-      :loading="state.detailLoading.value"
-      :updating="state.updating.value"
-      @close="state.closeDetail"
+      :visible="state.orderList.detailVisible.value"
+      :order="state.orderList.detail.value"
+      :actions="state.orderList.actions.value"
+      :loading="state.orderList.detailLoading.value"
+      :updating="state.orderList.updating.value"
+      @close="state.orderList.closeDetail"
       @action="runAction"
     />
   </AdminPage>

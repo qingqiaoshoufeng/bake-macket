@@ -1,4 +1,6 @@
 /* eslint-disable vue/one-component-per-file -- local Element Plus stubs */
+import { readFileSync } from 'node:fs';
+
 import {
   MembershipLevelStatus,
   MembershipTheme,
@@ -9,6 +11,21 @@ import { defineComponent, provide } from 'vue';
 import { describe, expect, it } from 'vitest';
 
 import MembershipCardTable from './MembershipCardTable.vue';
+
+function readClassStyle(className: string): CSSStyleDeclaration {
+  const source = readFileSync(
+    `${process.cwd()}/src/views/membership-cards/components/MembershipCardTable.vue`,
+    'utf8',
+  );
+  const declarations = source.match(
+    new RegExp(`\\.${className}\\s*\\{([^}]*)\\}`),
+  )?.[1];
+  const style = document.createElement('div').style;
+
+  expect(declarations, `缺少 .${className} 样式规则`).toBeDefined();
+  style.cssText = declarations ?? '';
+  return style;
+}
 
 const draft: AdminMembershipLevelListItem = {
   id: 'draft-1',
@@ -31,7 +48,10 @@ const draft: AdminMembershipLevelListItem = {
 
 const TableStub = defineComponent({
   name: 'ElTable',
-  props: { data: { type: Array, required: true } },
+  props: {
+    data: { type: Array, required: true },
+    height: { type: String, default: undefined },
+  },
   setup(props) {
     provide('tableRows', props.data);
   },
@@ -72,7 +92,13 @@ describe('MembershipCardTable', () => {
   it('由外层数据面板统一管理横向滚动', () => {
     const wrapper = mountTable([draft]);
 
+    const tableStyle = readClassStyle('membership-card-table');
+
     expect(wrapper.find('.admin-horizontal-scroll').exists()).toBe(false);
+    expect(wrapper.getComponent(TableStub).props('height')).toBe('100%');
+    expect(tableStyle.height).toBe('100%');
+    expect(tableStyle.minHeight).toBe('0');
+    expect(tableStyle.minWidth).toBe('');
   });
 
   it('不用颜色单独表达状态，并仅给未售下架草稿删除操作', () => {

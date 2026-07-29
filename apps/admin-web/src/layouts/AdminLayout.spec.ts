@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 import { mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { h } from 'vue';
@@ -36,7 +38,11 @@ function createTestRouter() {
               template:
                 '<div data-testid="membership-purchases-child">购卡记录内容</div>',
             },
-            meta: { requiresAdminAuth: true, title: '购卡记录' },
+            meta: {
+              requiresAdminAuth: true,
+              title: '购卡记录',
+              layoutMode: 'workspace',
+            },
           },
         ],
       },
@@ -120,6 +126,24 @@ describe('AdminLayout', () => {
     ).toBe('购卡记录内容');
   });
 
+  it('switches the root layout class from route metadata', async () => {
+    const documentLayout = await mountAdminLayoutAtEditor();
+    expect(documentLayout.wrapper.get('.admin-layout').classes()).toContain(
+      'admin-layout--document',
+    );
+    expect(documentLayout.wrapper.get('.admin-layout').classes()).not.toContain(
+      'admin-layout--workspace',
+    );
+
+    const workspaceLayout = await mountAdminLayoutAt('/membership-purchases');
+    expect(workspaceLayout.wrapper.get('.admin-layout').classes()).toContain(
+      'admin-layout--workspace',
+    );
+    expect(
+      workspaceLayout.wrapper.get('.admin-layout').classes(),
+    ).not.toContain('admin-layout--document');
+  });
+
   it('places the narrow-screen warning below the topbar and before content', async () => {
     const { wrapper } = await mountAdminLayoutAtEditor();
     const mainChildren = wrapper
@@ -134,6 +158,20 @@ describe('AdminLayout', () => {
     expect(
       wrapper.get('[data-testid="admin-narrow-warning"]').attributes('role'),
     ).toBe('status');
+  });
+
+  it('lets the workspace canvas fill the desktop track and adds a warning track only below 1024px', () => {
+    const source = readFileSync(
+      `${process.cwd()}/src/layouts/AdminLayout.vue`,
+      'utf8',
+    );
+
+    expect(source).toMatch(
+      /\.admin-layout--workspace \.admin-layout__main \{[\s\S]*?grid-template-rows: auto minmax\(0, 1fr\)/,
+    );
+    expect(source).toMatch(
+      /@media \(max-width: 1023px\) \{[\s\S]*?\.admin-layout--workspace \.admin-layout__main \{[\s\S]*?grid-template-rows: auto auto minmax\(0, 1fr\)/,
+    );
   });
 
   it('isolates router history between mounts', async () => {

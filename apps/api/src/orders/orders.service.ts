@@ -9,7 +9,6 @@ import {
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import {
   ApiErrorCode,
-  BooleanFilter,
   canTransitionOrder,
   FulfillmentType,
   MemberCreditDirection,
@@ -43,14 +42,23 @@ import {
   OrderQuoteTokenService,
 } from '../membership/order-quote-token.service.js';
 import { calculateMembershipPricing } from '../membership/pricing.js';
+import { applyOrderHeaderFilters } from './admin-order-query.helpers.js';
 import { CreateOrderDto } from './dto/create-order.dto.js';
 
 const PRODUCT_ORDER_CREATE = 'PRODUCT_ORDER_CREATE';
 const ORDER_RESOURCE_TYPE = 'ORDER';
 const ORDER_PRICING_VERSION = 1;
 
-const escapeLikeLiteral = (value: string): string =>
-  value.replace(/[\\%_]/g, (character) => `\\${character}`);
+type OrderItemAggregateRow = {
+  orderId: string;
+  itemLineCount: string;
+  totalQuantity: string;
+};
+
+type OrderItemAggregate = {
+  itemLineCount: number;
+  totalQuantity: number;
+};
 
 /**
  * Order lifecycle service. Wraps every mutation that touches stock, the
@@ -263,6 +271,8 @@ export class OrdersService {
         const sku = skuById.get(cartItem.skuId) as Sku;
         const product = productById.get(sku.productId) as Product;
         return orderItemRepo.create({
+          productId: product.id,
+          skuId: sku.id,
           productName: product.name,
           skuName: sku.name,
           skuAttributes: sku.attributes,
@@ -492,84 +502,12 @@ export class OrdersService {
 
   /** Admin-side lightweight list with contract-defined filtering and paging. */
   async listAll(query: AdminOrderListQuery): Promise<AdminOrderListResult> {
-    const builder = this.orders.createQueryBuilder('order');
-    if (query.orderNo?.trim()) {
-      builder.andWhere("order.orderNo LIKE :orderNo ESCAPE '\\\\'", {
-        orderNo: `%${escapeLikeLiteral(query.orderNo.trim())}%`,
-      });
-    }
-    if (query.contact?.trim()) {
-      const contact = `%${escapeLikeLiteral(query.contact.trim())}%`;
-      builder.andWhere(
-        "(order.contactName LIKE :contact ESCAPE '\\\\' OR order.contactPhone LIKE :contact ESCAPE '\\\\')",
-        { contact },
-      );
-    }
+    const builder = applyOrderHeaderFilters(
+      this.orders.createQueryBuilder('order'),
+      query,
+    );
     if (query.status) {
       builder.andWhere('order.status = :status', { status: query.status });
-    }
-    if (query.fulfillmentType) {
-      builder.andWhere('order.fulfillmentType = :fulfillmentType', {
-        fulfillmentType: query.fulfillmentType,
-      });
-    }
-    if (query.userId?.trim()) {
-      builder.andWhere('order.userId = :userId', {
-        userId: query.userId.trim(),
-      });
-    }
-    if (query.itemQ?.trim()) {
-      const itemQ = `%${escapeLikeLiteral(query.itemQ.trim())}%`;
-      builder.andWhere(
-        `EXISTS (
-          SELECT 1 FROM order_items item
-          WHERE item.order_id = order.id
-            AND (item.product_name LIKE :itemQ ESCAPE '\\\\'
-              OR item.sku_name LIKE :itemQ ESCAPE '\\\\')
-        )`,
-        { itemQ },
-      );
-    }
-    if (query.usesMembership) {
-      builder.andWhere(
-        query.usesMembership === BooleanFilter.YES
-          ? 'order.membershipId IS NOT NULL'
-          : 'order.membershipId IS NULL',
-      );
-    }
-    if (query.usesCredit) {
-      builder.andWhere(
-        query.usesCredit === BooleanFilter.YES
-          ? 'order.creditAppliedCents > 0'
-          : 'order.creditAppliedCents = 0',
-      );
-    }
-    if (query.hasRemark) {
-      builder.andWhere(
-        query.hasRemark === BooleanFilter.YES
-          ? "order.remark IS NOT NULL AND order.remark <> ''"
-          : "order.remark IS NULL OR order.remark = ''",
-      );
-    }
-    if (query.minPayableCents !== undefined) {
-      builder.andWhere('order.payableTotalCents >= :minPayableCents', {
-        minPayableCents: query.minPayableCents,
-      });
-    }
-    if (query.maxPayableCents !== undefined) {
-      builder.andWhere('order.payableTotalCents <= :maxPayableCents', {
-        maxPayableCents: query.maxPayableCents,
-      });
-    }
-    if (query.createdAtFrom) {
-      builder.andWhere('order.createdAt >= :createdAtFrom', {
-        createdAtFrom: new Date(query.createdAtFrom),
-      });
-    }
-    if (query.createdAtBefore) {
-      builder.andWhere('order.createdAt < :createdAtBefore', {
-        createdAtBefore: new Date(query.createdAtBefore),
-      });
     }
     const [orders, total] = await builder
       .orderBy('order.createdAt', 'DESC')
@@ -577,8 +515,13 @@ export class OrdersService {
       .skip((query.page - 1) * query.pageSize)
       .take(query.pageSize)
       .getManyAndCount();
+    const aggregates = await this.aggregateOrderItems(
+      orders.map(({ id }) => id),
+    );
     return {
-      items: orders.map((order) => this.toAdminListItem(order)),
+      items: orders.map((order) =>
+        this.toAdminListItem(order, aggregates.get(order.id)),
+      ),
       page: query.page,
       pageSize: query.pageSize,
       total,
@@ -601,18 +544,62 @@ export class OrdersService {
     return this.fetchOrderView(order);
   }
 
-  private toAdminListItem(order: Order): AdminOrderListItem {
+  private async aggregateOrderItems(
+    orderIds: readonly string[],
+  ): Promise<ReadonlyMap<string, OrderItemAggregate>> {
+    if (orderIds.length === 0) return new Map();
+    const rows = await this.orderItems
+      .createQueryBuilder('item')
+      .select('item.orderId', 'orderId')
+      .addSelect('COUNT(item.id)', 'itemLineCount')
+      .addSelect('SUM(item.quantity)', 'totalQuantity')
+      .where('item.orderId IN (:...orderIds)', { orderIds })
+      .groupBy('item.orderId')
+      .getRawMany<OrderItemAggregateRow>();
+    return new Map(
+      rows.map(({ orderId, itemLineCount, totalQuantity }) => [
+        String(orderId),
+        {
+          itemLineCount: Number(itemLineCount),
+          totalQuantity: Number(totalQuantity),
+        },
+      ]),
+    );
+  }
+
+  private toAdminListItem(
+    order: Order,
+    aggregate: OrderItemAggregate | undefined,
+  ): AdminOrderListItem {
+    if (!aggregate) {
+      throw new Error(`Order item aggregate missing for order ${order.id}`);
+    }
     return {
       id: order.id,
       orderNo: order.orderNo,
+      userId: order.userId,
       status: order.status,
       fulfillmentType: order.fulfillmentType,
       contactName: order.contactName,
       contactPhone: order.contactPhone,
+      itemLineCount: aggregate.itemLineCount,
+      totalQuantity: aggregate.totalQuantity,
       goodsTotalCents: order.goodsTotalCents,
       membershipDiscountCents: order.membershipDiscountCents,
       creditAppliedCents: order.creditAppliedCents,
       payableTotalCents: order.payableTotalCents,
+      ...(order.pickupTimeText ? { pickupTimeText: order.pickupTimeText } : {}),
+      ...(order.deliveryAddressText
+        ? { deliveryAddressText: order.deliveryAddressText }
+        : {}),
+      ...(order.membershipCode ? { membershipCode: order.membershipCode } : {}),
+      ...(order.membershipName ? { membershipName: order.membershipName } : {}),
+      ...(order.membershipDiscountBasisPoints == null
+        ? {}
+        : {
+            membershipDiscountBasisPoints: order.membershipDiscountBasisPoints,
+          }),
+      ...(order.remark ? { remark: order.remark } : {}),
       createdAt: order.createdAt.toISOString(),
       updatedAt: order.updatedAt.toISOString(),
     };

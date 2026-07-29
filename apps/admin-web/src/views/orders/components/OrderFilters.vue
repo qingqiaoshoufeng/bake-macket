@@ -3,6 +3,7 @@ import {
   BooleanFilter,
   FulfillmentType,
   OrderStatus,
+  type SupplyOrderStatus,
 } from '@bake-mall/contracts';
 import {
   ElDatePicker,
@@ -19,13 +20,22 @@ import {
 } from '../../../constants/labels.js';
 import type { OrderFilterForm } from '../type/index.js';
 
-const props = defineProps<{
-  filters: OrderFilterForm;
-  loading: boolean;
-  advancedCount: number;
-}>();
+const props = withDefaults(
+  defineProps<{
+    filters: OrderFilterForm;
+    loading: boolean;
+    advancedCount: number;
+    supplyMode?: boolean;
+    supplyStatuses?: readonly SupplyOrderStatus[];
+  }>(),
+  {
+    supplyMode: false,
+    supplyStatuses: () => [OrderStatus.NEW, OrderStatus.PROCESSING],
+  },
+);
 const emit = defineEmits<{
   change: [value: Partial<OrderFilterForm>];
+  'supply-statuses-change': [value: readonly SupplyOrderStatus[]];
   search: [];
   reset: [];
 }>();
@@ -65,6 +75,28 @@ function emitText(key: keyof OrderFilterForm, value: unknown): void {
     </ElFormItem>
     <ElFormItem label="状态">
       <ElSelect
+        v-if="props.supplyMode"
+        :model-value="[...props.supplyStatuses]"
+        multiple
+        collapse-tags
+        :clearable="false"
+        placeholder="选择供货状态"
+        @update:model-value="
+          (value) =>
+            Array.isArray(value) &&
+            value.length > 0 &&
+            emit('supply-statuses-change', value as SupplyOrderStatus[])
+        "
+      >
+        <ElOption
+          v-for="status in [OrderStatus.NEW, OrderStatus.PROCESSING]"
+          :key="status"
+          :label="ORDER_STATUS_LABELS[status]"
+          :value="status"
+        />
+      </ElSelect>
+      <ElSelect
+        v-else
         :model-value="props.filters.status"
         clearable
         placeholder="全部状态"

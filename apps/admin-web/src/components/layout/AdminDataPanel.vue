@@ -1,5 +1,16 @@
+<script setup lang="ts">
+withDefaults(
+  defineProps<{
+    fill?: boolean;
+  }>(),
+  {
+    fill: false,
+  },
+);
+</script>
+
 <template>
-  <section class="admin-data-panel">
+  <section class="admin-data-panel" :class="{ 'admin-data-panel--fill': fill }">
     <div
       v-if="$slots.toolbar"
       class="admin-data-panel__toolbar"
@@ -8,7 +19,8 @@
       <slot name="toolbar" />
     </div>
     <div
-      class="admin-data-panel__data admin-horizontal-scroll"
+      class="admin-data-panel__data"
+      :class="{ 'admin-horizontal-scroll': !fill }"
       data-region="data"
     >
       <slot />
@@ -32,6 +44,13 @@
   box-shadow: var(--admin-shadow-card);
 }
 
+.admin-data-panel--fill {
+  display: grid;
+  height: 100%;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
 .admin-data-panel__toolbar,
 .admin-data-panel__footer {
   display: flex;
@@ -47,6 +66,11 @@
 
 .admin-data-panel__data {
   min-width: 0;
+}
+
+.admin-data-panel--fill .admin-data-panel__data {
+  min-height: 0;
+  overflow: hidden;
 }
 
 .admin-data-panel__footer {

@@ -906,6 +906,15 @@ describe('Orders domain (e2e)', () => {
     expect(pickupOrder.contactName).toBe('Alice');
     expect(pickupOrder.remark).toBe('请贴上生日牌');
     expect(pickupOrder.items).toHaveLength(2);
+    const persistedPickupItems = stubs.orderItems.records.filter(
+      (item: OrderItem) => item.orderId === pickupOrder.id,
+    );
+    expect(persistedPickupItems).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ productId: 'product-1', skuId: 'sku-1' }),
+        expect.objectContaining({ productId: 'product-1', skuId: 'sku-2' }),
+      ]),
+    );
     const totals = pickupOrder.items.reduce(
       (sum, item) => sum + item.unitPriceCents * item.quantity,
       0,

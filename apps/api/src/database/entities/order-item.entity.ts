@@ -18,6 +18,8 @@ import { Order } from './order.entity.js';
  */
 @Entity({ name: 'order_items' })
 @Index('idx_order_items_order', ['orderId'])
+@Index('idx_order_items_product', ['productId'])
+@Index('idx_order_items_sku', ['skuId'])
 @Check('chk_order_items_unit_price_nonneg', '`unit_price_cents` >= 0')
 @Check('chk_order_items_qty_positive', '`quantity` > 0')
 export class OrderItem {
@@ -30,6 +32,17 @@ export class OrderItem {
   @ManyToOne(() => Order, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'order_id' })
   order!: Order;
+
+  @Column({
+    name: 'product_id',
+    type: 'bigint',
+    unsigned: true,
+    nullable: true,
+  })
+  productId!: string | null;
+
+  @Column({ name: 'sku_id', type: 'bigint', unsigned: true, nullable: true })
+  skuId!: string | null;
 
   @Column({ name: 'product_name', type: 'varchar', length: 128 })
   productName!: string;

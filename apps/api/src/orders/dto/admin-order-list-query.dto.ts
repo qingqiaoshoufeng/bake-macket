@@ -1,82 +1,17 @@
 import { Type } from 'class-transformer';
-import {
-  IsEnum,
-  IsInt,
-  IsISO8601,
-  IsOptional,
-  IsString,
-  Matches,
-  Max,
-  Min,
-} from 'class-validator';
+import { IsEnum, IsInt, IsOptional, Max, Min } from 'class-validator';
 
-import {
-  BooleanFilter,
-  FulfillmentType,
-  OrderStatus,
-  type AdminOrderListQuery,
-} from '@bake-mall/contracts';
+import { OrderStatus, type AdminOrderListQuery } from '@bake-mall/contracts';
 
-import { COMPLETE_DATETIME_WITH_TIMEZONE } from '../../common/query/admin-query.helpers.js';
+import { AdminOrderFilterDto } from './admin-order-filter.dto.js';
 
-export class AdminOrderListQueryDto implements AdminOrderListQuery {
-  @IsOptional()
-  @IsString()
-  orderNo?: string;
-
-  @IsOptional()
-  @IsString()
-  contact?: string;
-
+export class AdminOrderListQueryDto
+  extends AdminOrderFilterDto
+  implements AdminOrderListQuery
+{
   @IsOptional()
   @IsEnum(OrderStatus)
   status?: OrderStatus;
-
-  @IsOptional()
-  @IsEnum(FulfillmentType)
-  fulfillmentType?: FulfillmentType;
-
-  @IsOptional()
-  @IsString()
-  userId?: string;
-
-  @IsOptional()
-  @IsString()
-  itemQ?: string;
-
-  @IsOptional()
-  @IsEnum(BooleanFilter)
-  usesMembership?: BooleanFilter;
-
-  @IsOptional()
-  @IsEnum(BooleanFilter)
-  usesCredit?: BooleanFilter;
-
-  @IsOptional()
-  @IsEnum(BooleanFilter)
-  hasRemark?: BooleanFilter;
-
-  @Type(() => Number)
-  @IsOptional()
-  @IsInt()
-  @Min(0)
-  minPayableCents?: number;
-
-  @Type(() => Number)
-  @IsOptional()
-  @IsInt()
-  @Min(0)
-  maxPayableCents?: number;
-
-  @IsOptional()
-  @Matches(COMPLETE_DATETIME_WITH_TIMEZONE)
-  @IsISO8601({ strict: true, strictSeparator: true })
-  createdAtFrom?: string;
-
-  @IsOptional()
-  @Matches(COMPLETE_DATETIME_WITH_TIMEZONE)
-  @IsISO8601({ strict: true, strictSeparator: true })
-  createdAtBefore?: string;
 
   @Type(() => Number)
   @IsInt()

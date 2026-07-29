@@ -73,42 +73,45 @@ async function removeProduct(id: string): Promise<void> {
 </script>
 
 <template>
-  <AdminPage>
-    <AdminPageHeader
-      eyebrow="CATALOG"
-      title="商品管理"
-      description="管理商品信息、SKU 库存与上架状态。"
-    >
-      <template #actions>
-        <ElButton
-          type="primary"
-          :data-testid="'create-product'"
-          @click="createProduct"
-        >
-          新增商品
-        </ElButton>
-      </template>
-    </AdminPageHeader>
+  <AdminPage workspace>
+    <template #header>
+      <AdminPageHeader
+        eyebrow="CATALOG"
+        title="商品管理"
+        description="管理商品信息、SKU 库存与上架状态。"
+      >
+        <template #actions>
+          <ElButton
+            type="primary"
+            :data-testid="'create-product'"
+            @click="createProduct"
+          >
+            新增商品
+          </ElButton>
+        </template>
+      </AdminPageHeader>
+    </template>
 
-    <ElAlert
-      v-if="state.lastError.value"
-      type="error"
-      :title="state.lastError.value"
-      :closable="false"
-      show-icon
-    >
-      <template #default>
-        <ElButton
-          size="small"
-          :data-testid="'retry-products'"
-          @click="state.initialize"
-        >
-          重试
-        </ElButton>
-      </template>
-    </ElAlert>
+    <template v-if="state.lastError.value" #alert>
+      <ElAlert
+        type="error"
+        :title="state.lastError.value"
+        :closable="false"
+        show-icon
+      >
+        <template #default>
+          <ElButton
+            size="small"
+            :data-testid="'retry-products'"
+            @click="state.initialize"
+          >
+            重试
+          </ElButton>
+        </template>
+      </ElAlert>
+    </template>
 
-    <AdminDataPanel>
+    <AdminDataPanel fill>
       <template #toolbar>
         <ProductFilters
           :filters="state.draftFilters"

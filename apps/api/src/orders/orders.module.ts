@@ -18,6 +18,8 @@ import { Product } from '../database/entities/product.entity.js';
 import { Sku } from '../database/entities/sku.entity.js';
 import { User } from '../database/entities/user.entity.js';
 import { AdminOrdersController } from './admin-orders.controller.js';
+import { AdminOrderExportService } from './admin-order-export.service.js';
+import { AdminOrderQueryService } from './admin-order-query.service.js';
 import { OrdersController } from './orders.controller.js';
 import { OrdersService } from './orders.service.js';
 
@@ -50,7 +52,7 @@ import { OrdersService } from './orders.service.js';
     MembershipModule,
   ],
   controllers: [OrdersController, AdminOrdersController],
-  providers: [OrdersService],
-  exports: [OrdersService],
+  providers: [OrdersService, AdminOrderQueryService, AdminOrderExportService],
+  exports: [OrdersService, AdminOrderQueryService, AdminOrderExportService],
 })
 export class OrdersModule {}

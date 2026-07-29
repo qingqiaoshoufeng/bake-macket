@@ -51,6 +51,7 @@ const [
     v-loading="loading"
     :data="[...levels]"
     row-key="id"
+    height="100%"
     class="admin-table membership-card-table"
     :empty-text="loading ? '加载中…' : '暂无会员卡配置'"
   >
@@ -197,7 +198,8 @@ const [
 
 <style scoped>
 .membership-card-table {
-  min-width: 1280px;
+  height: 100%;
+  min-height: 0;
 }
 
 .membership-card-table__level,

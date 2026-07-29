@@ -83,39 +83,42 @@ async function removeDraft(level: AdminMembershipLevelListItem): Promise<void> {
 </script>
 
 <template>
-  <AdminPage class="membership-cards-view">
-    <AdminPageHeader
-      eyebrow="MEMBERSHIP STUDIO"
-      title="会员卡配置"
-      description="创建等级配方，预览受控卡面，并安全管理上架状态与未售草稿。"
-    >
-      <template #actions>
-        <ElButton
-          type="primary"
-          data-testid="create-membership-card"
-          @click="createCard"
-        >
-          新建会员卡
-        </ElButton>
-      </template>
-    </AdminPageHeader>
+  <AdminPage workspace class="membership-cards-view">
+    <template #header>
+      <AdminPageHeader
+        eyebrow="MEMBERSHIP STUDIO"
+        title="会员卡配置"
+        description="创建等级配方，预览受控卡面，并安全管理上架状态与未售草稿。"
+      >
+        <template #actions>
+          <ElButton
+            type="primary"
+            data-testid="create-membership-card"
+            @click="createCard"
+          >
+            新建会员卡
+          </ElButton>
+        </template>
+      </AdminPageHeader>
+    </template>
 
-    <ElAlert
-      v-if="cards.loadError.value"
-      type="error"
-      title="会员卡列表加载失败"
-      :closable="false"
-      show-icon
-    >
-      <template #default>
-        <p class="membership-cards-view__error-copy">
-          {{ messageOf(cards.loadError.value) }}
-        </p>
-        <ElButton size="small" @click="cards.refresh">重新加载</ElButton>
-      </template>
-    </ElAlert>
+    <template v-if="cards.loadError.value" #alert>
+      <ElAlert
+        type="error"
+        title="会员卡列表加载失败"
+        :closable="false"
+        show-icon
+      >
+        <template #default>
+          <p class="membership-cards-view__error-copy">
+            {{ messageOf(cards.loadError.value) }}
+          </p>
+          <ElButton size="small" @click="cards.refresh">重新加载</ElButton>
+        </template>
+      </ElAlert>
+    </template>
 
-    <AdminDataPanel>
+    <AdminDataPanel fill>
       <template #toolbar>
         <MembershipCardFilters
           :filters="cards.filters"

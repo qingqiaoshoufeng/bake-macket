@@ -8,6 +8,8 @@ import { ElButton } from 'element-plus';
 import { createMemoryHistory, createRouter } from 'vue-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import AdminDataPanel from '../../components/layout/AdminDataPanel.vue';
+import AdminPage from '../../components/layout/AdminPage.vue';
 import MembershipCardsView from './MembershipCardsView.vue';
 import { membershipCardsApi } from './api/index.js';
 
@@ -86,6 +88,8 @@ describe('MembershipCardsView', () => {
     );
     const table = wrapper.findComponent({ name: 'MembershipCardTable' });
     expect(table.props('levels')).toEqual([level]);
+    expect(wrapper.getComponent(AdminPage).props('workspace')).toBe(true);
+    expect(wrapper.getComponent(AdminDataPanel).props('fill')).toBe(true);
 
     await wrapper
       .get('[data-testid="create-membership-card"]')

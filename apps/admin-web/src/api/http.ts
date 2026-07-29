@@ -1,5 +1,7 @@
 import type { ApiError } from '@bake-mall/contracts';
 
+import { safeDownloadFilename } from '../utils/download.js';
+
 /**
  * Typed wrapper around the backend `ApiError` payload.
  *
@@ -70,7 +72,36 @@ export type ApiRequestInit = Omit<RequestInit, 'body'> & {
 
 export type UnauthorizedHandler = (path: string) => void;
 
+export type DownloadedBlob = {
+  blob: Blob;
+  filename?: string;
+};
+
 const DEFAULT_API_BASE = '/api/v1';
+
+function parseContentDispositionFilename(
+  disposition: string | null,
+): string | undefined {
+  if (!disposition) return undefined;
+  const filenameStar = disposition.match(
+    /(?:^|;)\s*filename\*=UTF-8''([^;]*)/i,
+  )?.[1];
+  if (filenameStar !== undefined) {
+    try {
+      const safeFilename = safeDownloadFilename(
+        decodeURIComponent(filenameStar),
+      );
+      if (safeFilename) return safeFilename;
+    } catch {
+      // Fall back to the regular filename parameter below.
+    }
+  }
+
+  const quoted = disposition.match(/(?:^|;)\s*filename="([^"]*)"/i)?.[1];
+  if (quoted !== undefined) return safeDownloadFilename(quoted);
+  const unquoted = disposition.match(/(?:^|;)\s*filename=([^;\s]*)/i)?.[1];
+  return safeDownloadFilename(unquoted);
+}
 
 /**
  * Pull the JSON body out of a fetch `Response` while normalising error
@@ -138,67 +169,32 @@ export class ApiClient {
   }
 
   async request<T>(path: string, init: ApiRequestInit = {}): Promise<T> {
-    const { body, token, throwOnError = true, headers, ...rest } = init;
-    const url = this.resolve(path);
-    const requestHeaders = new Headers(headers ?? {});
-    const bearerToken = token ?? this.token;
-    if (bearerToken) {
-      requestHeaders.set('Authorization', `Bearer ${bearerToken}`);
-    }
-
-    let bodyPayload: BodyInit | undefined;
-    if (body === undefined || body === null) {
-      bodyPayload = undefined;
-    } else if (typeof body === 'string' || body instanceof FormData) {
-      bodyPayload = body;
-    } else {
-      bodyPayload = JSON.stringify(body);
-      if (!requestHeaders.has('content-type')) {
-        requestHeaders.set('content-type', 'application/json');
-      }
-    }
-
-    let response: Response;
-    try {
-      response = await fetch(url, {
-        ...rest,
-        headers: requestHeaders,
-        body: bodyPayload,
-      });
-    } catch (networkError) {
-      throw new ApiClientError(0, '网络异常,请稍后重试', {
-        cause: networkError,
-      });
-    }
-
-    if (!response.ok) {
-      const payload = await readErrorPayload(response);
-      const error = new ApiClientError(response.status, payload.message, {
-        code: payload.code,
-        details: payload.details,
-        requestId: payload.requestId,
-      });
-      if (response.status === 401) {
-        this.token = null;
-        this.unauthorizedHandler?.(
-          typeof window === 'undefined' ? '/' : window.location.pathname,
-        );
-      }
-      if (throwOnError) {
-        throw error;
-      }
-      return undefined as T;
-    }
-
-    if (response.status === 204) {
-      return undefined as T;
-    }
+    const response = await this.fetchResponse(path, init);
+    if (!response || response.status === 204) return undefined as T;
 
     const contentType = response.headers.get('content-type') ?? '';
     if (contentType.includes('application/json')) {
       return (await response.json()) as T;
     }
     return (await response.text()) as unknown as T;
+  }
+
+  async getBlob(
+    path: string,
+    init: Omit<ApiRequestInit, 'throwOnError'> = {},
+  ): Promise<DownloadedBlob> {
+    const response = await this.fetchResponse(path, {
+      ...init,
+      method: 'GET',
+      throwOnError: true,
+    });
+    if (!response) throw new Error('文件下载响应为空');
+    return {
+      blob: await response.blob(),
+      filename: parseContentDispositionFilename(
+        response.headers.get('content-disposition'),
+      ),
+    };
   }
 
   get<T>(path: string, init?: ApiRequestInit): Promise<T> {
@@ -219,6 +215,63 @@ export class ApiClient {
 
   delete<T>(path: string, init?: ApiRequestInit): Promise<T> {
     return this.request<T>(path, { ...init, method: 'DELETE' });
+  }
+
+  private async fetchResponse(
+    path: string,
+    init: ApiRequestInit,
+  ): Promise<Response | undefined> {
+    const { body, token, throwOnError = true, headers, ...rest } = init;
+    const requestHeaders = new Headers(headers ?? {});
+    const bearerToken = token ?? this.token;
+    if (bearerToken) {
+      requestHeaders.set('Authorization', `Bearer ${bearerToken}`);
+    }
+
+    let bodyPayload: BodyInit | undefined;
+    if (body === undefined || body === null) {
+      bodyPayload = undefined;
+    } else if (
+      typeof body === 'string' ||
+      (typeof FormData !== 'undefined' && body instanceof FormData)
+    ) {
+      bodyPayload = body;
+    } else {
+      bodyPayload = JSON.stringify(body);
+      if (!requestHeaders.has('content-type')) {
+        requestHeaders.set('content-type', 'application/json');
+      }
+    }
+
+    let response: Response;
+    try {
+      response = await fetch(this.resolve(path), {
+        ...rest,
+        headers: requestHeaders,
+        body: bodyPayload,
+      });
+    } catch (networkError) {
+      throw new ApiClientError(0, '网络异常,请稍后重试', {
+        cause: networkError,
+      });
+    }
+
+    if (response.ok) return response;
+
+    const payload = await readErrorPayload(response);
+    const error = new ApiClientError(response.status, payload.message, {
+      code: payload.code,
+      details: payload.details,
+      requestId: payload.requestId,
+    });
+    if (response.status === 401) {
+      this.token = null;
+      this.unauthorizedHandler?.(
+        typeof window === 'undefined' ? '/' : window.location.pathname,
+      );
+    }
+    if (throwOnError) throw error;
+    return undefined;
   }
 
   private resolve(path: string): string {

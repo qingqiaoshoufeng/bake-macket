@@ -7,7 +7,7 @@ import {
   type OrderView,
 } from '@bake-mall/contracts';
 
-import { adminOrdersApi } from '../../../api/orders.js';
+import { ordersApi } from '../api/index.js';
 
 /**
  * Pure derivation: which status transitions are legal for the given
@@ -86,5 +86,6 @@ export type UpdateStatusInput = {
 export async function applyOrderStatusUpdate(
   input: UpdateStatusInput,
 ): Promise<OrderView> {
-  return adminOrdersApi.updateStatus(input.orderId, { status: input.status });
+  const result = await ordersApi.updateStatus(input.orderId, input.status);
+  return result.order;
 }

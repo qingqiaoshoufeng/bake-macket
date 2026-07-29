@@ -284,6 +284,8 @@ describe('membership and pricing entity metadata', () => {
       [
         'id',
         'order_id',
+        'product_id',
+        'sku_id',
         'product_name',
         'sku_name',
         'sku_attributes',

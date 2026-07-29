@@ -35,6 +35,7 @@ void props;
     v-loading="loading"
     :data="[...products]"
     row-key="id"
+    height="100%"
     class="admin-table product-table"
     :empty-text="loading ? '加载中…' : '暂无商品，先创建第一件商品'"
     :data-testid="'products-table'"
@@ -132,7 +133,8 @@ void props;
 
 <style scoped>
 .product-table {
-  min-width: 960px;
+  height: 100%;
+  min-height: 0;
 }
 
 .product-table__loading {

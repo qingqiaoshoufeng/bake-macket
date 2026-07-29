@@ -1,12 +1,20 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  AdminOrderExportView,
+  AdminOrderSupplyMatchType,
+  ApiErrorCode,
   BannerTargetType,
   FulfillmentType,
   OrderStatus,
+  SUPPLY_ORDER_STATUSES,
   type AdminBannerView,
+  type AdminOrderExportQuery,
+  type AdminOrderListItem,
   type AdminOrderListQuery,
   type AdminOrderListResult,
+  type AdminOrderSupplyDetailResult,
+  type AdminOrderSupplyResult,
   type AdminProductDetailView,
   type MediaAsset,
   type OrderStatusUpdateResult,
@@ -89,6 +97,104 @@ describe('Task 12 admin contracts', () => {
       updatedAt: '2026-07-16T00:00:00.000Z',
     };
     expect(view.targetId).toBe(product.id);
+  });
+
+  it('defines the exact supply status subset and export error code', () => {
+    expect(SUPPLY_ORDER_STATUSES).toEqual([
+      OrderStatus.NEW,
+      OrderStatus.PROCESSING,
+    ]);
+    expect(AdminOrderExportView).toEqual({ ORDER: 'ORDER', SUPPLY: 'SUPPLY' });
+    expect(AdminOrderSupplyMatchType).toEqual({
+      SKU_ID: 'SKU_ID',
+      LEGACY_FALLBACK: 'LEGACY_FALLBACK',
+    });
+    expect(ApiErrorCode.EXPORT_TOO_LARGE).toBe('EXPORT_TOO_LARGE');
+    expect(ApiErrorCode.EXPORT_IN_PROGRESS).toBe('EXPORT_IN_PROGRESS');
+  });
+
+  it('models complete order rows, supply pages and discriminated exports', () => {
+    const orderItem: AdminOrderListItem = {
+      id: 'order-1',
+      orderNo: 'BM202607280001',
+      userId: 'user-1',
+      status: OrderStatus.NEW,
+      fulfillmentType: FulfillmentType.PICKUP,
+      contactName: '张三',
+      contactPhone: '13800000000',
+      itemLineCount: 1,
+      totalQuantity: 2,
+      goodsTotalCents: 13_600,
+      membershipDiscountCents: 1_360,
+      creditAppliedCents: 500,
+      payableTotalCents: 11_740,
+      pickupTimeText: '明天 10:00',
+      membershipCode: 'GOLD',
+      membershipName: '鎏金会员',
+      membershipDiscountBasisPoints: 9_000,
+      remark: '少糖',
+      createdAt: '2026-07-28T00:00:00.000Z',
+      updatedAt: '2026-07-28T00:00:00.000Z',
+    };
+    const supply: AdminOrderSupplyResult = {
+      items: [
+        {
+          groupKey: 'sku:1',
+          matchType: AdminOrderSupplyMatchType.SKU_ID,
+          productId: '1',
+          skuId: '1',
+          productName: '草莓蛋糕',
+          skuName: '6寸',
+          skuAttributes: { size: '6寸' },
+          requiredQuantity: 2,
+          orderCount: 1,
+          newQuantity: 2,
+          processingQuantity: 0,
+          remainingSaleableStock: 3,
+          earliestOrderCreatedAt: orderItem.createdAt,
+        },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    };
+    const details: AdminOrderSupplyDetailResult = {
+      items: [
+        {
+          orderItemId: 'item-1',
+          orderId: orderItem.id,
+          orderNo: orderItem.orderNo,
+          status: OrderStatus.NEW,
+          fulfillmentType: FulfillmentType.PICKUP,
+          contactName: orderItem.contactName,
+          contactPhone: orderItem.contactPhone,
+          pickupTimeText: orderItem.pickupTimeText,
+          productId: '1',
+          skuId: '1',
+          productName: '草莓蛋糕',
+          skuName: '6寸',
+          skuAttributes: { size: '6寸' },
+          quantity: 2,
+          unitPriceCents: 6_800,
+          lineGoodsTotalCents: 13_600,
+          lineMembershipDiscountCents: 1_360,
+          linePayableCents: 12_240,
+          remark: orderItem.remark,
+          orderCreatedAt: orderItem.createdAt,
+        },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 50,
+    };
+    const exportQuery: AdminOrderExportQuery = {
+      view: AdminOrderExportView.SUPPLY,
+      supplyStatuses: [OrderStatus.NEW, OrderStatus.PROCESSING],
+    };
+
+    expect(supply.items[0]?.requiredQuantity).toBe(2);
+    expect(details.items[0]?.linePayableCents).toBe(12_240);
+    expect(exportQuery.view).toBe(AdminOrderExportView.SUPPLY);
   });
 
   it('models paginated order filters and status update envelopes', () => {

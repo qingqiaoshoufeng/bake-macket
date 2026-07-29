@@ -38,6 +38,7 @@ import { ProductSortOrder1718000000001 } from '../src/database/migrations/0002-p
 import { Task12AdminMediaAndOrderIndexes1718000000002 } from '../src/database/migrations/0003-task12-admin-media-and-order-indexes.js';
 import { SkuStockVersion1718000000003 } from '../src/database/migrations/0004-sku-stock-version.js';
 import { MembershipAndOrderPricing1718000000004 } from '../src/database/migrations/0005-membership-and-order-pricing.js';
+import { OrderItemSourceIds1718000000007 } from '../src/database/migrations/0008-order-item-source-ids.js';
 import { AuditService } from '../src/audit/audit.service.js';
 import { IdempotencyService } from '../src/idempotency/idempotency.service.js';
 import { MembershipCreditService } from '../src/membership/membership-credit.service.js';
@@ -97,6 +98,7 @@ describe.sequential('OrdersService MySQL pricing snapshots', () => {
           Task12AdminMediaAndOrderIndexes1718000000002,
           SkuStockVersion1718000000003,
           MembershipAndOrderPricing1718000000004,
+          OrderItemSourceIds1718000000007,
         ],
         migrationsTableName: 'migrations',
       });

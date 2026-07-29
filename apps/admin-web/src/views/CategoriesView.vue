@@ -163,32 +163,30 @@ async function onRemove(category: AdminCategoryView): Promise<void> {
 </script>
 
 <template>
-  <AdminPage>
-    <AdminPageHeader
-      eyebrow="CATALOG"
-      title="分类管理"
-      description="维护单层分类的名称、图片、排序与启用状态。"
-    >
-      <template #actions>
-        <ElButton
-          type="primary"
-          :data-testid="'new-category'"
-          @click="openCreateDialog"
-        >
-          新增分类
-        </ElButton>
-      </template>
-    </AdminPageHeader>
+  <AdminPage workspace>
+    <template #header>
+      <AdminPageHeader
+        eyebrow="CATALOG"
+        title="分类管理"
+        description="维护单层分类的名称、图片、排序与启用状态。"
+      >
+        <template #actions>
+          <ElButton
+            type="primary"
+            :data-testid="'new-category'"
+            @click="openCreateDialog"
+          >
+            新增分类
+          </ElButton>
+        </template>
+      </AdminPageHeader>
+    </template>
 
-    <ElAlert
-      v-if="lastError"
-      type="error"
-      :title="lastError"
-      :closable="false"
-      show-icon
-    />
+    <template v-if="lastError" #alert>
+      <ElAlert type="error" :title="lastError" :closable="false" show-icon />
+    </template>
 
-    <AdminDataPanel>
+    <AdminDataPanel fill>
       <template #toolbar>
         <CategoryFilters
           :filters="draftFilters"

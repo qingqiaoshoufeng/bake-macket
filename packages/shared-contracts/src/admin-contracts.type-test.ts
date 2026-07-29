@@ -1,9 +1,19 @@
 import {
+  AdminOrderExportView,
+  AdminOrderSupplyMatchType,
   ApiErrorCode,
+  FulfillmentType,
   BannerTargetType,
+  OrderStatus,
   ProductStockFilter,
   type AdminBannerView,
+  type AdminOrderExportQuery,
+  type AdminOrderListItem,
   type AdminOrderListQuery,
+  type AdminOrderSupplyDetailItem,
+  type AdminOrderSupplyItem,
+  type AdminOrderSupplyDetailQuery,
+  type AdminOrderSupplyQuery,
   type AdminProductListQuery,
   type AdminProductDetailView,
   type MediaAsset,
@@ -30,6 +40,144 @@ const upload: PresignUploadResponse = {
 const saveProduct = {} as SaveProductRequest;
 const product = {} as AdminProductDetailView;
 const orderQuery = {} as AdminOrderListQuery;
+const validSupply: AdminOrderSupplyQuery = {
+  supplyStatuses: [OrderStatus.NEW, OrderStatus.PROCESSING],
+  page: 1,
+  pageSize: 20,
+};
+const validSupplyDetail: AdminOrderSupplyDetailQuery = {
+  groupKey: 'sku:1',
+  supplyStatuses: [OrderStatus.NEW],
+  page: 1,
+  pageSize: 50,
+};
+const adminOrderListItem: AdminOrderListItem = {
+  id: 'order-1',
+  orderNo: 'BM2026072800000001',
+  userId: 'user-1',
+  status: OrderStatus.NEW,
+  fulfillmentType: FulfillmentType.PICKUP,
+  contactName: '张三',
+  contactPhone: '13800000000',
+  itemLineCount: 2,
+  totalQuantity: 3,
+  goodsTotalCents: 6800,
+  membershipDiscountCents: 680,
+  creditAppliedCents: 500,
+  payableTotalCents: 5620,
+  createdAt: '2026-07-28T00:00:00.000Z',
+  updatedAt: '2026-07-28T00:00:00.000Z',
+};
+const adminOrderSupplyItem: AdminOrderSupplyItem = {
+  groupKey: 'sku:1',
+  matchType: AdminOrderSupplyMatchType.SKU_ID,
+  productName: '草莓蛋糕',
+  skuName: '6寸',
+  skuAttributes: { size: '6寸' },
+  requiredQuantity: 3,
+  orderCount: 2,
+  newQuantity: 1,
+  processingQuantity: 2,
+  earliestOrderCreatedAt: '2026-07-28T00:00:00.000Z',
+};
+const adminOrderSupplyDetailItem: AdminOrderSupplyDetailItem = {
+  orderItemId: 'item-1',
+  orderId: 'order-1',
+  orderNo: 'BM2026072800000001',
+  status: OrderStatus.NEW,
+  fulfillmentType: FulfillmentType.PICKUP,
+  contactName: '张三',
+  contactPhone: '13800000000',
+  productName: '草莓蛋糕',
+  skuName: '6寸',
+  skuAttributes: { size: '6寸' },
+  quantity: 3,
+  unitPriceCents: 6800,
+  lineGoodsTotalCents: 20400,
+  lineMembershipDiscountCents: 2040,
+  linePayableCents: 18360,
+  orderCreatedAt: '2026-07-28T00:00:00.000Z',
+};
+
+// @ts-expect-error 列表订单的三个金额和商品数量均为必填。
+const invalidAdminOrderMissingAmounts: AdminOrderListItem = {
+  id: 'order-1',
+  orderNo: 'BM2026072800000001',
+  userId: 'user-1',
+  status: OrderStatus.NEW,
+  fulfillmentType: FulfillmentType.PICKUP,
+  contactName: '张三',
+  contactPhone: '13800000000',
+  itemLineCount: 2,
+  totalQuantity: 3,
+  createdAt: '2026-07-28T00:00:00.000Z',
+  updatedAt: '2026-07-28T00:00:00.000Z',
+};
+
+// @ts-expect-error 供货汇总必须提供 requiredQuantity。
+const invalidSupplyMissingQuantity: AdminOrderSupplyItem = {
+  groupKey: 'sku:1',
+  matchType: AdminOrderSupplyMatchType.SKU_ID,
+  productName: '草莓蛋糕',
+  skuName: '6寸',
+  skuAttributes: { size: '6寸' },
+  orderCount: 2,
+  newQuantity: 1,
+  processingQuantity: 2,
+  earliestOrderCreatedAt: '2026-07-28T00:00:00.000Z',
+};
+
+// @ts-expect-error 供货明细必须提供会员折后金额。
+const invalidSupplyDetailMissingLinePayable: AdminOrderSupplyDetailItem = {
+  orderItemId: 'item-1',
+  orderId: 'order-1',
+  orderNo: 'BM2026072800000001',
+  status: OrderStatus.NEW,
+  fulfillmentType: FulfillmentType.PICKUP,
+  contactName: '张三',
+  contactPhone: '13800000000',
+  productName: '草莓蛋糕',
+  skuName: '6寸',
+  skuAttributes: { size: '6寸' },
+  quantity: 3,
+  unitPriceCents: 6800,
+  lineGoodsTotalCents: 20400,
+  lineMembershipDiscountCents: 2040,
+  orderCreatedAt: '2026-07-28T00:00:00.000Z',
+};
+const validOrderExport: AdminOrderExportQuery = {
+  view: AdminOrderExportView.ORDER,
+  status: OrderStatus.COMPLETED,
+};
+const validSupplyExport: AdminOrderExportQuery = {
+  view: AdminOrderExportView.SUPPLY,
+  supplyStatuses: [OrderStatus.NEW],
+};
+
+const invalidSupplyStatus: AdminOrderSupplyQuery = {
+  // @ts-expect-error 供货查询只允许 NEW / PROCESSING。
+  supplyStatuses: [OrderStatus.COMPLETED],
+  page: 1,
+  pageSize: 20,
+};
+
+// @ts-expect-error 供货导出必须显式携带供货状态。
+const missingSupplyStatuses: AdminOrderExportQuery = {
+  view: AdminOrderExportView.SUPPLY,
+};
+
+const invalidOrderExport: AdminOrderExportQuery = {
+  view: AdminOrderExportView.ORDER,
+  // @ts-expect-error 订单导出不能携带供货状态。
+  supplyStatuses: [OrderStatus.NEW],
+};
+
+// @ts-expect-error 供货导出不能携带订单状态。
+const invalidSupplyExport: AdminOrderExportQuery = {
+  view: AdminOrderExportView.SUPPLY,
+  supplyStatuses: [OrderStatus.PROCESSING],
+  status: OrderStatus.NEW,
+};
 const productQuery: AdminProductListQuery = {
   q: '蛋糕',
   stock: ProductStockFilter.LOW_STOCK,
@@ -133,6 +281,20 @@ void [
   saveProduct,
   product,
   orderQuery,
+  validSupply,
+  validSupplyDetail,
+  validOrderExport,
+  validSupplyExport,
+  adminOrderListItem,
+  adminOrderSupplyItem,
+  adminOrderSupplyDetailItem,
+  invalidAdminOrderMissingAmounts,
+  invalidSupplyMissingQuantity,
+  invalidSupplyDetailMissingLinePayable,
+  invalidSupplyStatus,
+  missingSupplyStatuses,
+  invalidOrderExport,
+  invalidSupplyExport,
   productQuery,
   invalidProductQuery,
   banner,
