@@ -1,16 +1,13 @@
 <script setup lang="ts">
 import { onMounted } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { useRouter } from 'vue-router';
 import { showToast } from 'vant';
 import type { OrderView } from '@bake-mall/contracts';
 
 import StoreStatePanel from '../components/feedback/StoreStatePanel.vue';
 import StorePage from '../components/layout/StorePage.vue';
 import StorePageHeader from '../components/layout/StorePageHeader.vue';
-import StoreTabbar from './catalog/components/StoreTabbar.vue';
 import { OrderCard, useOrderList } from './orders/index.js';
-
-const route = useRoute();
 const router = useRouter();
 const orders = useOrderList();
 
@@ -62,7 +59,6 @@ function navigate(path: string): void {
         @open="openDetail"
       />
     </ul>
-    <StoreTabbar :active-path="route.path" @navigate="navigate" />
   </StorePage>
 </template>
 

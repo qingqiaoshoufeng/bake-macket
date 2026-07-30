@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "pnpm services:up && pnpm --filter @bake-mall/contracts build && pnpm --filter @bake-mall/api migration:run && pnpm -r --parallel --stream dev",
     "build": "pnpm -r build",
-    "lint": "eslint '*.mjs' scripts && pnpm -r --workspace-concurrency=1 --filter=!@bake-mall/h5-store lint",
+    "lint": "eslint \"*.mjs\" scripts && pnpm -r --workspace-concurrency=1 --filter=!@bake-mall/h5-store lint",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "format:check": "prettier --check .",

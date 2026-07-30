@@ -19,22 +19,32 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/',
     name: 'home',
-    component: () => import('../views/HomeView.vue'),
+    component: () => import('../views/homepage/HomepageView.vue'),
+    meta: { showTabbar: true, tabbarKey: 'home' },
+  },
+  {
+    path: '/products',
+    name: 'products',
+    component: () => import('../views/catalog/CatalogView.vue'),
+    meta: { showTabbar: true, tabbarKey: 'products' },
   },
   {
     path: '/category/:id',
     name: 'category',
     component: () => import('../views/CategoryView.vue'),
+    meta: { showTabbar: true, tabbarKey: 'products' },
   },
   {
     path: '/products/:id',
     name: 'product-detail',
     component: () => import('../views/ProductDetailView.vue'),
+    meta: { showTabbar: true, tabbarKey: 'products' },
   },
   {
     path: '/cart',
     name: 'cart',
     component: () => import('../views/CartView.vue'),
+    meta: { showTabbar: true, tabbarKey: 'cart' },
   },
   {
     path: '/checkout',
@@ -46,7 +56,7 @@ const routes: RouteRecordRaw[] = [
     path: '/orders',
     name: 'orders',
     component: () => import('../views/OrdersView.vue'),
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, showTabbar: true, tabbarKey: 'orders' },
   },
   {
     path: '/orders/:id',
@@ -58,7 +68,7 @@ const routes: RouteRecordRaw[] = [
     path: '/profile',
     name: 'profile',
     component: () => import('../views/ProfileView.vue'),
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, showTabbar: true, tabbarKey: 'profile' },
   },
   {
     path: '/addresses',
@@ -127,5 +137,7 @@ declare module 'vue-router' {
   interface RouteMeta {
     requiresAuth?: boolean;
     requiresVerifiedPhone?: boolean;
+    showTabbar?: boolean;
+    tabbarKey?: 'home' | 'products' | 'cart' | 'orders' | 'profile';
   }
 }

@@ -16,6 +16,7 @@ import { MembershipAndOrderPricing1718000000004 } from './migrations/0005-member
 import { MembershipEntitlementSegments1718000000005 } from './migrations/0006-membership-entitlement-segments.js';
 import { DefaultMembershipLevels1718000000006 } from './migrations/0007-default-membership-levels.js';
 import { OrderItemSourceIds1718000000007 } from './migrations/0008-order-item-source-ids.js';
+import { HomepagePages1718000000008 } from './migrations/0009-homepage-pages.js';
 
 if (process.env.NODE_ENV !== 'production') {
   loadDotenv({ path: '../../.env.development' });
@@ -46,6 +47,7 @@ export const AppDataSource = new DataSource({
     MembershipEntitlementSegments1718000000005,
     DefaultMembershipLevels1718000000006,
     OrderItemSourceIds1718000000007,
+    HomepagePages1718000000008,
   ],
   migrationsTableName: 'migrations',
   // The CLI runs migrations; runtime uses migrationsRun: false to keep startup

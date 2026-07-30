@@ -16,6 +16,8 @@ export type UseCatalogResult = {
   readonly product: ShallowRef<CatalogProductDetail | null>;
   readonly loading: Ref<boolean>;
   readonly lastError: Ref<string | null>;
+  readonly loadCatalogLanding: () => Promise<void>;
+  /** @deprecated 使用语义明确的 loadCatalogLanding。 */
   readonly loadHome: () => Promise<void>;
   readonly loadProducts: (filter?: CatalogFilter) => Promise<void>;
   readonly loadProduct: (id: string) => Promise<CatalogProductDetail>;
@@ -47,7 +49,7 @@ export function useCatalog(): UseCatalogResult {
     }
   }
 
-  async function loadHome(): Promise<void> {
+  async function loadCatalogLanding(): Promise<void> {
     await withLoading(async () => {
       const [nextBanners, nextCategories, nextProducts] = await Promise.all([
         catalogFeatureApi.listBanners(),
@@ -95,7 +97,8 @@ export function useCatalog(): UseCatalogResult {
     product,
     loading,
     lastError,
-    loadHome,
+    loadCatalogLanding,
+    loadHome: loadCatalogLanding,
     loadProducts,
     loadProduct,
   };

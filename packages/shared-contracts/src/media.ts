@@ -3,7 +3,7 @@ export type MediaAsset = {
   publicUrl: string;
 };
 
-export type PresignUploadScope = 'products' | 'banners';
+export type PresignUploadScope = 'products' | 'banners' | 'homepage';
 export type PresignUploadContentType =
   'image/jpeg' | 'image/png' | 'image/webp';
 

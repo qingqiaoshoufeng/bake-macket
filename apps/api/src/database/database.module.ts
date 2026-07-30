@@ -14,6 +14,8 @@ import { SkuStockVersion1718000000003 } from './migrations/0004-sku-stock-versio
 import { MembershipAndOrderPricing1718000000004 } from './migrations/0005-membership-and-order-pricing.js';
 import { MembershipEntitlementSegments1718000000005 } from './migrations/0006-membership-entitlement-segments.js';
 import { DefaultMembershipLevels1718000000006 } from './migrations/0007-default-membership-levels.js';
+import { OrderItemSourceIds1718000000007 } from './migrations/0008-order-item-source-ids.js';
+import { HomepagePages1718000000008 } from './migrations/0009-homepage-pages.js';
 
 /**
  * Wires the validated environment into TypeORM. `synchronize` is hard-coded to
@@ -38,6 +40,8 @@ import { DefaultMembershipLevels1718000000006 } from './migrations/0007-default-
             MembershipAndOrderPricing1718000000004,
             MembershipEntitlementSegments1718000000005,
             DefaultMembershipLevels1718000000006,
+            OrderItemSourceIds1718000000007,
+            HomepagePages1718000000008,
           ],
           migrationsTableName: 'migrations',
           migrationsRun: false,

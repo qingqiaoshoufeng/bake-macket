@@ -10,7 +10,6 @@ import StoreStatePanel from '../components/feedback/StoreStatePanel.vue';
 import SkuPicker from '../components/SkuPicker.vue';
 import { useAuthStore } from '../stores/auth.js';
 import { useCart } from './cart/hooks/useCart.js';
-import StoreTabbar from './catalog/components/StoreTabbar.vue';
 import { useCatalog } from './catalog/hooks/useCatalog.js';
 
 const route = useRoute();
@@ -128,11 +127,6 @@ async function addToCart(payload: {
         <p v-if="submitting" class="sku-sheet-body__status">正在加入购物车…</p>
       </div>
     </ActionSheet>
-    <StoreTabbar
-      v-if="!skuSheetOpen"
-      :active-path="route.path"
-      @navigate="router.push"
-    />
   </StorePage>
 </template>
 

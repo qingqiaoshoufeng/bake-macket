@@ -5,6 +5,7 @@ import { AuthModule } from './auth/auth.module.js';
 import { BannerModule } from './banner/banner.module.js';
 import { CatalogModule } from './catalog/catalog.module.js';
 import { CustomerModule } from './customer/customer.module.js';
+import { HomepageModule } from './homepage/homepage.module.js';
 import { OrdersModule } from './orders/orders.module.js';
 import { MembershipModule } from './membership/membership.module.js';
 import { UploadModule } from './upload/upload.module.js';
@@ -36,6 +37,7 @@ import { HealthController } from './health/health.controller.js';
     CatalogModule,
     BannerModule,
     CustomerModule,
+    HomepageModule,
     OrdersModule,
     MembershipModule,
     UploadModule,

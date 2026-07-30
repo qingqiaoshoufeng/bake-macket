@@ -170,17 +170,37 @@ export class MediaAssetPolicyService {
   constructor(private readonly config: ConfigService<AppConfig, true>) {}
 
   assertProductAsset(asset: MediaAsset): void {
-    this.assertAsset(asset, 'products/', '商品媒体资产路径或来源无效');
+    this.assertAsset(
+      asset,
+      'products/',
+      '商品媒体资产路径或来源无效',
+      ApiErrorCode.PRODUCT_ASSET_OWNERSHIP_INVALID,
+    );
   }
 
   assertBannerAsset(asset: MediaAsset): void {
-    this.assertAsset(asset, 'banners/', 'Banner 媒体资产路径或来源无效');
+    this.assertAsset(
+      asset,
+      'banners/',
+      'Banner 媒体资产路径或来源无效',
+      ApiErrorCode.PRODUCT_ASSET_OWNERSHIP_INVALID,
+    );
+  }
+
+  assertHomepageAsset(asset: MediaAsset): void {
+    this.assertAsset(
+      asset,
+      'homepage/',
+      '首页媒体资产路径或来源无效',
+      ApiErrorCode.HOMEPAGE_ASSET_OWNERSHIP_INVALID,
+    );
   }
 
   private assertAsset(
     asset: MediaAsset,
     requiredPrefix: `${string}/`,
     message: string,
+    code: ApiErrorCode,
   ): void {
     const env = this.config.get('appEnv', { infer: true });
     const isValid =
@@ -188,9 +208,6 @@ export class MediaAssetPolicyService {
       isAllowedProductAssetUrl(asset.publicUrl, asset.objectKey, env);
     if (isValid) return;
 
-    throw new UnprocessableEntityException({
-      code: ApiErrorCode.PRODUCT_ASSET_OWNERSHIP_INVALID,
-      message,
-    });
+    throw new UnprocessableEntityException({ code, message });
   }
 }

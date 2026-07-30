@@ -1,8 +1,8 @@
 import { IsIn, IsInt, IsString, Max, MaxLength, Min } from 'class-validator';
 
 export class PresignUploadDto {
-  @IsIn(['products', 'banners'])
-  scope!: 'products' | 'banners';
+  @IsIn(['products', 'banners', 'homepage'])
+  scope!: 'products' | 'banners' | 'homepage';
 
   @IsString()
   @MaxLength(255)

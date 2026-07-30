@@ -283,6 +283,11 @@ async function onSelect(path: string): Promise<void> {
   transform: rotate(-4deg);
 }
 
+.admin-layout__nav-icon[data-icon='homepage'] {
+  border-radius: 8px 8px 3px 3px;
+  transform: rotate(45deg) scale(0.76);
+}
+
 .admin-layout__nav-icon[data-icon='banner'] {
   width: 19px;
   height: 15px;

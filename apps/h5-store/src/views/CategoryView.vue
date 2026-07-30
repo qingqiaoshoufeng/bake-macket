@@ -7,7 +7,6 @@ import StorePage from '../components/layout/StorePage.vue';
 import StorePageHeader from '../components/layout/StorePageHeader.vue';
 import StoreStatePanel from '../components/feedback/StoreStatePanel.vue';
 import ProductCard from './catalog/components/ProductCard.vue';
-import StoreTabbar from './catalog/components/StoreTabbar.vue';
 import { useCatalog } from './catalog/hooks/useCatalog.js';
 
 const route = useRoute();
@@ -88,7 +87,6 @@ function submitSearch(): void {
       />
     </section>
 
-    <StoreTabbar :active-path="route.path" @navigate="router.push" />
   </StorePage>
 </template>
 

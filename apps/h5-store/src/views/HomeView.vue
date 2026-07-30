@@ -19,7 +19,7 @@ const catalog = useCatalog();
 
 onMounted(async () => {
   try {
-    await catalog.loadHome();
+    await catalog.loadCatalogLanding();
   } catch {
     showToast(catalog.lastError.value ?? '首页加载失败');
   }

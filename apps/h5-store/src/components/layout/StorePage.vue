@@ -4,11 +4,13 @@ withDefaults(
     withTabbar?: boolean;
     withFixedAction?: boolean;
     compact?: boolean;
+    fullBleed?: boolean;
   }>(),
   {
     withTabbar: false,
     withFixedAction: false,
     compact: false,
+    fullBleed: false,
   },
 );
 </script>
@@ -20,6 +22,7 @@ withDefaults(
       'store-page--with-tabbar': withTabbar,
       'store-page--with-fixed-action': withFixedAction,
       'store-page--compact': compact,
+      'store-page--full-bleed': fullBleed,
     }"
   >
     <slot />
@@ -37,6 +40,12 @@ withDefaults(
 
 .store-page--compact {
   padding-top: var(--mall-space-3);
+}
+
+.store-page--full-bleed {
+  padding-top: 0;
+  padding-right: 0;
+  padding-left: 0;
 }
 
 .store-page--with-tabbar {

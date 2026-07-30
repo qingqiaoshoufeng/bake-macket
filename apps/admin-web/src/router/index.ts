@@ -46,6 +46,12 @@ const routes: RouteRecordRaw[] = [
         meta: { layoutMode: 'document' },
       },
       {
+        path: 'homepage',
+        name: 'admin-homepage',
+        component: () => import('../views/homepage/HomepageEditorView.vue'),
+        meta: { title: '首页装修', layoutMode: 'document' },
+      },
+      {
         path: 'categories',
         name: 'admin-categories',
         component: () => import('../views/CategoriesView.vue'),
@@ -73,7 +79,7 @@ const routes: RouteRecordRaw[] = [
         path: 'banners',
         name: 'admin-banners',
         component: () => import('../views/banners/BannersView.vue'),
-        meta: { title: 'Banner 管理', layoutMode: 'workspace' },
+        meta: { title: '商品页 Banner', layoutMode: 'workspace' },
       },
       {
         path: 'orders',

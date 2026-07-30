@@ -17,9 +17,10 @@ export const ADMIN_NAV_GROUPS: readonly AdminNavGroup[] = [
   {
     label: '商品运营',
     items: [
+      { path: '/homepage', label: '首页装修', icon: 'homepage' },
       { path: '/categories', label: '分类', icon: 'category' },
       { path: '/products', label: '商品', icon: 'product' },
-      { path: '/banners', label: 'Banner', icon: 'banner' },
+      { path: '/banners', label: '商品页 Banner', icon: 'banner' },
     ],
   },
   {

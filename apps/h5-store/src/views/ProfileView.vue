@@ -1,12 +1,11 @@
 <script setup lang="ts">
 import { onMounted } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { useRouter } from 'vue-router';
 import { showToast } from 'vant';
 
 import StoreStatePanel from '../components/feedback/StoreStatePanel.vue';
 import StorePage from '../components/layout/StorePage.vue';
 import StorePageHeader from '../components/layout/StorePageHeader.vue';
-import StoreTabbar from './catalog/components/StoreTabbar.vue';
 import MembershipCardCarousel from './membership/components/MembershipCardCarousel.vue';
 import { hasMembershipCardContent } from './membership/hooks/purchase-capability.js';
 import { useMembershipOverview } from './membership/hooks/useMembershipOverview.js';
@@ -18,7 +17,6 @@ import {
   useProfile,
 } from './profile/index.js';
 
-const route = useRoute();
 const router = useRouter();
 const profile = useProfile();
 const membership = useMembershipOverview();
@@ -110,7 +108,6 @@ async function logout(): Promise<void> {
       title="正在加载资料"
       description="马上为你整理好账号信息。"
     />
-    <StoreTabbar :active-path="route.path" @navigate="navigate" />
   </StorePage>
 </template>
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { useRouter } from 'vue-router';
 import { showConfirmDialog, showToast } from 'vant';
 
 import StoreStatePanel from '../components/feedback/StoreStatePanel.vue';
@@ -8,9 +8,7 @@ import StorePage from '../components/layout/StorePage.vue';
 import StorePageHeader from '../components/layout/StorePageHeader.vue';
 import { CartCheckoutBar, CartItemCard, useCart } from './cart/index.js';
 import { CART_COPY } from './cart/config/copy.js';
-import StoreTabbar from './catalog/components/StoreTabbar.vue';
 
-const route = useRoute();
 const router = useRouter();
 const cart = useCart();
 
@@ -96,7 +94,6 @@ function navigate(path: string): void {
       @select-all="cart.methods.setAllSelected"
       @checkout="navigate('/checkout')"
     />
-    <StoreTabbar :active-path="route.path" @navigate="navigate" />
   </StorePage>
 </template>
 

@@ -14,6 +14,8 @@ const props = defineProps<{
   scope: PresignScope;
   modelValue: MediaAsset | null;
   label?: string;
+  previewAspectRatio?: string;
+  sceneHint?: string;
 }>();
 
 const emit = defineEmits<{
@@ -106,6 +108,7 @@ function clearImage(): void {
       type="button"
       class="cos-uploader__drop-area"
       :class="{ 'is-dragging': dragging, 'has-image': previewUrl }"
+      :style="previewAspectRatio ? { aspectRatio: previewAspectRatio } : undefined"
       :disabled="uploading"
       data-testid="cos-upload-drop-area"
       @click="openFilePicker"
@@ -168,7 +171,7 @@ function clearImage(): void {
         {{ lastError }}
       </p>
       <p class="cos-uploader__hint">
-        支持 JPEG / PNG / WebP，单文件最大 5 MiB。
+        {{ sceneHint ? `${sceneHint}；` : '' }}支持 JPEG / PNG / WebP，单文件最大 5 MiB。
       </p>
     </div>
   </div>
@@ -186,7 +189,7 @@ function clearImage(): void {
   position: relative;
   display: grid;
   width: 132px;
-  height: 132px;
+  min-height: 132px;
   padding: 0;
   overflow: hidden;
   place-items: center;
