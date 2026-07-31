@@ -87,7 +87,8 @@ function assertDraftStructure(value: unknown): asserts value is HomepageDraftCon
     hero.type !== HomepageSectionType.HERO_CAROUSEL ||
     typeof hero.id !== 'string' ||
     typeof hero.enabled !== 'boolean' ||
-    !AUTOPLAY_OPTIONS.has(Number(hero.autoplayMs)) ||
+    typeof hero.autoplayMs !== 'number' ||
+    !AUTOPLAY_OPTIONS.has(hero.autoplayMs) ||
     !Array.isArray(hero.slides) ||
     hero.slides.length > 10
   ) {
@@ -126,7 +127,8 @@ function assertDraftStructure(value: unknown): asserts value is HomepageDraftCon
     typeof shortcutGrid.id !== 'string' ||
     typeof shortcutGrid.enabled !== 'boolean' ||
     typeof shortcutGrid.title !== 'string' ||
-    !GRID_LAYOUTS.has(Number(shortcutGrid.layout)) ||
+    typeof shortcutGrid.layout !== 'number' ||
+    !GRID_LAYOUTS.has(shortcutGrid.layout) ||
     !Array.isArray(shortcutGrid.items) ||
     shortcutGrid.items.length > 9
   ) {
@@ -385,7 +387,11 @@ export class HomepageService {
   ) {}
 
   async getAdminView(): Promise<AdminHomepageView> {
-    return this.toAdminView(await this.requirePage(this.pages));
+    const page = await this.requirePage(this.pages);
+    return this.toAdminView(
+      page,
+      await this.collectPublishIssues(page.draftConfig, this.dataSource.manager),
+    );
   }
 
   async saveDraft(
@@ -436,7 +442,10 @@ export class HomepageService {
         },
         manager,
       );
-      return this.toAdminView(saved);
+      return this.toAdminView(
+        saved,
+        await this.collectPublishIssues(saved.draftConfig, manager),
+      );
     });
   }
 
@@ -448,10 +457,7 @@ export class HomepageService {
       const pages = manager.getRepository(HomepagePage);
       const page = await this.requirePage(pages, manager);
       if (page.version !== request.version) this.throwVersionConflict(page.version);
-      const issues = [
-        ...collectDraftIssues(page.draftConfig),
-        ...(await this.collectTargetIssues(page.draftConfig, manager)),
-      ];
+      const issues = await this.collectPublishIssues(page.draftConfig, manager);
       if (issues.length > 0) {
         throw new UnprocessableEntityException({
           code: ApiErrorCode.HOMEPAGE_PUBLISH_INVALID,
@@ -490,7 +496,7 @@ export class HomepageService {
         },
         manager,
       );
-      return this.toAdminView(saved);
+      return this.toAdminView(saved, []);
     });
   }
 
@@ -533,6 +539,14 @@ export class HomepageService {
       publishedVersion: page.publishedVersion,
       publishedAt: page.publishedAt.toISOString(),
     };
+  }
+
+  private async collectPublishIssues(
+    config: HomepageDraftConfig,
+    manager: EntityManager,
+  ): Promise<HomepageValidationIssue[]> {
+    const targetIssues = await this.collectTargetIssues(config, manager);
+    return [...collectDraftIssues(config), ...targetIssues];
   }
 
   private async collectTargetIssues(
@@ -597,7 +611,10 @@ export class HomepageService {
     return page;
   }
 
-  private toAdminView(page: HomepagePage): AdminHomepageView {
+  private toAdminView(
+    page: HomepagePage,
+    draftIssues: readonly HomepageValidationIssue[],
+  ): AdminHomepageView {
     return {
       id: page.id,
       pageKey: PAGE_KEY,
@@ -621,7 +638,7 @@ export class HomepageService {
       ...(toIso(page.publishedAt)
         ? { publishedAt: toIso(page.publishedAt) }
         : {}),
-      draftIssues: collectDraftIssues(page.draftConfig),
+      draftIssues,
     };
   }
 

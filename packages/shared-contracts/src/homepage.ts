@@ -26,10 +26,33 @@ export type HomepageLink =
   | { type: HomepageLinkType.NONE; targetId?: never; page?: never }
   | { type: HomepageLinkType.PRODUCT; targetId: string; page?: never }
   | { type: HomepageLinkType.CATEGORY; targetId: string; page?: never }
-  | { type: HomepageLinkType.PAGE; page: HomepageInternalPage; targetId?: never };
+  | {
+      type: HomepageLinkType.PAGE;
+      page: HomepageInternalPage;
+      targetId?: never;
+    };
+
+export type HomepageDraftLink = HomepageLink;
 
 export type HomepageGridLayout = 3 | 4 | 5 | 6 | 9;
 export type HomepageAutoplayMs = 0 | 3000 | 5000 | 8000;
+
+type TupleOf<
+  TValue,
+  TLength extends number,
+  TItems extends readonly TValue[] = readonly [],
+> = TItems['length'] extends TLength
+  ? TItems
+  : TupleOf<TValue, TLength, readonly [...TItems, TValue]>;
+
+type TuplesOfLengths<TValue, TLength extends number> = TLength extends TLength
+  ? TupleOf<TValue, TLength>
+  : never;
+
+type LengthFromZeroToNine = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+type LengthFromZeroToTen = LengthFromZeroToNine | 10;
+type LengthFromOneToTen = Exclude<LengthFromZeroToTen, 0>;
+type LengthFromZeroToTwelve = LengthFromZeroToTen | 11 | 12;
 
 export type HomepageHeroSlide<TImage> = {
   id: string;
@@ -86,6 +109,13 @@ export type HomepageImageBlockSection<TImage> = {
   link: HomepageLink;
 };
 
+export type HomepageSection<TImage> =
+  | HomepageHeroSection<TImage>
+  | HomepageCustomerServiceSection<TImage>
+  | HomepageShortcutGridSection<TImage>
+  | HomepageImageBlockSection<TImage>;
+
+/** 固定区块顺序由属性位置表达：首屏轮播、客服、快捷入口、配图区。 */
 export type HomepageConfig<TImage> = {
   schemaVersion: 1;
   hero: HomepageHeroSection<TImage>;
@@ -94,8 +124,105 @@ export type HomepageConfig<TImage> = {
   imageBlocks: readonly HomepageImageBlockSection<TImage>[];
 };
 
-export type HomepageDraftConfig = HomepageConfig<MediaAsset | null>;
-export type HomepagePublishedConfig = HomepageConfig<MediaAsset>;
+export type HomepageDraftHeroSlide = {
+  id: string;
+  image: MediaAsset | null;
+  title: string;
+  subtitle: string;
+  altText: string;
+  link: HomepageDraftLink;
+};
+
+export type HomepageDraftHeroSection = {
+  id: string;
+  type: HomepageSectionType.HERO_CAROUSEL;
+  enabled: boolean;
+  autoplayMs: HomepageAutoplayMs;
+  slides: readonly HomepageDraftHeroSlide[];
+};
+
+export type HomepageDraftCustomerServiceSection = {
+  id: string;
+  type: HomepageSectionType.CUSTOMER_SERVICE;
+  enabled: boolean;
+  title: string;
+  description: string;
+  phone: string;
+  serviceHours: string;
+  wechatQrCode: MediaAsset | null;
+};
+
+export type HomepageDraftShortcutItem = {
+  id: string;
+  label: string;
+  image: MediaAsset | null;
+  link: HomepageDraftLink;
+};
+
+export type HomepageDraftShortcutGridSection = {
+  id: string;
+  type: HomepageSectionType.SHORTCUT_GRID;
+  enabled: boolean;
+  title: string;
+  layout: HomepageGridLayout;
+  items: readonly HomepageDraftShortcutItem[];
+};
+
+export type HomepageDraftImageBlockSection = {
+  id: string;
+  type: HomepageSectionType.IMAGE_BLOCK;
+  enabled: boolean;
+  image: MediaAsset | null;
+  title: string;
+  description: string;
+  altText: string;
+  link: HomepageDraftLink;
+};
+
+export type HomepageDraftSection =
+  | HomepageDraftHeroSection
+  | HomepageDraftCustomerServiceSection
+  | HomepageDraftShortcutGridSection
+  | HomepageDraftImageBlockSection;
+
+export type HomepageDraftConfig = {
+  schemaVersion: 1;
+  hero: HomepageDraftHeroSection;
+  customerService: HomepageDraftCustomerServiceSection;
+  shortcutGrid: HomepageDraftShortcutGridSection;
+  imageBlocks: readonly HomepageDraftImageBlockSection[];
+};
+
+export type HomepagePublishedHeroSection<TImage> = Omit<
+  HomepageHeroSection<TImage>,
+  'slides'
+> & {
+  slides: TuplesOfLengths<HomepageHeroSlide<TImage>, LengthFromOneToTen>;
+};
+
+export type HomepagePublishedShortcutGridSection<TImage> = {
+  readonly [TLayout in HomepageGridLayout]: Omit<
+    HomepageShortcutGridSection<TImage>,
+    'layout' | 'items'
+  > & {
+    layout: TLayout;
+    items: TupleOf<HomepageShortcutItem<TImage>, TLayout>;
+  };
+}[HomepageGridLayout];
+
+export type HomepageCompleteConfig<TImage> = Omit<
+  HomepageConfig<TImage>,
+  'hero' | 'shortcutGrid' | 'imageBlocks'
+> & {
+  hero: HomepagePublishedHeroSection<TImage>;
+  shortcutGrid: HomepagePublishedShortcutGridSection<TImage>;
+  imageBlocks: TuplesOfLengths<
+    HomepageImageBlockSection<TImage>,
+    LengthFromZeroToTwelve
+  >;
+};
+
+export type HomepagePublishedConfig = HomepageCompleteConfig<MediaAsset>;
 export type PublicHomepageConfig = HomepageConfig<{ imageUrl: string }>;
 
 export type HomepageValidationIssue = {
@@ -117,6 +244,7 @@ export type AdminHomepageView = {
   draftUpdatedAt?: string;
   publishedByAdminId?: string;
   publishedAt?: string;
+  /** 当前草稿的发布校验问题；为空时草稿满足发布条件。 */
   draftIssues: readonly HomepageValidationIssue[];
 };
 

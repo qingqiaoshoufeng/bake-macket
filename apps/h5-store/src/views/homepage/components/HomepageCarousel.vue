@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import type {
-  HomepageHeroSection,
-  HomepageLink,
+import {
+  HomepageLinkType,
+  type HomepageHeroSection,
+  type HomepageLink,
 } from '@bake-mall/contracts';
 import { Swipe, SwipeItem } from 'vant';
 import { computed, ref } from 'vue';
@@ -34,10 +35,11 @@ function markImageFailed(slideId: string): void {
       lazy-render
     >
       <SwipeItem v-for="slide in section.slides" :key="slide.id">
-        <button
-          type="button"
+        <component
+          :is="slide.link.type === HomepageLinkType.NONE ? 'div' : 'button'"
+          :type="slide.link.type === HomepageLinkType.NONE ? undefined : 'button'"
           class="homepage-carousel__slide"
-          @click="emit('navigate', slide.link)"
+          @click="slide.link.type !== HomepageLinkType.NONE && emit('navigate', slide.link)"
         >
           <img
             v-if="!failedImages.has(slide.id)"
@@ -54,7 +56,7 @@ function markImageFailed(slideId: string): void {
             <strong>{{ slide.title }}</strong>
             <small>{{ slide.subtitle }}</small>
           </span>
-        </button>
+        </component>
       </SwipeItem>
     </Swipe>
   </section>
@@ -88,8 +90,11 @@ function markImageFailed(slideId: string): void {
   border: 0;
   background: var(--mall-surface-soft);
   color: inherit;
-  cursor: pointer;
   text-align: left;
+}
+
+button.homepage-carousel__slide {
+  cursor: pointer;
 }
 
 .homepage-carousel__slide img {

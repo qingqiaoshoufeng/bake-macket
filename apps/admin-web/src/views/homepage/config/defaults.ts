@@ -7,6 +7,8 @@ import {
   type HomepageShortcutItem,
 } from '@bake-mall/contracts';
 
+import { cloneJson } from '../../../utils/json.js';
+
 const id = (prefix: string): string => `${prefix}-${crypto.randomUUID()}`;
 
 export const createEmptyLink = () => ({ type: HomepageLinkType.NONE }) as const;
@@ -34,7 +36,7 @@ export const resizeShortcutItems = (
   layout: HomepageGridLayout,
 ): HomepageDraftConfig['shortcutGrid']['items'] =>
   Array.from({ length: layout }, (_, index) =>
-    items[index] ? structuredClone(items[index]) : createShortcutItem(),
+    items[index] ? cloneJson(items[index]) : createShortcutItem(),
   );
 
 export const createHomepageDraft = (): HomepageDraftConfig => ({

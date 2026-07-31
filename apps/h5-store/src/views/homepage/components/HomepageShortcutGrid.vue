@@ -4,6 +4,7 @@ import {
   type HomepageLink,
   type HomepageShortcutGridSection,
 } from '@bake-mall/contracts';
+import { ref } from 'vue';
 
 defineProps<{
   readonly section: HomepageShortcutGridSection<{ imageUrl: string }>;
@@ -12,6 +13,12 @@ defineProps<{
 const emit = defineEmits<{
   navigate: [link: HomepageLink];
 }>();
+
+const failedImages = ref<ReadonlySet<string>>(new Set());
+
+function markImageFailed(itemId: string): void {
+  failedImages.value = new Set([...failedImages.value, itemId]);
+}
 
 function isInteractive(link: HomepageLink): boolean {
   return link.type !== HomepageLinkType.NONE;
@@ -33,7 +40,15 @@ function isInteractive(link: HomepageLink): boolean {
         class="homepage-shortcuts__item"
         @click="isInteractive(item.link) && emit('navigate', item.link)"
       >
-        <img :src="item.image.imageUrl" alt="" />
+        <img
+          v-if="!failedImages.has(item.id)"
+          :src="item.image.imageUrl"
+          alt=""
+          @error="markImageFailed(item.id)"
+        />
+        <span v-else class="homepage-shortcuts__image-fallback" aria-hidden="true">
+          {{ item.label.slice(0, 1) }}
+        </span>
         <strong>{{ item.label }}</strong>
       </component>
     </div>
@@ -96,7 +111,8 @@ button.homepage-shortcuts__item {
   cursor: pointer;
 }
 
-.homepage-shortcuts__item img {
+.homepage-shortcuts__item img,
+.homepage-shortcuts__image-fallback {
   width: min(100%, 72px);
   aspect-ratio: 1;
   border: 1px solid var(--mall-border);
@@ -104,6 +120,14 @@ button.homepage-shortcuts__item {
   background: var(--mall-surface-soft);
   box-shadow: var(--mall-shadow-card);
   object-fit: cover;
+}
+
+.homepage-shortcuts__image-fallback {
+  display: grid;
+  place-items: center;
+  color: var(--mall-primary-strong);
+  font-size: 22px;
+  font-weight: 800;
 }
 
 .homepage-shortcuts__item strong {
@@ -120,7 +144,8 @@ button.homepage-shortcuts__item {
     gap-inline: 7px;
   }
 
-  .homepage-shortcuts__item img {
+  .homepage-shortcuts__item img,
+  .homepage-shortcuts__image-fallback {
     border-radius: 17px;
   }
 }

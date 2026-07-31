@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import type { HomepageCustomerServiceSection } from '@bake-mall/contracts';
 import { showImagePreview } from 'vant';
+import { ref } from 'vue';
 
 const props = defineProps<{
   readonly section: HomepageCustomerServiceSection<{ imageUrl: string }>;
 }>();
+
+const imageFailed = ref(false);
 
 function previewQrCode(): void {
   showImagePreview({ images: [props.section.wechatQrCode.imageUrl], closeable: true });
@@ -20,9 +23,20 @@ function previewQrCode(): void {
       <a :href="`tel:${section.phone}`">{{ section.phone }}</a>
       <span>{{ section.serviceHours }}</span>
     </div>
-    <button type="button" class="homepage-service__qr" @click="previewQrCode">
-      <img :src="section.wechatQrCode.imageUrl" alt="客服微信二维码" />
-      <span>点击放大</span>
+    <button
+      type="button"
+      class="homepage-service__qr"
+      :disabled="imageFailed"
+      @click="previewQrCode"
+    >
+      <img
+        v-if="!imageFailed"
+        :src="section.wechatQrCode.imageUrl"
+        alt="客服微信二维码"
+        @error="imageFailed = true"
+      />
+      <span v-else class="homepage-service__qr-fallback">二维码暂不可用</span>
+      <span>{{ imageFailed ? '请电话联系' : '点击放大' }}</span>
     </button>
   </section>
 </template>
@@ -95,9 +109,22 @@ function previewQrCode(): void {
   font-size: 10px;
 }
 
-.homepage-service__qr img {
+.homepage-service__qr img,
+.homepage-service__qr-fallback {
   width: 100%;
   aspect-ratio: 1;
   object-fit: contain;
+}
+
+.homepage-service__qr-fallback {
+  display: grid;
+  padding: var(--mall-space-2);
+  place-items: center;
+  border-radius: 8px;
+  background: var(--mall-surface-soft);
+}
+
+.homepage-service__qr:disabled {
+  cursor: default;
 }
 </style>

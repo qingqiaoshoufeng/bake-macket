@@ -7,13 +7,14 @@ import type {
 import { computed, ref } from 'vue';
 
 import { ApiClientError } from '../../../api/http.js';
+import { cloneJson } from '../../../utils/json.js';
 import { loadAllCategories } from '../../categories/hooks/loadAllCategories.js';
 import { loadAllProducts } from '../../products/hooks/loadAllProducts.js';
 import { homepageApi } from '../api/index.js';
 import { createHomepageDraft } from '../config/defaults.js';
 
 const clone = (value: HomepageDraftConfig): HomepageDraftConfig =>
-  structuredClone(value);
+  cloneJson(value);
 
 export function useHomepageEditor() {
   const draft = ref<HomepageDraftConfig>(createHomepageDraft());
@@ -71,7 +72,6 @@ export function useHomepageEditor() {
   function replaceDraft(value: HomepageDraftConfig): void {
     draft.value = clone(value);
     dirty.value = true;
-    conflict.value = null;
   }
 
   async function saveDraft(): Promise<void> {
