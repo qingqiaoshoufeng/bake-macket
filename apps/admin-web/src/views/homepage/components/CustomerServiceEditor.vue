@@ -69,6 +69,7 @@ function updateSection(
     </ElFormItem>
     <ElFormItem label="微信二维码" required>
       <CosImageUploader
+        compact
         scope="homepage"
         :model-value="section.wechatQrCode"
         preview-aspect-ratio="1 / 1"

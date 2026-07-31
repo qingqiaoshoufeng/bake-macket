@@ -16,6 +16,7 @@ const props = defineProps<{
   label?: string;
   previewAspectRatio?: string;
   sceneHint?: string;
+  compact?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -103,12 +104,20 @@ function clearImage(): void {
 </script>
 
 <template>
-  <div class="cos-uploader">
+  <div
+    class="cos-uploader"
+    :class="{ 'cos-uploader--compact': compact }"
+    :data-compact="compact ? 'true' : undefined"
+  >
     <button
       type="button"
       class="cos-uploader__drop-area"
       :class="{ 'is-dragging': dragging, 'has-image': previewUrl }"
-      :style="previewAspectRatio ? { aspectRatio: previewAspectRatio } : undefined"
+      :style="
+        previewAspectRatio && !compact
+          ? { aspectRatio: previewAspectRatio }
+          : undefined
+      "
       :disabled="uploading"
       data-testid="cos-upload-drop-area"
       @click="openFilePicker"
@@ -123,8 +132,16 @@ function clearImage(): void {
         class="cos-uploader__image"
       />
       <span v-else class="cos-uploader__placeholder">
-        <strong>拖放图片到这里</strong>
-        <small>或点击选择本地文件</small>
+        <span
+          v-if="compact"
+          class="cos-uploader__placeholder-icon"
+          aria-hidden="true"
+          >＋</span
+        >
+        <template v-if="!compact">
+          <strong>拖放图片到这里</strong>
+          <small>或点击选择本地文件</small>
+        </template>
       </span>
     </button>
 
@@ -157,11 +174,11 @@ function clearImage(): void {
           plain
           @click="clearImage"
         >
-          清空图片
+          {{ compact ? '移除' : '清空图片' }}
         </ElButton>
       </div>
       <span
-        v-if="objectKey"
+        v-if="objectKey && !compact"
         class="cos-uploader__object-key"
         :title="objectKey"
       >
@@ -170,8 +187,12 @@ function clearImage(): void {
       <p v-if="lastError" class="cos-uploader__error" role="alert">
         {{ lastError }}
       </p>
-      <p class="cos-uploader__hint">
-        {{ sceneHint ? `${sceneHint}；` : '' }}支持 JPEG / PNG / WebP，单文件最大 5 MiB。
+      <p v-if="compact ? sceneHint : true" class="cos-uploader__hint">
+        {{
+          compact
+            ? sceneHint
+            : `${sceneHint ? `${sceneHint}；` : ''}支持 JPEG / PNG / WebP，单文件最大 5 MiB。`
+        }}
       </p>
     </div>
   </div>
@@ -236,6 +257,13 @@ function clearImage(): void {
   text-align: center;
 }
 
+.cos-uploader__placeholder-icon {
+  color: var(--admin-mint);
+  font-size: 24px;
+  font-weight: 300;
+  line-height: 1;
+}
+
 .cos-uploader__placeholder strong {
   color: var(--admin-text);
   font-size: 12px;
@@ -244,6 +272,34 @@ function clearImage(): void {
 .cos-uploader__placeholder small {
   font-size: 11px;
   line-height: 1.5;
+}
+
+.cos-uploader--compact {
+  grid-template-columns: 108px minmax(0, 1fr);
+  gap: 12px;
+}
+
+.cos-uploader--compact .cos-uploader__drop-area {
+  width: 108px;
+  min-height: 0;
+  aspect-ratio: 1;
+  border-color: color-mix(in srgb, var(--admin-mint) 34%, var(--admin-border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--admin-mint) 5%, var(--admin-surface));
+}
+
+.cos-uploader--compact .cos-uploader__placeholder {
+  gap: 7px;
+  padding: 10px;
+}
+
+.cos-uploader--compact .cos-uploader__actions :deep(.el-button) {
+  padding-inline: 12px;
+}
+
+.cos-uploader--compact .cos-uploader__hint {
+  color: color-mix(in srgb, var(--admin-muted) 76%, transparent);
+  font-size: 11px;
 }
 
 .cos-uploader__content {

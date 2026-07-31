@@ -2,6 +2,7 @@ import {
   HomepageLinkType,
   HomepageSectionType,
   type HomepageDraftConfig,
+  type HomepageValidationIssue,
 } from '@bake-mall/contracts';
 import { mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
@@ -81,9 +82,11 @@ const draft: HomepageDraftConfig = {
   ],
 };
 
-function mountForm(): ReturnType<typeof mount<typeof HomepageEditorForm>> {
+function mountForm(
+  issues: readonly HomepageValidationIssue[] = [],
+): ReturnType<typeof mount<typeof HomepageEditorForm>> {
   return mount(HomepageEditorForm, {
-    props: { draft, categories: [], products: [] },
+    props: { draft, categories: [], products: [], issues },
     global: {
       stubs: {
         CosImageUploader: true,
@@ -108,6 +111,42 @@ describe('HomepageEditorForm', () => {
     expect(
       wrapper.get('[data-editor-panel="customer-service"]').isVisible(),
     ).toBe(true);
+  });
+
+  it('marks affected section and item tabs with validation dots', async () => {
+    const wrapper = mountForm([
+      {
+        code: 'HERO_IMAGE_REQUIRED',
+        message: '请上传轮播图',
+        sectionId: 'hero',
+        itemId: 'hero-2',
+        field: 'image',
+      },
+      {
+        code: 'SERVICE_PHONE_REQUIRED',
+        message: '请填写客服电话',
+        sectionId: 'customer-service',
+        field: 'phone',
+      },
+    ]);
+
+    expect(
+      wrapper.find('[data-editor-tab="hero"] [data-validation-dot]').exists(),
+    ).toBe(true);
+    expect(
+      wrapper
+        .find('[data-editor-tab="customer-service"] [data-validation-dot]')
+        .exists(),
+    ).toBe(true);
+    expect(
+      wrapper.find('[data-item-tab="hero-2"] [data-validation-dot]').exists(),
+    ).toBe(true);
+    expect(
+      wrapper.find('[data-item-tab="hero-1"] [data-validation-dot]').exists(),
+    ).toBe(false);
+    expect(wrapper.get('.homepage-repeater').classes()).toContain(
+      'homepage-repeater--vertical',
+    );
   });
 
   it('opens the requested type and repeated item for validation navigation', async () => {

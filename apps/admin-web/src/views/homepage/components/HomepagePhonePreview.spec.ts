@@ -45,5 +45,11 @@ describe('HomepagePhonePreview', () => {
       '390/844',
     );
     expect(wrapper.find('[data-preview-screen]').exists()).toBe(true);
+    expect(wrapper.get('[data-preview-canvas]').attributes('data-width')).toBe(
+      '390',
+    );
+    expect(wrapper.get('[data-preview-canvas]').attributes('data-height')).toBe(
+      '844',
+    );
   });
 });

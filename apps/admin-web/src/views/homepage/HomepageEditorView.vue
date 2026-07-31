@@ -7,11 +7,10 @@ import {
   ElMessageBox,
   ElSkeleton,
 } from 'element-plus';
-import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { onBeforeRouteLeave } from 'vue-router';
 
 import AdminPage from '../../components/layout/AdminPage.vue';
-import AdminPageHeader from '../../components/layout/AdminPageHeader.vue';
 import HomepageEditorForm from './components/HomepageEditorForm.vue';
 import HomepagePhonePreview from './components/HomepagePhonePreview.vue';
 import HomepagePublishBar from './components/HomepagePublishBar.vue';
@@ -19,6 +18,11 @@ import { useHomepageEditor } from './hooks/useHomepageEditor.js';
 
 const editor = useHomepageEditor();
 const editorForm = ref<InstanceType<typeof HomepageEditorForm> | null>(null);
+const hasAlert = computed(
+  () =>
+    Boolean(editor.lastError.value && !editor.loading.value) ||
+    Boolean(editor.conflict.value),
+);
 
 function message(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
@@ -119,23 +123,12 @@ onBeforeUnmount(() =>
 </script>
 
 <template>
-  <AdminPage workspace class="homepage-editor-view">
-    <template #header>
-      <AdminPageHeader
-        eyebrow="HOMEPAGE STUDIO"
-        title="首页装修"
-        description="保存草稿后先在手机模型中确认，再显式发布；未发布的修改不会影响线上商城。"
-      />
-    </template>
-
-    <template
-      v-if="
-        (editor.lastError.value && !editor.loading.value) ||
-        editor.conflict.value
-      "
-      #alert
+  <AdminPage class="homepage-editor-view">
+    <div
+      class="homepage-editor-view__workspace"
+      :class="{ 'homepage-editor-view__workspace--with-alert': hasAlert }"
     >
-      <div class="homepage-editor-view__alerts">
+      <div v-if="hasAlert" class="homepage-editor-view__alerts">
         <ElAlert
           v-if="editor.lastError.value && !editor.loading.value"
           type="error"
@@ -163,42 +156,23 @@ onBeforeUnmount(() =>
           </template>
         </ElAlert>
       </div>
-    </template>
 
-    <section v-if="editor.loading.value" class="homepage-editor-view__loading">
-      <strong>正在读取首页装修草稿</strong>
-      <ElSkeleton :rows="10" animated />
-    </section>
+      <section
+        v-if="editor.loading.value"
+        class="homepage-editor-view__loading"
+      >
+        <strong>正在读取首页装修草稿</strong>
+        <ElSkeleton :rows="10" animated />
+      </section>
 
-    <div v-else class="homepage-editor-view__workspace">
-      <div class="homepage-editor-view__layout">
+      <div v-else class="homepage-editor-view__layout">
         <div class="homepage-editor-view__configuration" data-editor-scroll>
-          <section
-            v-if="editor.issues.value.length"
-            class="homepage-editor-view__issues"
-            aria-label="发布校验问题"
-          >
-            <header>
-              <strong
-                >发布前还需处理 {{ editor.issues.value.length }} 项</strong
-              >
-              <span>点击问题可定位到对应内容</span>
-            </header>
-            <button
-              v-for="issue in editor.issues.value"
-              :key="`${issue.code}-${issue.sectionId}-${issue.itemId ?? ''}-${issue.field ?? ''}`"
-              type="button"
-              @click="locateIssue(issue)"
-            >
-              {{ issue.message }}
-            </button>
-          </section>
-
           <HomepageEditorForm
             ref="editorForm"
             :draft="editor.draft.value"
             :categories="editor.categories.value"
             :products="editor.products.value"
+            :issues="editor.issues.value"
             @update:draft="editor.replaceDraft"
           />
         </div>
@@ -228,6 +202,11 @@ onBeforeUnmount(() =>
   min-height: 0;
 }
 
+.homepage-editor-view {
+  height: 100%;
+  overflow: hidden;
+}
+
 .homepage-editor-view__alerts {
   display: grid;
   gap: 10px;
@@ -239,6 +218,10 @@ onBeforeUnmount(() =>
   grid-template-rows: minmax(0, 1fr) auto;
   gap: 12px;
   overflow: hidden;
+}
+
+.homepage-editor-view__workspace--with-alert {
+  grid-template-rows: auto minmax(0, 1fr) auto;
 }
 
 .homepage-editor-view__layout {
@@ -264,8 +247,7 @@ onBeforeUnmount(() =>
   margin-top: 14px;
 }
 
-.homepage-editor-view__loading,
-.homepage-editor-view__issues {
+.homepage-editor-view__loading {
   display: grid;
   gap: 14px;
   padding: 20px;
@@ -273,38 +255,6 @@ onBeforeUnmount(() =>
   border-radius: var(--admin-radius-card);
   background: var(--admin-surface);
   box-shadow: var(--admin-shadow-card);
-}
-
-.homepage-editor-view__issues {
-  border-color: color-mix(
-    in srgb,
-    var(--admin-danger) 30%,
-    var(--admin-border)
-  );
-  background: color-mix(in srgb, var(--admin-danger) 4%, var(--admin-surface));
-}
-
-.homepage-editor-view__issues header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.homepage-editor-view__issues header span {
-  color: var(--admin-muted);
-  font-size: 12px;
-}
-
-.homepage-editor-view__issues button {
-  padding: 10px 12px;
-  border: 1px solid var(--admin-border);
-  border-radius: 10px;
-  background: var(--admin-surface);
-  color: var(--admin-danger);
-  cursor: pointer;
-  font: inherit;
-  text-align: left;
 }
 
 .homepage-editor-view__alert-copy {

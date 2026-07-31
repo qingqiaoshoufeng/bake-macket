@@ -25,6 +25,7 @@ const props = defineProps<{
   readonly categories: readonly AdminCategoryView[];
   readonly products: readonly AdminProductSummaryView[];
   readonly activeItemId: string | null;
+  readonly issueItemIds: readonly string[];
 }>();
 
 const emit = defineEmits<{
@@ -101,51 +102,60 @@ function requestLayout(layout: HomepageGridLayout): void {
       </ElFormItem>
     </div>
 
-    <nav class="homepage-item-tabs" aria-label="宫格入口配置">
-      <button
-        v-for="(item, index) in section.items"
-        :key="item.id"
-        type="button"
-        :class="{ 'is-active': item.id === activeItemId }"
-        :data-item-tab="item.id"
-        @click="emit('select-item', item.id)"
-      >
-        入口 {{ index + 1 }}
-      </button>
-    </nav>
-
-    <div class="homepage-editor-list">
-      <article
-        v-for="(item, index) in section.items"
-        v-show="item.id === activeItemId"
-        :id="item.id"
-        :key="item.id"
-        class="homepage-editor-card"
-      >
-        <header>
-          <strong>入口 {{ index + 1 }}</strong>
-        </header>
-        <CosImageUploader
-          scope="homepage"
-          :model-value="item.image"
-          preview-aspect-ratio="1 / 1"
-          scene-hint="建议使用正方形图标"
-          @update:model-value="updateItem(index, { image: $event })"
-        />
-        <ElFormItem label="名称" required>
-          <ElInput
-            :model-value="item.label"
-            maxlength="24"
-            @update:model-value="updateItem(index, { label: String($event) })"
+    <div class="homepage-repeater homepage-repeater--vertical">
+      <nav class="homepage-item-tabs" aria-label="宫格入口配置">
+        <button
+          v-for="(item, index) in section.items"
+          :key="item.id"
+          type="button"
+          :class="{ 'is-active': item.id === activeItemId }"
+          :data-item-tab="item.id"
+          @click="emit('select-item', item.id)"
+        >
+          入口 {{ index + 1 }}
+          <i
+            v-if="issueItemIds.includes(item.id)"
+            class="homepage-validation-dot"
+            data-validation-dot
+            aria-label="有未填写项"
           />
-        </ElFormItem>
-        <HomepageLinkEditor
-          :model-value="item.link"
-          :categories="categories"
-          :products="products"
-          @update:model-value="updateItem(index, { link: $event })"
-        />
-      </article>
+        </button>
+      </nav>
+
+      <div class="homepage-editor-list">
+        <article
+          v-for="(item, index) in section.items"
+          v-show="item.id === activeItemId"
+          :id="item.id"
+          :key="item.id"
+          class="homepage-editor-card"
+        >
+          <header>
+            <strong>入口 {{ index + 1 }}</strong>
+          </header>
+          <CosImageUploader
+            compact
+            scope="homepage"
+            :model-value="item.image"
+            preview-aspect-ratio="1 / 1"
+            scene-hint="建议使用正方形图标"
+            @update:model-value="updateItem(index, { image: $event })"
+          />
+          <ElFormItem label="名称" required>
+            <ElInput
+              :model-value="item.label"
+              maxlength="24"
+              @update:model-value="updateItem(index, { label: String($event) })"
+            />
+          </ElFormItem>
+          <HomepageLinkEditor
+            :model-value="item.link"
+            :categories="categories"
+            :products="products"
+            @update:model-value="updateItem(index, { link: $event })"
+          />
+        </article>
+      </div>
     </div>
   </section>
 </template>

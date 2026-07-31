@@ -4,6 +4,7 @@ import type {
   AdminProductSummaryView,
   HomepageDraftConfig,
   HomepageGridLayout,
+  HomepageValidationIssue,
 } from '@bake-mall/contracts';
 import { ElMessageBox } from 'element-plus';
 import { computed, ref } from 'vue';
@@ -22,6 +23,7 @@ const props = defineProps<{
   readonly draft: HomepageDraftConfig;
   readonly categories: readonly AdminCategoryView[];
   readonly products: readonly AdminProductSummaryView[];
+  readonly issues: readonly HomepageValidationIssue[];
 }>();
 
 const emit = defineEmits<{
@@ -90,6 +92,14 @@ function findItemTab(itemId: string): HomepageEditorTab | null {
   return null;
 }
 
+function issueTarget(issue: HomepageValidationIssue): string {
+  return issue.itemId ?? issue.sectionId;
+}
+
+function tabHasIssue(tab: HomepageEditorTab): boolean {
+  return props.issues.some((issue) => findItemTab(issueTarget(issue)) === tab);
+}
+
 function openItem(itemId: string): void {
   const tab = findItemTab(itemId);
   if (!tab) return;
@@ -140,6 +150,12 @@ async function changeShortcutLayout(layout: HomepageGridLayout): Promise<void> {
       >
         <small>{{ tab.eyebrow }}</small>
         <span>{{ tab.label }}</span>
+        <i
+          v-if="tabHasIssue(tab.key)"
+          class="homepage-validation-dot"
+          data-validation-dot
+          aria-label="有未填写项"
+        />
       </button>
     </nav>
 
@@ -151,6 +167,7 @@ async function changeShortcutLayout(layout: HomepageGridLayout): Promise<void> {
         :categories="categories"
         :products="products"
         :active-slide-id="activeItemIds.hero"
+        :issue-item-ids="issues.map(issueTarget)"
         @select-slide="selectItem"
         @update:section="updateDraft({ hero: $event })"
       />
@@ -167,6 +184,7 @@ async function changeShortcutLayout(layout: HomepageGridLayout): Promise<void> {
         :categories="categories"
         :products="products"
         :active-item-id="activeItemIds['shortcut-grid']"
+        :issue-item-ids="issues.map(issueTarget)"
         @select-item="selectItem"
         @update:section="updateDraft({ shortcutGrid: $event })"
         @request-layout-change="changeShortcutLayout"
@@ -178,6 +196,7 @@ async function changeShortcutLayout(layout: HomepageGridLayout): Promise<void> {
         :categories="categories"
         :products="products"
         :active-block-id="activeItemIds['image-blocks']"
+        :issue-item-ids="issues.map(issueTarget)"
         @select-block="selectItem"
         @update:blocks="updateDraft({ imageBlocks: $event })"
       />
@@ -223,6 +242,7 @@ async function changeShortcutLayout(layout: HomepageGridLayout): Promise<void> {
 }
 
 .homepage-editor-form__tabs button {
+  position: relative;
   display: grid;
   grid-template-columns: auto auto;
   align-items: center;
@@ -237,6 +257,19 @@ async function changeShortcutLayout(layout: HomepageGridLayout): Promise<void> {
   font-size: 9px;
   font-weight: 800;
   letter-spacing: 0.12em;
+}
+
+.homepage-validation-dot,
+.homepage-editor-form :deep(.homepage-validation-dot) {
+  position: absolute;
+  top: 5px;
+  right: 6px;
+  width: 7px;
+  height: 7px;
+  border: 2px solid var(--admin-surface);
+  border-radius: 50%;
+  background: var(--admin-danger);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--admin-danger) 12%, transparent);
 }
 
 .homepage-editor-form__tabs button.is-active {
@@ -296,19 +329,36 @@ async function changeShortcutLayout(layout: HomepageGridLayout): Promise<void> {
   font-size: 18px;
 }
 
-.homepage-editor-form :deep(.homepage-editor-list) {
+.homepage-editor-form :deep(.homepage-repeater--vertical) {
   display: grid;
+  min-width: 0;
+  grid-template-columns: 112px minmax(0, 1fr);
+  align-items: start;
   gap: 14px;
   margin-bottom: 14px;
 }
 
+.homepage-editor-form :deep(.homepage-editor-list) {
+  display: grid;
+  min-width: 0;
+  gap: 14px;
+}
+
 .homepage-editor-form :deep(.homepage-item-tabs) {
-  margin-bottom: 14px;
-  padding-bottom: 2px;
+  position: sticky;
+  top: 62px;
+  display: grid;
+  max-height: 420px;
+  gap: 7px;
+  padding-right: 4px;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .homepage-editor-form :deep(.homepage-item-tabs button) {
-  min-width: 82px;
+  position: relative;
+  width: 100%;
+  min-width: 0;
   padding: 8px 11px;
   border: 1px solid var(--admin-border);
   border-radius: 999px;
@@ -366,8 +416,22 @@ async function changeShortcutLayout(layout: HomepageGridLayout): Promise<void> {
 }
 
 @media (max-width: 720px) {
-  .homepage-editor-form :deep(.homepage-editor-grid) {
+  .homepage-editor-form :deep(.homepage-editor-grid),
+  .homepage-editor-form :deep(.homepage-repeater--vertical) {
     grid-template-columns: 1fr;
+  }
+
+  .homepage-editor-form :deep(.homepage-item-tabs) {
+    position: static;
+    display: flex;
+    max-height: none;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .homepage-editor-form :deep(.homepage-item-tabs button) {
+    width: auto;
+    min-width: 82px;
   }
 }
 </style>

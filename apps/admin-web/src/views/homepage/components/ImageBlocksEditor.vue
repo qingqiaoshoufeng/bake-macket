@@ -17,6 +17,7 @@ const props = defineProps<{
   readonly categories: readonly AdminCategoryView[];
   readonly products: readonly AdminProductSummaryView[];
   readonly activeBlockId: string | null;
+  readonly issueItemIds: readonly string[];
 }>();
 
 const emit = defineEmits<{
@@ -80,7 +81,7 @@ function moveBlock(index: number, direction: -1 | 1): void {
     <p v-if="blocks.length === 0" class="homepage-editor-empty">
       配图区可留空；需要时再添加。
     </p>
-    <template v-else>
+    <div v-else class="homepage-repeater homepage-repeater--vertical">
       <nav class="homepage-item-tabs" aria-label="配图区配置">
         <button
           v-for="(block, index) in blocks"
@@ -91,6 +92,12 @@ function moveBlock(index: number, direction: -1 | 1): void {
           @click="emit('select-block', block.id)"
         >
           配图区 {{ index + 1 }}
+          <i
+            v-if="issueItemIds.includes(block.id)"
+            class="homepage-validation-dot"
+            data-validation-dot
+            aria-label="有未填写项"
+          />
         </button>
       </nav>
       <div class="homepage-editor-list">
@@ -126,6 +133,7 @@ function moveBlock(index: number, direction: -1 | 1): void {
             </div>
           </header>
           <CosImageUploader
+            compact
             scope="homepage"
             :model-value="block.image"
             preview-aspect-ratio="16 / 9"
@@ -171,6 +179,6 @@ function moveBlock(index: number, direction: -1 | 1): void {
           />
         </article>
       </div>
-    </template>
+    </div>
   </section>
 </template>

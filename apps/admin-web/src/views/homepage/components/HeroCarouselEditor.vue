@@ -25,6 +25,7 @@ const props = defineProps<{
   readonly categories: readonly AdminCategoryView[];
   readonly products: readonly AdminProductSummaryView[];
   readonly activeSlideId: string | null;
+  readonly issueItemIds: readonly string[];
 }>();
 
 const emit = defineEmits<{
@@ -105,7 +106,10 @@ function removeSlide(index: number): void {
       </ElSelect>
     </ElFormItem>
 
-    <template v-if="section.slides.length">
+    <div
+      v-if="section.slides.length"
+      class="homepage-repeater homepage-repeater--vertical"
+    >
       <nav class="homepage-item-tabs" aria-label="轮播图配置">
         <button
           v-for="(slide, index) in section.slides"
@@ -116,6 +120,12 @@ function removeSlide(index: number): void {
           @click="emit('select-slide', slide.id)"
         >
           轮播图 {{ index + 1 }}
+          <i
+            v-if="issueItemIds.includes(slide.id)"
+            class="homepage-validation-dot"
+            data-validation-dot
+            aria-label="有未填写项"
+          />
         </button>
       </nav>
       <div class="homepage-editor-list">
@@ -133,6 +143,7 @@ function removeSlide(index: number): void {
             >
           </header>
           <CosImageUploader
+            compact
             scope="homepage"
             :model-value="slide.image"
             preview-aspect-ratio="750 / 1334"
@@ -176,7 +187,7 @@ function removeSlide(index: number): void {
           />
         </article>
       </div>
-    </template>
+    </div>
     <p v-else class="homepage-editor-empty">
       还没有轮播图，发布前至少添加一张。
     </p>

@@ -80,6 +80,31 @@ describe('CosImageUploader', () => {
     expect(wrapper.emitted('update:modelValue')?.at(-1)?.[0]).toBeNull();
   });
 
+  it('renders a quiet compact picker without repeated upload instructions', () => {
+    const wrapper = mount(CosImageUploader, {
+      props: {
+        scope: 'homepage',
+        modelValue: null,
+        compact: true,
+        sceneHint: '建议竖屏 750×1334',
+      },
+    });
+
+    expect(wrapper.get('.cos-uploader').attributes('data-compact')).toBe(
+      'true',
+    );
+    expect(
+      wrapper
+        .findAll('button')
+        .filter((button) => button.text().trim() === '选择图片'),
+    ).toHaveLength(1);
+    expect(wrapper.get('.cos-uploader__placeholder').text()).toBe('＋');
+    expect(wrapper.text()).toContain('建议竖屏 750×1334');
+    expect(wrapper.text()).not.toContain('拖放图片到这里');
+    expect(wrapper.text()).not.toContain('点击选择本地文件');
+    expect(wrapper.text()).not.toContain('支持 JPEG');
+  });
+
   it('uploads a valid dropped file and closes uploading state', async () => {
     vi.mocked(performUpload).mockResolvedValue({
       ...uploadedAsset,
