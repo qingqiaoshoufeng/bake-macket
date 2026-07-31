@@ -7,7 +7,7 @@ import {
   ElMessageBox,
   ElSkeleton,
 } from 'element-plus';
-import { onBeforeUnmount, onMounted } from 'vue';
+import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { onBeforeRouteLeave } from 'vue-router';
 
 import AdminPage from '../../components/layout/AdminPage.vue';
@@ -18,6 +18,7 @@ import HomepagePublishBar from './components/HomepagePublishBar.vue';
 import { useHomepageEditor } from './hooks/useHomepageEditor.js';
 
 const editor = useHomepageEditor();
+const editorForm = ref<InstanceType<typeof HomepageEditorForm> | null>(null);
 
 function message(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
@@ -52,7 +53,7 @@ async function publish(): Promise<void> {
     ElMessage.success('首页已发布到 H5');
   } catch (error) {
     ElMessage.error(message(error, '首页发布失败'));
-    if (editor.issues.value[0]) locateIssue(editor.issues.value[0]);
+    if (editor.issues.value[0]) void locateIssue(editor.issues.value[0]);
   }
 }
 
@@ -61,7 +62,11 @@ async function reloadServerDraft(): Promise<void> {
     await ElMessageBox.confirm(
       '重新加载会覆盖当前本地草稿，是否继续？',
       '确认重新加载',
-      { type: 'warning', confirmButtonText: '重新加载', cancelButtonText: '保留本地草稿' },
+      {
+        type: 'warning',
+        confirmButtonText: '重新加载',
+        cancelButtonText: '保留本地草稿',
+      },
     );
     await load();
     ElMessage.success('已加载服务器最新草稿');
@@ -70,9 +75,13 @@ async function reloadServerDraft(): Promise<void> {
   }
 }
 
-function locateIssue(issue: HomepageValidationIssue): void {
-  const target = document.getElementById(issue.itemId ?? issue.sectionId);
-  target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+async function locateIssue(issue: HomepageValidationIssue): Promise<void> {
+  const targetId = issue.itemId ?? issue.sectionId;
+  editorForm.value?.openItem(targetId);
+  await nextTick();
+  document
+    .getElementById(targetId)
+    ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 function confirmUnload(event: BeforeUnloadEvent): void {
@@ -87,7 +96,11 @@ onBeforeRouteLeave(async () => {
     await ElMessageBox.confirm(
       '当前首页草稿尚未保存，确定离开吗？',
       '离开编辑页面',
-      { type: 'warning', confirmButtonText: '离开', cancelButtonText: '继续编辑' },
+      {
+        type: 'warning',
+        confirmButtonText: '离开',
+        cancelButtonText: '继续编辑',
+      },
     );
     return true;
   } catch {
@@ -100,56 +113,75 @@ onMounted(() => {
   void load();
 });
 
-onBeforeUnmount(() => window.removeEventListener('beforeunload', confirmUnload));
+onBeforeUnmount(() =>
+  window.removeEventListener('beforeunload', confirmUnload),
+);
 </script>
 
 <template>
-  <AdminPage class="homepage-editor-view">
-    <AdminPageHeader
-      eyebrow="HOMEPAGE STUDIO"
-      title="首页装修"
-      description="保存草稿后先在手机模型中确认，再显式发布；未发布的修改不会影响线上商城。"
-    />
+  <AdminPage workspace class="homepage-editor-view">
+    <template #header>
+      <AdminPageHeader
+        eyebrow="HOMEPAGE STUDIO"
+        title="首页装修"
+        description="保存草稿后先在手机模型中确认，再显式发布；未发布的修改不会影响线上商城。"
+      />
+    </template>
 
-    <ElAlert
-      v-if="editor.lastError.value && !editor.loading.value"
-      type="error"
-      title="首页装修操作失败"
-      :description="editor.lastError.value"
-      :closable="false"
-      show-icon
-    />
-
-    <ElAlert
-      v-if="editor.conflict.value"
-      type="warning"
-      title="服务器草稿已更新"
-      :closable="false"
-      show-icon
+    <template
+      v-if="
+        (editor.lastError.value && !editor.loading.value) ||
+        editor.conflict.value
+      "
+      #alert
     >
-      <template #default>
-        <p class="homepage-editor-view__alert-copy">
-          {{ editor.conflict.value }}。本地草稿仍然保留，只有明确重新加载才会覆盖。
-        </p>
-        <ElButton size="small" @click="reloadServerDraft">重新加载服务器草稿</ElButton>
-      </template>
-    </ElAlert>
+      <div class="homepage-editor-view__alerts">
+        <ElAlert
+          v-if="editor.lastError.value && !editor.loading.value"
+          type="error"
+          title="首页装修操作失败"
+          :description="editor.lastError.value"
+          :closable="false"
+          show-icon
+        />
+        <ElAlert
+          v-if="editor.conflict.value"
+          type="warning"
+          title="服务器草稿已更新"
+          :closable="false"
+          show-icon
+        >
+          <template #default>
+            <p class="homepage-editor-view__alert-copy">
+              {{
+                editor.conflict.value
+              }}。本地草稿仍然保留，只有明确重新加载才会覆盖。
+            </p>
+            <ElButton size="small" @click="reloadServerDraft">
+              重新加载服务器草稿
+            </ElButton>
+          </template>
+        </ElAlert>
+      </div>
+    </template>
 
     <section v-if="editor.loading.value" class="homepage-editor-view__loading">
       <strong>正在读取首页装修草稿</strong>
       <ElSkeleton :rows="10" animated />
     </section>
 
-    <template v-else>
+    <div v-else class="homepage-editor-view__workspace">
       <div class="homepage-editor-view__layout">
-        <div>
+        <div class="homepage-editor-view__configuration" data-editor-scroll>
           <section
             v-if="editor.issues.value.length"
             class="homepage-editor-view__issues"
             aria-label="发布校验问题"
           >
             <header>
-              <strong>发布前还需处理 {{ editor.issues.value.length }} 项</strong>
+              <strong
+                >发布前还需处理 {{ editor.issues.value.length }} 项</strong
+              >
               <span>点击问题可定位到对应内容</span>
             </header>
             <button
@@ -163,6 +195,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', confirmUnload))
           </section>
 
           <HomepageEditorForm
+            ref="editorForm"
             :draft="editor.draft.value"
             :categories="editor.categories.value"
             :products="editor.products.value"
@@ -184,27 +217,51 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', confirmUnload))
         @publish="publish"
         @locate-issue="locateIssue"
       />
-    </template>
+    </div>
   </AdminPage>
 </template>
 
 <style scoped>
-.homepage-editor-view {
+.homepage-editor-view,
+.homepage-editor-view__workspace,
+.homepage-editor-view__layout {
+  min-height: 0;
+}
+
+.homepage-editor-view__alerts {
   display: grid;
-  gap: 18px;
+  gap: 10px;
+}
+
+.homepage-editor-view__workspace {
+  display: grid;
+  height: 100%;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 12px;
+  overflow: hidden;
 }
 
 .homepage-editor-view__layout {
   display: grid;
-  align-items: start;
-  grid-template-columns: minmax(0, 1.45fr) minmax(340px, 0.8fr);
+  height: 100%;
+  grid-template-columns: minmax(500px, 1.45fr) minmax(320px, 0.8fr);
   gap: 22px;
+  overflow: hidden;
 }
 
-.homepage-editor-view__layout > div:first-child {
-  display: grid;
-  gap: 18px;
+.homepage-editor-view__configuration {
   min-width: 0;
+  min-height: 0;
+  padding-right: 8px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: color-mix(in srgb, var(--admin-mint) 45%, transparent)
+    transparent;
+  scrollbar-width: thin;
+}
+
+.homepage-editor-view__configuration > * + * {
+  margin-top: 14px;
 }
 
 .homepage-editor-view__loading,
@@ -219,7 +276,11 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', confirmUnload))
 }
 
 .homepage-editor-view__issues {
-  border-color: color-mix(in srgb, var(--admin-danger) 30%, var(--admin-border));
+  border-color: color-mix(
+    in srgb,
+    var(--admin-danger) 30%,
+    var(--admin-border)
+  );
   background: color-mix(in srgb, var(--admin-danger) 4%, var(--admin-surface));
 }
 
@@ -252,7 +313,8 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', confirmUnload))
 
 @media (max-width: 1180px) {
   .homepage-editor-view__layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(430px, 1fr) minmax(280px, 0.72fr);
+    gap: 14px;
   }
 }
 </style>

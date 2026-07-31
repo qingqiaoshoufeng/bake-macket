@@ -16,10 +16,12 @@ const props = defineProps<{
   readonly blocks: HomepageDraftConfig['imageBlocks'];
   readonly categories: readonly AdminCategoryView[];
   readonly products: readonly AdminProductSummaryView[];
+  readonly activeBlockId: string | null;
 }>();
 
 const emit = defineEmits<{
   'update:blocks': [value: HomepageDraftConfig['imageBlocks']];
+  'select-block': [blockId: string];
 }>();
 
 function updateBlock(
@@ -78,70 +80,97 @@ function moveBlock(index: number, direction: -1 | 1): void {
     <p v-if="blocks.length === 0" class="homepage-editor-empty">
       配图区可留空；需要时再添加。
     </p>
-    <div v-else class="homepage-editor-list">
-      <article
-        v-for="(block, index) in blocks"
-        :id="block.id"
-        :key="block.id"
-        class="homepage-editor-card"
-      >
-        <header>
-          <strong>配图区 {{ index + 1 }}</strong>
-          <div class="homepage-editor-card__actions">
-            <ElSwitch
-              :model-value="block.enabled"
-              active-text="启用"
-              @update:model-value="updateBlock(index, { enabled: Boolean($event) })"
-            />
-            <ElButton :disabled="index === 0" @click="moveBlock(index, -1)">上移</ElButton>
-            <ElButton
-              :disabled="index === blocks.length - 1"
-              @click="moveBlock(index, 1)"
-            >
-              下移
-            </ElButton>
-            <ElButton type="danger" plain @click="removeBlock(index)">删除</ElButton>
-          </div>
-        </header>
-        <CosImageUploader
-          scope="homepage"
-          :model-value="block.image"
-          preview-aspect-ratio="16 / 9"
-          scene-hint="建议使用横向宽图"
-          @update:model-value="updateBlock(index, { image: $event })"
-        />
-        <div class="homepage-editor-grid">
-          <ElFormItem label="标题">
-            <ElInput
-              :model-value="block.title"
-              maxlength="80"
-              @update:model-value="updateBlock(index, { title: String($event) })"
-            />
-          </ElFormItem>
-          <ElFormItem label="图片替代文字">
-            <ElInput
-              :model-value="block.altText"
-              maxlength="160"
-              @update:model-value="updateBlock(index, { altText: String($event) })"
-            />
-          </ElFormItem>
-        </div>
-        <ElFormItem label="说明">
-          <ElInput
-            type="textarea"
-            :rows="2"
-            :model-value="block.description"
-            maxlength="240"
-            @update:model-value="updateBlock(index, { description: String($event) })"
+    <template v-else>
+      <nav class="homepage-item-tabs" aria-label="配图区配置">
+        <button
+          v-for="(block, index) in blocks"
+          :key="block.id"
+          type="button"
+          :class="{ 'is-active': block.id === activeBlockId }"
+          :data-item-tab="block.id"
+          @click="emit('select-block', block.id)"
+        >
+          配图区 {{ index + 1 }}
+        </button>
+      </nav>
+      <div class="homepage-editor-list">
+        <article
+          v-for="(block, index) in blocks"
+          v-show="block.id === activeBlockId"
+          :id="block.id"
+          :key="block.id"
+          class="homepage-editor-card"
+        >
+          <header>
+            <strong>配图区 {{ index + 1 }}</strong>
+            <div class="homepage-editor-card__actions">
+              <ElSwitch
+                :model-value="block.enabled"
+                active-text="启用"
+                @update:model-value="
+                  updateBlock(index, { enabled: Boolean($event) })
+                "
+              />
+              <ElButton :disabled="index === 0" @click="moveBlock(index, -1)"
+                >上移</ElButton
+              >
+              <ElButton
+                :disabled="index === blocks.length - 1"
+                @click="moveBlock(index, 1)"
+              >
+                下移
+              </ElButton>
+              <ElButton type="danger" plain @click="removeBlock(index)"
+                >删除</ElButton
+              >
+            </div>
+          </header>
+          <CosImageUploader
+            scope="homepage"
+            :model-value="block.image"
+            preview-aspect-ratio="16 / 9"
+            scene-hint="建议使用横向宽图"
+            @update:model-value="updateBlock(index, { image: $event })"
           />
-        </ElFormItem>
-        <HomepageLinkEditor
-          :model-value="block.link"
-          :categories="categories"
-          :products="products"
-          @update:model-value="updateBlock(index, { link: $event })"
-        />
-      </article>
-    </div>
+          <div class="homepage-editor-grid">
+            <ElFormItem label="标题">
+              <ElInput
+                :model-value="block.title"
+                maxlength="80"
+                @update:model-value="
+                  updateBlock(index, { title: String($event) })
+                "
+              />
+            </ElFormItem>
+            <ElFormItem label="图片替代文字">
+              <ElInput
+                :model-value="block.altText"
+                maxlength="160"
+                @update:model-value="
+                  updateBlock(index, { altText: String($event) })
+                "
+              />
+            </ElFormItem>
+          </div>
+          <ElFormItem label="说明">
+            <ElInput
+              type="textarea"
+              :rows="2"
+              :model-value="block.description"
+              maxlength="240"
+              @update:model-value="
+                updateBlock(index, { description: String($event) })
+              "
+            />
+          </ElFormItem>
+          <HomepageLinkEditor
+            :model-value="block.link"
+            :categories="categories"
+            :products="products"
+            @update:model-value="updateBlock(index, { link: $event })"
+          />
+        </article>
+      </div>
+    </template>
   </section>
 </template>

@@ -20,12 +20,13 @@ const currentSlide = computed(
   () => props.draft.hero.slides[activeSlide.value] ?? null,
 );
 
-watch(
-  () => props.draft.hero.slides.length,
-  (length) => {
-    if (activeSlide.value >= length) activeSlide.value = Math.max(0, length - 1);
-  },
-);
+function keepActiveSlideInRange(length: number): void {
+  if (activeSlide.value >= length) {
+    activeSlide.value = Math.max(0, length - 1);
+  }
+}
+
+watch(() => props.draft.hero.slides.length, keepActiveSlideInRange);
 
 function linkText(link: HomepageLink): string {
   if (link.type === HomepageLinkType.NONE) return '无跳转';
@@ -44,77 +45,100 @@ function linkText(link: HomepageLink): string {
       <span>LIVE HOMEPAGE</span>
       <small>预览中的链接不会离开后台</small>
     </header>
-    <div class="homepage-phone-preview__device">
-      <section v-if="draft.hero.enabled" class="homepage-phone-preview__hero">
-        <img
-          v-if="currentSlide?.image"
-          :src="currentSlide.image.publicUrl"
-          :alt="currentSlide.altText || '轮播预览'"
-        />
-        <div v-else class="homepage-phone-preview__placeholder">首屏轮播占位</div>
-        <div v-if="currentSlide" class="homepage-phone-preview__hero-copy">
-          <strong>{{ currentSlide.title || '轮播标题' }}</strong>
-          <span>{{ currentSlide.subtitle || linkText(currentSlide.link) }}</span>
-        </div>
-        <div v-if="draft.hero.slides.length > 1" class="homepage-phone-preview__dots">
-          <button
-            v-for="(slide, index) in draft.hero.slides"
-            :key="slide.id"
-            type="button"
-            :class="{ 'is-active': index === activeSlide }"
-            :aria-label="`查看轮播图 ${index + 1}`"
-            @click="activeSlide = index"
-          />
-        </div>
-      </section>
-
-      <div class="homepage-phone-preview__body">
-        <section
-          v-if="draft.customerService.enabled"
-          class="homepage-phone-preview__service"
-        >
-          <div>
-            <small>BAKER SERVICE</small>
-            <h3>{{ draft.customerService.title || '联系客服' }}</h3>
-            <p>{{ draft.customerService.description || '客服说明占位' }}</p>
-            <strong>{{ draft.customerService.phone || '客服电话未填写' }}</strong>
-            <span>{{ draft.customerService.serviceHours || '服务时间未填写' }}</span>
-          </div>
+    <div
+      class="homepage-phone-preview__device"
+      data-preview-device
+      data-aspect="390/844"
+    >
+      <div class="homepage-phone-preview__screen" data-preview-screen>
+        <section v-if="draft.hero.enabled" class="homepage-phone-preview__hero">
           <img
-            v-if="draft.customerService.wechatQrCode"
-            :src="draft.customerService.wechatQrCode.publicUrl"
-            alt="客服二维码预览"
+            v-if="currentSlide?.image"
+            :src="currentSlide.image.publicUrl"
+            :alt="currentSlide.altText || '轮播预览'"
           />
-          <div v-else class="homepage-phone-preview__qr">二维码</div>
-        </section>
-
-        <section v-if="draft.shortcutGrid.enabled">
-          <h3>{{ draft.shortcutGrid.title || '快捷入口' }}</h3>
+          <div v-else class="homepage-phone-preview__placeholder">
+            首屏轮播占位
+          </div>
+          <div v-if="currentSlide" class="homepage-phone-preview__hero-copy">
+            <strong>{{ currentSlide.title || '轮播标题' }}</strong>
+            <span>{{
+              currentSlide.subtitle || linkText(currentSlide.link)
+            }}</span>
+          </div>
           <div
-            class="homepage-phone-preview__grid"
-            :data-layout="draft.shortcutGrid.layout"
+            v-if="draft.hero.slides.length > 1"
+            class="homepage-phone-preview__dots"
           >
-            <article v-for="item in draft.shortcutGrid.items" :key="item.id">
-              <img v-if="item.image" :src="item.image.publicUrl" alt="" />
-              <div v-else class="homepage-phone-preview__icon">图</div>
-              <strong>{{ item.label || '入口名称' }}</strong>
-              <span>{{ linkText(item.link) }}</span>
-            </article>
+            <button
+              v-for="(slide, index) in draft.hero.slides"
+              :key="slide.id"
+              type="button"
+              :class="{ 'is-active': index === activeSlide }"
+              :aria-label="`查看轮播图 ${index + 1}`"
+              @click="activeSlide = index"
+            />
           </div>
         </section>
 
-        <article
-          v-for="block in visibleBlocks"
-          :key="block.id"
-          class="homepage-phone-preview__image-block"
-        >
-          <img v-if="block.image" :src="block.image.publicUrl" :alt="block.altText" />
-          <div v-else class="homepage-phone-preview__placeholder">配图占位</div>
-          <div>
-            <strong>{{ block.title || '配图标题' }}</strong>
-            <p>{{ block.description || linkText(block.link) }}</p>
-          </div>
-        </article>
+        <div class="homepage-phone-preview__body">
+          <section
+            v-if="draft.customerService.enabled"
+            class="homepage-phone-preview__service"
+          >
+            <div>
+              <small>BAKER SERVICE</small>
+              <h3>{{ draft.customerService.title || '联系客服' }}</h3>
+              <p>{{ draft.customerService.description || '客服说明占位' }}</p>
+              <strong>{{
+                draft.customerService.phone || '客服电话未填写'
+              }}</strong>
+              <span>{{
+                draft.customerService.serviceHours || '服务时间未填写'
+              }}</span>
+            </div>
+            <img
+              v-if="draft.customerService.wechatQrCode"
+              :src="draft.customerService.wechatQrCode.publicUrl"
+              alt="客服二维码预览"
+            />
+            <div v-else class="homepage-phone-preview__qr">二维码</div>
+          </section>
+
+          <section v-if="draft.shortcutGrid.enabled">
+            <h3>{{ draft.shortcutGrid.title || '快捷入口' }}</h3>
+            <div
+              class="homepage-phone-preview__grid"
+              :data-layout="draft.shortcutGrid.layout"
+            >
+              <article v-for="item in draft.shortcutGrid.items" :key="item.id">
+                <img v-if="item.image" :src="item.image.publicUrl" alt="" />
+                <div v-else class="homepage-phone-preview__icon">图</div>
+                <strong>{{ item.label || '入口名称' }}</strong>
+                <span>{{ linkText(item.link) }}</span>
+              </article>
+            </div>
+          </section>
+
+          <article
+            v-for="block in visibleBlocks"
+            :key="block.id"
+            class="homepage-phone-preview__image-block"
+          >
+            <img
+              v-if="block.image"
+              :src="block.image.publicUrl"
+              :alt="block.altText"
+            />
+            <div v-else class="homepage-phone-preview__placeholder">
+              配图占位
+            </div>
+            <div>
+              <strong>{{ block.title || '配图标题' }}</strong>
+              <p>{{ block.description || linkText(block.link) }}</p>
+            </div>
+          </article>
+        </div>
       </div>
     </div>
   </aside>
@@ -122,10 +146,12 @@ function linkText(link: HomepageLink): string {
 
 <style scoped>
 .homepage-phone-preview {
-  position: sticky;
-  top: calc(var(--admin-topbar-height) + 20px);
   display: grid;
-  gap: 12px;
+  min-width: 0;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+  overflow: hidden;
 }
 
 .homepage-phone-preview > header {
@@ -144,19 +170,68 @@ function linkText(link: HomepageLink): string {
 }
 
 .homepage-phone-preview__device {
-  width: min(100%, 390px);
-  max-height: calc(100vh - var(--admin-topbar-height) - 80px);
+  position: relative;
+  width: auto;
+  max-width: min(100%, 390px);
+  height: min(100%, 844px);
+  aspect-ratio: 390 / 844;
   margin: 0 auto;
+  padding: 7px;
+  overflow: hidden;
+  border: 1px solid
+    color-mix(in srgb, var(--admin-mint) 44%, var(--admin-border));
+  border-radius: 34px;
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--admin-surface) 84%, #d8eee4),
+    color-mix(in srgb, var(--admin-surface-soft) 82%, #f8e9dc)
+  );
+  box-shadow:
+    0 22px 46px rgb(103 137 121 / 18%),
+    inset 0 0 0 5px color-mix(in srgb, var(--admin-surface) 90%, transparent);
+}
+
+.homepage-phone-preview__device::before {
+  position: absolute;
+  z-index: 2;
+  top: 13px;
+  left: 50%;
+  width: 24%;
+  height: 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--admin-mint) 30%, var(--admin-border));
+  content: '';
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.homepage-phone-preview__screen {
+  height: 100%;
+  overflow-x: hidden;
   overflow-y: auto;
-  border: 9px solid #423b51;
-  border-radius: 36px;
+  overscroll-behavior: contain;
+  border: 1px solid color-mix(in srgb, var(--admin-border) 74%, transparent);
+  border-radius: 27px;
   background: #fffaf5;
-  box-shadow: 0 24px 52px rgb(73 57 105 / 22%);
+  scrollbar-color: color-mix(in srgb, var(--admin-mint) 46%, transparent)
+    transparent;
+  scrollbar-width: thin;
+}
+
+.homepage-phone-preview__screen::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.homepage-phone-preview__screen::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--admin-mint) 46%, transparent);
 }
 
 .homepage-phone-preview__hero {
   position: relative;
-  min-height: 360px;
+  min-height: 100%;
+  aspect-ratio: 390 / 844;
   overflow: hidden;
   background: #eee8f1;
 }
@@ -343,12 +418,8 @@ function linkText(link: HomepageLink): string {
 }
 
 @media (max-width: 1180px) {
-  .homepage-phone-preview {
-    position: static;
-  }
-
-  .homepage-phone-preview__device {
-    max-height: 720px;
+  .homepage-phone-preview > header small {
+    display: none;
   }
 }
 </style>

@@ -49,7 +49,7 @@ const routes: RouteRecordRaw[] = [
         path: 'homepage',
         name: 'admin-homepage',
         component: () => import('../views/homepage/HomepageEditorView.vue'),
-        meta: { title: '首页装修', layoutMode: 'document' },
+        meta: { title: '首页装修', layoutMode: 'workspace' },
       },
       {
         path: 'categories',

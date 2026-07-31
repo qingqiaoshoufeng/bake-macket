@@ -55,9 +55,7 @@ const emit = defineEmits<{
 
 <style scoped>
 .homepage-publish-bar {
-  position: sticky;
   z-index: 5;
-  bottom: 14px;
   display: flex;
   align-items: center;
   justify-content: space-between;

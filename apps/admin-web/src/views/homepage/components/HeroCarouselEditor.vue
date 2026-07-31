@@ -24,10 +24,12 @@ const props = defineProps<{
   readonly section: HomepageDraftConfig['hero'];
   readonly categories: readonly AdminCategoryView[];
   readonly products: readonly AdminProductSummaryView[];
+  readonly activeSlideId: string | null;
 }>();
 
 const emit = defineEmits<{
   'update:section': [value: HomepageDraftConfig['hero']];
+  'select-slide': [slideId: string];
 }>();
 
 function updateSection(patch: Partial<HomepageDraftConfig['hero']>): void {
@@ -88,7 +90,11 @@ function removeSlide(index: number): void {
     <ElFormItem label="自动播放">
       <ElSelect
         :model-value="section.autoplayMs"
-        @update:model-value="updateSection({ autoplayMs: Number($event) as 0 | 3000 | 5000 | 8000 })"
+        @update:model-value="
+          updateSection({
+            autoplayMs: Number($event) as 0 | 3000 | 5000 | 8000,
+          })
+        "
       >
         <ElOption
           v-for="option in AUTOPLAY_OPTIONS"
@@ -99,56 +105,81 @@ function removeSlide(index: number): void {
       </ElSelect>
     </ElFormItem>
 
-    <div v-if="section.slides.length" class="homepage-editor-list">
-      <article
-        v-for="(slide, index) in section.slides"
-        :id="slide.id"
-        :key="slide.id"
-        class="homepage-editor-card"
-      >
-        <header>
-          <strong>轮播图 {{ index + 1 }}</strong>
-          <ElButton type="danger" plain @click="removeSlide(index)">删除</ElButton>
-        </header>
-        <CosImageUploader
-          scope="homepage"
-          :model-value="slide.image"
-          preview-aspect-ratio="750 / 1334"
-          scene-hint="建议竖屏 750×1334"
-          @update:model-value="updateSlide(index, { image: $event })"
-        />
-        <div class="homepage-editor-grid">
-          <ElFormItem label="标题">
-            <ElInput
-              :model-value="slide.title"
-              maxlength="80"
-              @update:model-value="updateSlide(index, { title: String($event) })"
-            />
-          </ElFormItem>
-          <ElFormItem label="副标题">
-            <ElInput
-              :model-value="slide.subtitle"
-              maxlength="160"
-              @update:model-value="updateSlide(index, { subtitle: String($event) })"
-            />
-          </ElFormItem>
-          <ElFormItem label="图片替代文字">
-            <ElInput
-              :model-value="slide.altText"
-              maxlength="160"
-              @update:model-value="updateSlide(index, { altText: String($event) })"
-            />
-          </ElFormItem>
-        </div>
-        <HomepageLinkEditor
-          :model-value="slide.link"
-          :categories="categories"
-          :products="products"
-          @update:model-value="updateSlide(index, { link: $event })"
-        />
-      </article>
-    </div>
-    <p v-else class="homepage-editor-empty">还没有轮播图，发布前至少添加一张。</p>
+    <template v-if="section.slides.length">
+      <nav class="homepage-item-tabs" aria-label="轮播图配置">
+        <button
+          v-for="(slide, index) in section.slides"
+          :key="slide.id"
+          type="button"
+          :class="{ 'is-active': slide.id === activeSlideId }"
+          :data-item-tab="slide.id"
+          @click="emit('select-slide', slide.id)"
+        >
+          轮播图 {{ index + 1 }}
+        </button>
+      </nav>
+      <div class="homepage-editor-list">
+        <article
+          v-for="(slide, index) in section.slides"
+          v-show="slide.id === activeSlideId"
+          :id="slide.id"
+          :key="slide.id"
+          class="homepage-editor-card"
+        >
+          <header>
+            <strong>轮播图 {{ index + 1 }}</strong>
+            <ElButton type="danger" plain @click="removeSlide(index)"
+              >删除</ElButton
+            >
+          </header>
+          <CosImageUploader
+            scope="homepage"
+            :model-value="slide.image"
+            preview-aspect-ratio="750 / 1334"
+            scene-hint="建议竖屏 750×1334"
+            @update:model-value="updateSlide(index, { image: $event })"
+          />
+          <div class="homepage-editor-grid">
+            <ElFormItem label="标题">
+              <ElInput
+                :model-value="slide.title"
+                maxlength="80"
+                @update:model-value="
+                  updateSlide(index, { title: String($event) })
+                "
+              />
+            </ElFormItem>
+            <ElFormItem label="副标题">
+              <ElInput
+                :model-value="slide.subtitle"
+                maxlength="160"
+                @update:model-value="
+                  updateSlide(index, { subtitle: String($event) })
+                "
+              />
+            </ElFormItem>
+            <ElFormItem label="图片替代文字">
+              <ElInput
+                :model-value="slide.altText"
+                maxlength="160"
+                @update:model-value="
+                  updateSlide(index, { altText: String($event) })
+                "
+              />
+            </ElFormItem>
+          </div>
+          <HomepageLinkEditor
+            :model-value="slide.link"
+            :categories="categories"
+            :products="products"
+            @update:model-value="updateSlide(index, { link: $event })"
+          />
+        </article>
+      </div>
+    </template>
+    <p v-else class="homepage-editor-empty">
+      还没有轮播图，发布前至少添加一张。
+    </p>
     <ElButton :disabled="section.slides.length >= 10" @click="addSlide">
       添加轮播图（{{ section.slides.length }}/10）
     </ElButton>

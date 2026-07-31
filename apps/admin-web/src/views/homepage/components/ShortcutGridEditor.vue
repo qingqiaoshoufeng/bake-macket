@@ -24,11 +24,13 @@ const props = defineProps<{
   readonly section: HomepageDraftConfig['shortcutGrid'];
   readonly categories: readonly AdminCategoryView[];
   readonly products: readonly AdminProductSummaryView[];
+  readonly activeItemId: string | null;
 }>();
 
 const emit = defineEmits<{
   'update:section': [value: HomepageDraftConfig['shortcutGrid']];
   'request-layout-change': [layout: HomepageGridLayout];
+  'select-item': [itemId: string];
 }>();
 
 function updateSection(
@@ -53,7 +55,10 @@ function requestLayout(layout: HomepageGridLayout): void {
     emit('request-layout-change', layout);
     return;
   }
-  updateSection({ layout, items: resizeShortcutItems(props.section.items, layout) });
+  updateSection({
+    layout,
+    items: resizeShortcutItems(props.section.items, layout),
+  });
 }
 </script>
 
@@ -82,7 +87,9 @@ function requestLayout(layout: HomepageGridLayout): void {
       <ElFormItem label="宫格数量">
         <ElSelect
           :model-value="section.layout"
-          @update:model-value="requestLayout(Number($event) as HomepageGridLayout)"
+          @update:model-value="
+            requestLayout(Number($event) as HomepageGridLayout)
+          "
         >
           <ElOption
             v-for="layout in GRID_LAYOUT_OPTIONS"
@@ -94,14 +101,30 @@ function requestLayout(layout: HomepageGridLayout): void {
       </ElFormItem>
     </div>
 
+    <nav class="homepage-item-tabs" aria-label="宫格入口配置">
+      <button
+        v-for="(item, index) in section.items"
+        :key="item.id"
+        type="button"
+        :class="{ 'is-active': item.id === activeItemId }"
+        :data-item-tab="item.id"
+        @click="emit('select-item', item.id)"
+      >
+        入口 {{ index + 1 }}
+      </button>
+    </nav>
+
     <div class="homepage-editor-list">
       <article
         v-for="(item, index) in section.items"
+        v-show="item.id === activeItemId"
         :id="item.id"
         :key="item.id"
         class="homepage-editor-card"
       >
-        <header><strong>入口 {{ index + 1 }}</strong></header>
+        <header>
+          <strong>入口 {{ index + 1 }}</strong>
+        </header>
         <CosImageUploader
           scope="homepage"
           :model-value="item.image"

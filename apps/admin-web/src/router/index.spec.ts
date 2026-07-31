@@ -27,6 +27,7 @@ type ExpectedLayoutMode = 'workspace' | 'document';
 type LazyViewLoader = () => Promise<LazyViewModule>;
 
 const layoutCases = [
+  ['/homepage', 'workspace'],
   ['/categories', 'workspace'],
   ['/products', 'workspace'],
   ['/banners', 'workspace'],
@@ -70,7 +71,7 @@ describe('admin Banner route', () => {
     const component = routeRecord?.components?.default;
 
     expect(resolved.meta.requiresAdminAuth).toBe(true);
-    expect(resolved.meta.title).toBe('Banner 管理');
+    expect(resolved.meta.title).toBe('商品页 Banner');
     expect(typeof component).toBe('function');
 
     const loaded = await (component as LazyViewLoader)();
