@@ -178,12 +178,27 @@ const buildService = ({
     [MemberCreditEntry, entryRepository],
     [MemberCreditAllocation, allocationRepository],
   ]);
+  const query = vi.fn(async (_sql: string, parameters: unknown[]) => {
+    const [userId] = parameters;
+    if (!accountRows.some((row) => row.userId === userId)) {
+      accountRows = [
+        ...accountRows,
+        account({
+          id: `account-${accountRows.length + 1}`,
+          userId: String(userId),
+        }),
+      ];
+    }
+    return { affectedRows: 1 };
+  });
   const manager = {
     getRepository: vi.fn((entity: unknown) => repositories.get(entity)),
+    query,
   };
   return {
     service: new MembershipCreditService(),
     manager,
+    query,
     rows: () => ({
       accounts: accountRows,
       grants: grantRows,
@@ -196,20 +211,49 @@ const buildService = ({
 };
 
 describe('MembershipCreditService', () => {
-  it('creates a missing account then rereads it with a pessimistic write lock', async () => {
-    const { service, manager, rows, locks } = buildService();
+  it('materializes a missing account with a no-op upsert before locking it', async () => {
+    const { service, manager, query, rows, locks } = buildService();
 
     const result = await service.lockOrCreateAccount(
       manager as never,
       'user-1',
     );
 
+    expect(query).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /INSERT INTO member_accounts[\s\S]*ON DUPLICATE KEY UPDATE user_id = user_id/,
+      ),
+      ['user-1'],
+    );
     expect(result).toMatchObject({ userId: 'user-1', availableCreditCents: 0 });
     expect(rows().accounts).toHaveLength(1);
-    expect(locks.filter(Boolean)).toEqual([
-      { mode: 'pessimistic_write' },
-      { mode: 'pessimistic_write' },
-    ]);
+    expect(locks.filter(Boolean)).toEqual([{ mode: 'pessimistic_write' }]);
+  });
+
+  it('keeps an existing account unchanged through the no-op upsert then locks it', async () => {
+    const existing = account({
+      activeMembershipId: 'membership-1',
+      availableCreditCents: 12_345,
+      version: 7,
+    });
+    const { service, manager, query, rows, locks } = buildService({
+      accounts: [existing],
+    });
+
+    const result = await service.lockOrCreateAccount(
+      manager as never,
+      existing.userId,
+    );
+
+    expect(query).toHaveBeenCalledOnce();
+    expect(result).toEqual(existing);
+    expect(rows().accounts).toEqual([existing]);
+    expect(result).toMatchObject({
+      activeMembershipId: 'membership-1',
+      availableCreditCents: 12_345,
+      version: 7,
+    });
+    expect(locks.filter(Boolean)).toEqual([{ mode: 'pessimistic_write' }]);
   });
 
   it('grants a purchase once and preserves account-grant-entry conservation on repeat', async () => {

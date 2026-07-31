@@ -3,13 +3,15 @@ import { onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { showToast } from 'vant';
 
-import { BannerTargetType, type BannerView } from '@bake-mall/contracts';
+import type { BannerView } from '@bake-mall/contracts';
 
 import StorePage from '../../components/layout/StorePage.vue';
 import StoreSection from '../../components/layout/StoreSection.vue';
 import StoreStatePanel from '../../components/feedback/StoreStatePanel.vue';
-import { CATALOG_COPY } from './config/copy.js';
+import BannerReel from './components/BannerReel.vue';
 import ProductCard from './components/ProductCard.vue';
+import { CATALOG_COPY } from './config/copy.js';
+import { bannerTargetPath } from './config/navigation.js';
 import { useCatalog } from './hooks/useCatalog.js';
 const router = useRouter();
 const catalog = useCatalog();
@@ -23,37 +25,18 @@ onMounted(async () => {
 });
 
 function openBanner(banner: BannerView): void {
-  if (banner.targetType === BannerTargetType.NONE) return;
-  const path =
-    banner.targetType === BannerTargetType.PRODUCT
-      ? `/products/${banner.targetId}`
-      : `/category/${banner.targetId}`;
-  void router.push(path);
+  const path = bannerTargetPath(banner);
+  if (path) void router.push(path);
 }
 </script>
 
 <template>
   <StorePage with-tabbar class="home-shell">
-    <section
-      v-if="catalog.banners.value.length"
-      class="banner-reel"
-      aria-label="推荐内容"
-    >
-      <button
-        v-for="banner in catalog.banners.value"
-        :key="banner.id"
-        type="button"
-        class="banner-reel__frame"
-        :data-testid="`home-banner-${banner.id}`"
-        @click="openBanner(banner)"
-      >
-        <img :src="banner.imageUrl" :alt="banner.title ?? '推荐烘焙'" />
-        <span class="banner-reel__shade" aria-hidden="true" />
-        <span class="banner-reel__title">
-          {{ banner.title ?? '门店今日推荐' }}
-        </span>
-      </button>
-    </section>
+    <BannerReel
+      class="home-shell__banners"
+      :banners="catalog.banners.value"
+      @open="openBanner"
+    />
 
     <section class="hero">
       <p class="hero__eyebrow">{{ CATALOG_COPY.eyebrow }}</p>
@@ -105,7 +88,6 @@ function openBanner(banner: BannerView): void {
         <p>{{ CATALOG_COPY.futureDescription }}</p>
       </div>
     </StoreSection>
-
   </StorePage>
 </template>
 
@@ -114,60 +96,12 @@ function openBanner(banner: BannerView): void {
   overflow-x: hidden;
 }
 
-.banner-reel {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 84%;
-  gap: var(--mall-space-3);
+.home-shell__banners {
   margin: 0 calc(var(--mall-page-gutter) * -1) var(--mall-space-4);
-  padding: 0 var(--mall-page-gutter) var(--mall-space-1);
-  overflow-x: auto;
-  overscroll-behavior-inline: contain;
-  scrollbar-width: none;
 }
 
-.banner-reel::-webkit-scrollbar,
 .category-strip::-webkit-scrollbar {
   display: none;
-}
-
-.banner-reel__frame {
-  position: relative;
-  aspect-ratio: 16 / 8.5;
-  overflow: hidden;
-  padding: 0;
-  border: 0;
-  border-radius: var(--mall-radius-feature);
-  background: var(--mall-surface-soft);
-  box-shadow: var(--mall-shadow-card);
-  cursor: pointer;
-}
-
-.banner-reel img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.banner-reel__shade {
-  position: absolute;
-  inset: 36% 0 0;
-  background: linear-gradient(transparent, rgb(23 38 27 / 66%));
-}
-
-.banner-reel__title {
-  position: absolute;
-  right: var(--mall-space-4);
-  bottom: var(--mall-space-4);
-  left: var(--mall-space-4);
-  overflow: hidden;
-  color: #fff;
-  font-size: 15px;
-  font-weight: 700;
-  line-height: 1.4;
-  text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .hero {

@@ -242,8 +242,24 @@ function buildFakeDataSource(stubs: Record<string, any>) {
       const idempotencyInsertCount = stubs.idempotency.records.length;
       const auditInsertCount = stubs.audit.records.length;
       const cartInsertCount = stubs.cartItems.records.length;
+      const memberAccountInsertCount = stubs.memberAccounts.records.length;
 
       const manager = {
+        query: async (_sql: string, parameters: unknown[]) => {
+          const userId = String(parameters[0]);
+          const existing = stubs.memberAccounts.records.some(
+            (account: MemberAccount) => account.userId === userId,
+          );
+          if (!existing) {
+            await stubs.memberAccounts.save({
+              userId,
+              activeMembershipId: null,
+              availableCreditCents: 0,
+              version: 1,
+            });
+          }
+          return { affectedRows: 1 };
+        },
         getRepository: (entity: { name: string }) => {
           const map: Record<string, ReturnType<typeof memoryRepository>> = {
             User: stubs.users,
@@ -315,6 +331,7 @@ function buildFakeDataSource(stubs: Record<string, any>) {
         stubs.idempotency.records.length = idempotencyInsertCount;
         stubs.audit.records.length = auditInsertCount;
         stubs.cartItems.records.length = cartInsertCount;
+        stubs.memberAccounts.records.length = memberAccountInsertCount;
         void skuInsertSnapshots;
         void cartInsertSnapshots;
         throw err;
@@ -594,7 +611,7 @@ describe('Orders domain (e2e)', () => {
         requestedCreditCents: 0,
         membershipId: null,
         membershipVersion: null,
-        accountVersion: null,
+        accountVersion: 1,
         pricingVersion: 1,
       }).token,
     };

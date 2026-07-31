@@ -41,23 +41,18 @@ export class MembershipCreditService {
     manager: EntityManager,
     userId: string,
   ): Promise<MemberAccount> {
-    const accounts = manager.getRepository(MemberAccount);
-    const existing = await this.findLockedAccount(accounts, userId);
-    if (existing) return existing;
+    await manager.query(
+      `INSERT INTO member_accounts
+        (user_id, active_membership_id, available_credit_cents, version)
+       VALUES (?, NULL, 0, 1)
+       ON DUPLICATE KEY UPDATE user_id = user_id`,
+      [userId],
+    );
 
-    try {
-      await accounts.save(
-        accounts.create({
-          userId,
-          activeMembershipId: null,
-          availableCreditCents: 0,
-        }),
-      );
-    } catch (error) {
-      if (!this.isUniqueViolation(error)) throw error;
-    }
-
-    const account = await this.findLockedAccount(accounts, userId);
+    const account = await this.findLockedAccount(
+      manager.getRepository(MemberAccount),
+      userId,
+    );
     if (!account) throw new ConflictException('会员账户创建失败');
     return account;
   }
@@ -535,14 +530,5 @@ export class MembershipCreditService {
       code: ApiErrorCode.MEMBERSHIP_PURCHASE_NOT_VOIDABLE,
       message: '当前购卡记录不满足作废条件',
     });
-  }
-
-  private isUniqueViolation(error: unknown): boolean {
-    return (
-      typeof error === 'object' &&
-      error !== null &&
-      'code' in error &&
-      (error as { code?: string }).code === 'ER_DUP_ENTRY'
-    );
   }
 }
