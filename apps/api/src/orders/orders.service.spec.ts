@@ -270,6 +270,19 @@ describe('OrdersService', () => {
           ]),
         ) as Record<string, Array<Record<string, unknown>>>;
         const manager = {
+          query: async (_sql: string, parameters: unknown[]) => {
+            const userId = String(parameters[0]);
+            if (!records.memberAccounts.some((row) => row.userId === userId)) {
+              records.memberAccounts.push({
+                id: String(nextId++),
+                userId,
+                activeMembershipId: null,
+                availableCreditCents: 0,
+                version: 1,
+              });
+            }
+            return { affectedRows: 1 };
+          },
           getRepository: (entity: { name: string }) => {
             const map: Record<string, Array<Record<string, unknown>>> = {
               User: records.users,
@@ -453,6 +466,67 @@ describe('OrdersService', () => {
     cartItems: [
       { id: 'cart-1', userId: 'user-1', skuId: 'sku-1', quantity: 1 },
     ],
+  });
+
+  it('locks the user before reserving idempotency and locking the account', async () => {
+    const lockOrder: string[] = [];
+    const memberAccount = {
+      id: 'account-1',
+      userId: 'user-1',
+      activeMembershipId: null,
+      availableCreditCents: 0,
+      version: 1,
+    };
+    const records = buildService({
+      ...basicOrderRecords(),
+      credit: {
+        lockOrCreateAccount: vi.fn().mockImplementation(async () => {
+          lockOrder.push('account');
+          return memberAccount;
+        }),
+        debitFifo: vi.fn(),
+      },
+    });
+    type TestRepository = {
+      findOne: (options: {
+        lock?: unknown;
+        where: unknown;
+      }) => Promise<unknown>;
+      insert: (value: Record<string, unknown>) => Promise<unknown>;
+    } & Record<string, unknown>;
+    type TestManager = {
+      getRepository: (entity: { name: string }) => TestRepository;
+    };
+    const originalTransaction = records.transaction.getMockImplementation();
+    records.transaction.mockImplementation(async (callback) =>
+      originalTransaction!(async (unknownManager: unknown) => {
+        const manager = unknownManager as TestManager;
+        const originalGetRepository = manager.getRepository;
+        manager.getRepository = (entity: { name: string }) => {
+          const repo = originalGetRepository(entity);
+          if (entity.name === 'User') {
+            const originalFindOne = repo.findOne;
+            repo.findOne = async (options) => {
+              if (options.lock) lockOrder.push('user');
+              return originalFindOne(options);
+            };
+          }
+          if (entity.name === 'IdempotencyRecord') {
+            const originalInsert = repo.insert;
+            repo.insert = async (value) => {
+              lockOrder.push('idempotency');
+              return originalInsert(value);
+            };
+          }
+          return repo;
+        };
+        return callback(manager);
+      }),
+    );
+
+    await records.service.create('user-1', 'lock-order-key', pickupDto());
+
+    expect(lockOrder.slice(0, 3)).toEqual(['user', 'idempotency', 'account']);
   });
 
   it('writes immutable product and SKU source IDs into new order items', async () => {
