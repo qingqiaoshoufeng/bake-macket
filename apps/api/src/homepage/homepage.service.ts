@@ -12,7 +12,11 @@ import {
   ApiErrorCode,
   HomepageLinkType,
   HomepageSectionType,
+  HomepageDraftStatus,
+  type AdminHomepageDraftListView,
+  type AdminHomepageDraftSummary,
   type AdminHomepageView,
+  type CreateHomepageDraftRequest,
   type HomepageDraftConfig,
   type HomepageLink,
   type HomepagePublishedConfig,
@@ -21,9 +25,16 @@ import {
   type PublishHomepageRequest,
   type PublicHomepageConfig,
   type PublicHomepageView,
+  type RenameHomepageDraftRequest,
   type SaveHomepageDraftRequest,
 } from '@bake-mall/contracts';
-import { DataSource, EntityManager, In, Repository } from 'typeorm';
+import {
+  DataSource,
+  EntityManager,
+  In,
+  QueryFailedError,
+  Repository,
+} from 'typeorm';
 
 import { AuditService } from '../audit/audit.service.js';
 import { MediaAssetPolicyService } from '../catalog/media-asset-policy.service.js';
@@ -31,6 +42,8 @@ import { Category } from '../database/entities/category.entity.js';
 import { HomepageDraft } from '../database/entities/homepage-draft.entity.js';
 import { HomepagePage } from '../database/entities/homepage-page.entity.js';
 import { Product } from '../database/entities/product.entity.js';
+import { toPaginatedView } from '../common/query/admin-query.helpers.js';
+import { createBlankHomepageDraftConfig } from './homepage-draft-config.js';
 
 const PAGE_KEY = 'HOME' as const;
 const GRID_LAYOUTS = new Set([3, 4, 5, 6, 9]);
@@ -78,7 +91,9 @@ const isHomepageLink = (value: unknown): value is HomepageLink => {
   );
 };
 
-function assertDraftStructure(value: unknown): asserts value is HomepageDraftConfig {
+function assertDraftStructure(
+  value: unknown,
+): asserts value is HomepageDraftConfig {
   if (!isRecord(value) || value.schemaVersion !== 1) {
     throw new BadRequestException('首页草稿版本或根结构无效');
   }
@@ -170,7 +185,10 @@ function assertDraftStructure(value: unknown): asserts value is HomepageDraftCon
     ...shortcutGrid.items.map(({ id }) => id),
     ...imageBlocks.map(({ id }) => id),
   ];
-  if (ids.some((id) => !isNonEmptyText(id)) || new Set(ids).size !== ids.length) {
+  if (
+    ids.some((id) => !isNonEmptyText(id)) ||
+    new Set(ids).size !== ids.length
+  ) {
     throw new BadRequestException('首页配置 ID 不能为空或重复');
   }
 }
@@ -193,12 +211,27 @@ const collectDraftIssues = (
   config: HomepageDraftConfig,
 ): HomepageValidationIssue[] => [
   ...(config.hero.slides.length === 0
-    ? [issue('HERO_EMPTY', '请至少配置一张首屏轮播图', config.hero.id, 'slides')]
+    ? [
+        issue(
+          'HERO_EMPTY',
+          '请至少配置一张首屏轮播图',
+          config.hero.id,
+          'slides',
+        ),
+      ]
     : []),
   ...config.hero.slides.flatMap((slide) =>
     slide.image
       ? []
-      : [issue('HERO_IMAGE_REQUIRED', '请上传轮播图片', config.hero.id, 'image', slide.id)],
+      : [
+          issue(
+            'HERO_IMAGE_REQUIRED',
+            '请上传轮播图片',
+            config.hero.id,
+            'image',
+            slide.id,
+          ),
+        ],
   ),
   ...(!config.customerService.wechatQrCode
     ? [
@@ -211,7 +244,14 @@ const collectDraftIssues = (
       ]
     : []),
   ...(!isNonEmptyText(config.customerService.phone)
-    ? [issue('CUSTOMER_PHONE_REQUIRED', '请填写客服电话', config.customerService.id, 'phone')]
+    ? [
+        issue(
+          'CUSTOMER_PHONE_REQUIRED',
+          '请填写客服电话',
+          config.customerService.id,
+          'phone',
+        ),
+      ]
     : []),
   ...(!isNonEmptyText(config.customerService.serviceHours)
     ? [
@@ -235,10 +275,26 @@ const collectDraftIssues = (
     : []),
   ...config.shortcutGrid.items.flatMap((item) => [
     ...(!isNonEmptyText(item.label)
-      ? [issue('SHORTCUT_LABEL_REQUIRED', '请填写宫格名称', config.shortcutGrid.id, 'label', item.id)]
+      ? [
+          issue(
+            'SHORTCUT_LABEL_REQUIRED',
+            '请填写宫格名称',
+            config.shortcutGrid.id,
+            'label',
+            item.id,
+          ),
+        ]
       : []),
     ...(!item.image
-      ? [issue('SHORTCUT_IMAGE_REQUIRED', '请上传宫格图片', config.shortcutGrid.id, 'image', item.id)]
+      ? [
+          issue(
+            'SHORTCUT_IMAGE_REQUIRED',
+            '请上传宫格图片',
+            config.shortcutGrid.id,
+            'image',
+            item.id,
+          ),
+        ]
       : []),
   ]),
   ...config.imageBlocks.flatMap((block) =>
@@ -307,7 +363,9 @@ const collectChangedSectionIds = (
     [before.customerService, after.customerService],
     [before.shortcutGrid, after.shortcutGrid],
   ]
-    .filter(([previous, next]) => JSON.stringify(previous) !== JSON.stringify(next))
+    .filter(
+      ([previous, next]) => JSON.stringify(previous) !== JSON.stringify(next),
+    )
     .map(([, next]) => next.id)
     .concat(
       JSON.stringify(before.imageBlocks) === JSON.stringify(after.imageBlocks)
@@ -320,7 +378,8 @@ const toIso = (date: Date | null): string | undefined => date?.toISOString();
 
 const toPublishedConfig = (
   config: HomepageDraftConfig,
-): HomepagePublishedConfig => structuredClone(config) as HomepagePublishedConfig;
+): HomepagePublishedConfig =>
+  structuredClone(config) as HomepagePublishedConfig;
 
 const toPublicConfig = (
   config: HomepagePublishedConfig,
@@ -389,13 +448,276 @@ export class HomepageService {
     @InjectDataSource() private readonly dataSource: DataSource,
   ) {}
 
+  async listDrafts(query: {
+    page: number;
+    pageSize: number;
+  }): Promise<AdminHomepageDraftListView> {
+    const page = await this.requirePage(this.pages);
+    const [drafts, total] = await this.drafts.findAndCount({
+      where: { homepagePageId: page.id },
+      order: { updatedAt: 'DESC', id: 'DESC' },
+      skip: (query.page - 1) * query.pageSize,
+      take: query.pageSize,
+    });
+    return {
+      ...toPaginatedView(
+        drafts.map((draft) => this.toDraftSummary(page, draft)),
+        total,
+        query.page,
+        query.pageSize,
+      ),
+      ...(page.publishedDraftId
+        ? { publishedDraftId: page.publishedDraftId }
+        : {}),
+    };
+  }
+
+  async createDraft(
+    request: CreateHomepageDraftRequest,
+    adminUserId: string,
+  ): Promise<AdminHomepageView> {
+    try {
+      return await this.dataSource.transaction(async (manager) => {
+        const pages = manager.getRepository(HomepagePage);
+        const drafts = manager.getRepository(HomepageDraft);
+        const page = await this.requirePage(pages);
+        const config =
+          request.mode === 'COPY'
+            ? structuredClone(
+                (
+                  await this.requireDraft(
+                    request.sourceDraftId,
+                    page.id,
+                    drafts,
+                  )
+                ).draftConfig,
+              )
+            : createBlankHomepageDraftConfig();
+        const draft = await drafts.save(
+          drafts.create({
+            homepagePageId: page.id,
+            name: request.name,
+            draftConfig: config,
+            version: 1,
+            updatedByAdminId: adminUserId,
+          }),
+        );
+        await this.audit.record(
+          {
+            adminUserId,
+            targetEntity: 'homepage_drafts',
+            targetId: draft.id,
+            action: 'HOMEPAGE_DRAFT_CREATED',
+            changeSummary: {
+              name: draft.name,
+              mode: request.mode,
+              version: draft.version,
+              ...(request.mode === 'COPY'
+                ? { sourceDraftId: request.sourceDraftId }
+                : {}),
+              ...this.configSummary(config),
+            },
+          },
+          manager,
+        );
+        return this.toAdminDraftView(
+          page,
+          draft,
+          await this.collectPublishIssues(config, manager),
+        );
+      });
+    } catch (error) {
+      throw this.translateDraftNameConflict(error, request.name);
+    }
+  }
+
+  async getDraft(id: string): Promise<AdminHomepageView> {
+    const page = await this.requirePage(this.pages);
+    const draft = await this.requireDraft(id, page.id, this.drafts);
+    return this.toAdminDraftView(
+      page,
+      draft,
+      await this.collectPublishIssues(
+        draft.draftConfig,
+        this.dataSource.manager,
+      ),
+    );
+  }
+
+  async saveDraftById(
+    id: string,
+    request: SaveHomepageDraftRequest,
+    adminUserId: string,
+  ): Promise<AdminHomepageView> {
+    assertDraftStructure(request.config);
+    collectAssets(request.config).forEach((asset) =>
+      this.mediaPolicy.assertHomepageAsset(asset),
+    );
+    return this.dataSource.transaction(async (manager) => {
+      const pages = manager.getRepository(HomepagePage);
+      const drafts = manager.getRepository(HomepageDraft);
+      const page = await this.requirePage(pages);
+      const previous = await drafts.findOneBy({
+        id,
+        homepagePageId: page.id,
+      });
+      if (!previous) this.throwDraftNotFound();
+      const nextVersion = request.version + 1;
+      const result = await drafts
+        .createQueryBuilder()
+        .update(HomepageDraft)
+        .set({
+          draftConfig: structuredClone(request.config),
+          version: nextVersion,
+          updatedByAdminId: adminUserId,
+          updatedAt: new Date(),
+        })
+        .where(
+          'id = :id AND homepage_page_id = :homepagePageId AND version = :version',
+          { id, homepagePageId: page.id, version: request.version },
+        )
+        .execute();
+      if (result.affected !== 1) {
+        const current = await drafts.findOneBy({
+          id,
+          homepagePageId: page.id,
+        });
+        if (!current) this.throwDraftNotFound();
+        this.throwVersionConflict(current.version);
+      }
+      const saved = await this.requireDraft(id, page.id, drafts);
+      await this.audit.record(
+        {
+          adminUserId,
+          targetEntity: 'homepage_drafts',
+          targetId: saved.id,
+          action: 'HOMEPAGE_DRAFT_SAVED',
+          changeSummary: this.auditSummary(
+            saved.draftConfig,
+            request.version,
+            nextVersion,
+            collectChangedSectionIds(previous.draftConfig, saved.draftConfig),
+          ),
+        },
+        manager,
+      );
+      return this.toAdminDraftView(
+        page,
+        saved,
+        await this.collectPublishIssues(saved.draftConfig, manager),
+      );
+    });
+  }
+
+  async renameDraft(
+    id: string,
+    request: RenameHomepageDraftRequest,
+    adminUserId: string,
+  ): Promise<AdminHomepageView> {
+    try {
+      return await this.dataSource.transaction(async (manager) => {
+        const pages = manager.getRepository(HomepagePage);
+        const drafts = manager.getRepository(HomepageDraft);
+        const page = await this.requirePage(pages);
+        const previous = await drafts.findOneBy({
+          id,
+          homepagePageId: page.id,
+        });
+        if (!previous) this.throwDraftNotFound();
+        const nextVersion = request.version + 1;
+        const result = await drafts
+          .createQueryBuilder()
+          .update(HomepageDraft)
+          .set({
+            name: request.name,
+            version: nextVersion,
+            updatedByAdminId: adminUserId,
+            updatedAt: new Date(),
+          })
+          .where(
+            'id = :id AND homepage_page_id = :homepagePageId AND version = :version',
+            { id, homepagePageId: page.id, version: request.version },
+          )
+          .execute();
+        if (result.affected !== 1) {
+          const current = await drafts.findOneBy({
+            id,
+            homepagePageId: page.id,
+          });
+          if (!current) this.throwDraftNotFound();
+          this.throwVersionConflict(current.version);
+        }
+        const renamed = await this.requireDraft(id, page.id, drafts);
+        await this.audit.record(
+          {
+            adminUserId,
+            targetEntity: 'homepage_drafts',
+            targetId: renamed.id,
+            action: 'HOMEPAGE_DRAFT_RENAMED',
+            changeSummary: {
+              previousName: previous.name,
+              name: renamed.name,
+              previousVersion: request.version,
+              nextVersion,
+            },
+          },
+          manager,
+        );
+        return this.toAdminDraftView(
+          page,
+          renamed,
+          await this.collectPublishIssues(renamed.draftConfig, manager),
+        );
+      });
+    } catch (error) {
+      throw this.translateDraftNameConflict(error, request.name);
+    }
+  }
+
+  async deleteDraft(id: string, adminUserId: string): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      const pages = manager.getRepository(HomepagePage);
+      const drafts = manager.getRepository(HomepageDraft);
+      const page = await this.requirePage(pages, manager);
+      const draft = await this.requireDraft(id, page.id, drafts);
+      if (page.publishedDraftId === draft.id) {
+        throw new ConflictException({
+          code: ApiErrorCode.HOMEPAGE_PUBLISHED_DRAFT_DELETE_FORBIDDEN,
+          message: '当前发布来源草稿不能删除',
+        });
+      }
+      await drafts.delete({ id: draft.id, homepagePageId: page.id });
+      await this.audit.record(
+        {
+          adminUserId,
+          targetEntity: 'homepage_drafts',
+          targetId: draft.id,
+          action: 'HOMEPAGE_DRAFT_DELETED',
+          changeSummary: { name: draft.name, version: draft.version },
+        },
+        manager,
+      );
+    });
+  }
+
+  async publishDraftById(
+    id: string,
+    request: PublishHomepageRequest,
+    adminUserId: string,
+  ): Promise<AdminHomepageView> {
+    return this.publish(request, adminUserId, id);
+  }
+
   async getAdminView(): Promise<AdminHomepageView> {
     const page = await this.requirePage(this.pages);
     const draft = await this.requireLegacyDraft(page.id, this.drafts);
     return this.toAdminView(
       page,
       draft,
-      await this.collectPublishIssues(draft.draftConfig, this.dataSource.manager),
+      await this.collectPublishIssues(
+        draft.draftConfig,
+        this.dataSource.manager,
+      ),
     );
   }
 
@@ -459,14 +781,21 @@ export class HomepageService {
   async publish(
     request: PublishHomepageRequest,
     adminUserId: string,
+    draftId?: string,
   ): Promise<AdminHomepageView> {
     return this.dataSource.transaction(async (manager) => {
       const pages = manager.getRepository(HomepagePage);
       const drafts = manager.getRepository(HomepageDraft);
       const page = await this.requirePage(pages, manager);
-      const draft = await this.requireLegacyDraft(page.id, drafts, manager);
-      if (draft.version !== request.version) this.throwVersionConflict(draft.version);
-      const issues = await this.collectPublishIssues(draft.draftConfig, manager);
+      const draft = draftId
+        ? await this.requireDraft(draftId, page.id, drafts)
+        : await this.requireLegacyDraft(page.id, drafts, manager);
+      if (draft.version !== request.version)
+        this.throwVersionConflict(draft.version);
+      const issues = await this.collectPublishIssues(
+        draft.draftConfig,
+        manager,
+      );
       if (issues.length > 0) {
         throw new UnprocessableEntityException({
           code: ApiErrorCode.HOMEPAGE_PUBLISH_INVALID,
@@ -499,7 +828,10 @@ export class HomepageService {
             draft.draftConfig,
             previousPublishedVersion,
             draft.version,
-            collectChangedSectionIds(previousPublishedConfig, draft.draftConfig),
+            collectChangedSectionIds(
+              previousPublishedConfig,
+              draft.draftConfig,
+            ),
           ),
         },
         manager,
@@ -619,6 +951,16 @@ export class HomepageService {
     return page;
   }
 
+  private async requireDraft(
+    id: string,
+    homepagePageId: string,
+    repository: Repository<HomepageDraft>,
+  ): Promise<HomepageDraft> {
+    const draft = await repository.findOneBy({ id, homepagePageId });
+    if (!draft) this.throwDraftNotFound();
+    return draft;
+  }
+
   private async requireLegacyDraft(
     homepagePageId: string,
     repository: Repository<HomepageDraft>,
@@ -650,6 +992,66 @@ export class HomepageService {
     return firstDraft;
   }
 
+  private toDraftStatus(
+    page: HomepagePage,
+    draft: HomepageDraft,
+  ): (typeof HomepageDraftStatus)[keyof typeof HomepageDraftStatus] {
+    if (page.publishedDraftId !== draft.id) return HomepageDraftStatus.DRAFT;
+    return page.publishedDraftVersion === draft.version
+      ? HomepageDraftStatus.PUBLISHED
+      : HomepageDraftStatus.PUBLISHED_WITH_CHANGES;
+  }
+
+  private toDraftSummary(
+    page: HomepagePage,
+    draft: HomepageDraft,
+  ): AdminHomepageDraftSummary {
+    return {
+      id: draft.id,
+      name: draft.name,
+      status: this.toDraftStatus(page, draft),
+      version: draft.version,
+      ...(draft.updatedByAdminId
+        ? { updatedByAdminId: draft.updatedByAdminId }
+        : {}),
+      updatedAt: draft.updatedAt.toISOString(),
+      createdAt: draft.createdAt.toISOString(),
+    };
+  }
+
+  private toAdminDraftView(
+    page: HomepagePage,
+    draft: HomepageDraft,
+    draftIssues: readonly HomepageValidationIssue[],
+  ): AdminHomepageView {
+    return {
+      id: draft.id,
+      pageKey: PAGE_KEY,
+      name: draft.name,
+      status: this.toDraftStatus(page, draft),
+      draftConfig: structuredClone(draft.draftConfig),
+      publishedConfig: page.publishedConfig
+        ? structuredClone(page.publishedConfig)
+        : null,
+      version: draft.version,
+      ...(draft.updatedByAdminId
+        ? { updatedByAdminId: draft.updatedByAdminId }
+        : {}),
+      updatedAt: draft.updatedAt.toISOString(),
+      createdAt: draft.createdAt.toISOString(),
+      ...(page.publishedVersion
+        ? { publishedVersion: page.publishedVersion }
+        : {}),
+      ...(page.publishedByAdminId
+        ? { publishedByAdminId: page.publishedByAdminId }
+        : {}),
+      ...(toIso(page.publishedAt)
+        ? { publishedAt: toIso(page.publishedAt) }
+        : {}),
+      draftIssues,
+    };
+  }
+
   private toAdminView(
     page: HomepagePage,
     draft: HomepageDraft,
@@ -666,7 +1068,9 @@ export class HomepageService {
       ...(draft.updatedByAdminId
         ? { draftUpdatedByAdminId: draft.updatedByAdminId }
         : {}),
-      ...(toIso(draft.updatedAt) ? { draftUpdatedAt: toIso(draft.updatedAt) } : {}),
+      ...(toIso(draft.updatedAt)
+        ? { draftUpdatedAt: toIso(draft.updatedAt) }
+        : {}),
       ...(page.publishedVersion
         ? { publishedVersion: page.publishedVersion }
         : {}),
@@ -680,12 +1084,43 @@ export class HomepageService {
     };
   }
 
+  private throwDraftNotFound(): never {
+    throw new NotFoundException({
+      code: ApiErrorCode.HOMEPAGE_DRAFT_NOT_FOUND,
+      message: '首页草稿不存在',
+    });
+  }
+
   private throwVersionConflict(currentVersion: number): never {
     throw new ConflictException({
       code: ApiErrorCode.HOMEPAGE_VERSION_CONFLICT,
       message: '首页配置已被其他操作更新，请重新加载后再保存',
       details: { currentVersion },
     });
+  }
+
+  private translateDraftNameConflict(error: unknown, name: string): unknown {
+    if (!(error instanceof QueryFailedError)) return error;
+    const driverError = error.driverError as { code?: string; errno?: number };
+    if (driverError.code !== 'ER_DUP_ENTRY' && driverError.errno !== 1062) {
+      return error;
+    }
+    return new ConflictException({
+      code: ApiErrorCode.HOMEPAGE_DRAFT_NAME_CONFLICT,
+      message: '首页草稿名称已存在',
+      details: { name },
+    });
+  }
+
+  private configSummary(config: HomepageDraftConfig): Record<string, unknown> {
+    return {
+      configHash: createHash('sha256')
+        .update(JSON.stringify(config))
+        .digest('hex'),
+      heroSlideCount: config.hero.slides.length,
+      shortcutCount: config.shortcutGrid.items.length,
+      imageBlockCount: config.imageBlocks.length,
+    };
   }
 
   private auditSummary(
@@ -697,12 +1132,7 @@ export class HomepageService {
     return {
       previousVersion,
       nextVersion,
-      configHash: createHash('sha256')
-        .update(JSON.stringify(config))
-        .digest('hex'),
-      heroSlideCount: config.hero.slides.length,
-      shortcutCount: config.shortcutGrid.items.length,
-      imageBlockCount: config.imageBlocks.length,
+      ...this.configSummary(config),
       changedSectionIds: [...changedSectionIds],
     };
   }

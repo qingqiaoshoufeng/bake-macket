@@ -7,6 +7,7 @@ import { Category } from '../database/entities/category.entity.js';
 import { HomepageDraft } from '../database/entities/homepage-draft.entity.js';
 import { HomepagePage } from '../database/entities/homepage-page.entity.js';
 import { Product } from '../database/entities/product.entity.js';
+import { AdminHomepageDraftsController } from './admin-homepage-drafts.controller.js';
 import { AdminHomepageController } from './admin-homepage.controller.js';
 import { HomepageService } from './homepage.service.js';
 import { PublicHomepageController } from './public-homepage.controller.js';
@@ -16,7 +17,11 @@ import { PublicHomepageController } from './public-homepage.controller.js';
     TypeOrmModule.forFeature([HomepagePage, HomepageDraft, Product, Category]),
     AuditModule,
   ],
-  controllers: [AdminHomepageController, PublicHomepageController],
+  controllers: [
+    AdminHomepageController,
+    AdminHomepageDraftsController,
+    PublicHomepageController,
+  ],
   providers: [HomepageService, MediaAssetPolicyService],
 })
 export class HomepageModule {}
