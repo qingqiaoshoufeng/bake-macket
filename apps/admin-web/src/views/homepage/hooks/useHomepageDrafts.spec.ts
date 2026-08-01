@@ -177,6 +177,102 @@ describe('useHomepageDrafts', () => {
     });
   });
 
+  it('loads page one and keeps the active draft selected when rename reorders it off page two', async () => {
+    const active = summary('21', HomepageDraftStatus.DRAFT, 3);
+    const pageTwoNeighbor = summary('22');
+    const renamed = {
+      ...active,
+      name: '置顶后的首页',
+      version: 4,
+      updatedAt: '2026-08-01T04:00:00.000Z',
+    };
+    const pageOne = Array.from({ length: 20 }, (_, index) =>
+      index === 0 ? renamed : summary(String(index)),
+    );
+    api.list
+      .mockResolvedValueOnce({
+        items: [active, pageTwoNeighbor],
+        total: 22,
+        page: 2,
+        pageSize: 20,
+      })
+      .mockImplementation(async ({ page, pageSize }) =>
+        page === 1
+          ? {
+              items: pageOne,
+              total: 22,
+              page,
+              pageSize,
+            }
+          : {
+              items: [pageTwoNeighbor],
+              total: 22,
+              page,
+              pageSize,
+            },
+      );
+    api.rename.mockResolvedValue(detail(renamed));
+    const drafts = useHomepageDrafts();
+    await drafts.refresh({ page: 2, pageSize: 20 });
+
+    const result = await drafts.rename('21', '置顶后的首页');
+
+    expect(result).toMatchObject({
+      id: '21',
+      name: '置顶后的首页',
+      version: 4,
+      updatedAt: '2026-08-01T04:00:00.000Z',
+    });
+    expect(api.list).toHaveBeenCalledTimes(2);
+    expect(api.list).toHaveBeenLastCalledWith({ page: 1, pageSize: 20 });
+    expect(drafts.page.value).toBe(1);
+    expect(drafts.activeId.value).toBe('21');
+    expect(drafts.items.value[0]).toMatchObject({
+      id: '21',
+      name: '置顶后的首页',
+      version: 4,
+      updatedAt: '2026-08-01T04:00:00.000Z',
+    });
+  });
+
+  it('refreshes the current page and preserves a later selection when active rename is pending', async () => {
+    const target = summary('21', HomepageDraftStatus.DRAFT, 3);
+    const selected = summary('22');
+    const renamed = {
+      ...target,
+      name: '置顶后的首页',
+      version: 4,
+      updatedAt: '2026-08-01T04:00:00.000Z',
+    };
+    const pending = deferred<AdminHomepageView>();
+    api.list
+      .mockResolvedValueOnce({
+        items: [target, selected],
+        total: 22,
+        page: 2,
+        pageSize: 20,
+      })
+      .mockResolvedValueOnce({
+        items: [selected],
+        total: 22,
+        page: 2,
+        pageSize: 20,
+      });
+    api.rename.mockReturnValue(pending.promise);
+    const drafts = useHomepageDrafts();
+    await drafts.refresh({ page: 2, pageSize: 20 });
+
+    const rename = drafts.rename('21', '置顶后的首页');
+    drafts.select('22');
+    pending.resolve(detail(renamed));
+    await rename;
+
+    expect(api.list).toHaveBeenLastCalledWith({ page: 2, pageSize: 20 });
+    expect(drafts.page.value).toBe(2);
+    expect(drafts.items.value).toEqual([selected]);
+    expect(drafts.activeId.value).toBe('22');
+  });
+
   it('prevents deleting the published source and preserves normal rows on API failure', async () => {
     const published = summary('1', HomepageDraftStatus.PUBLISHED);
     const ordinary = summary('2');

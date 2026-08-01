@@ -210,9 +210,14 @@ export function useHomepageDrafts() {
       );
     }
     items.value = applySummary(items.value, renamed);
+    const renamedCurrentDraft =
+      operationStartActiveId === id && activeId.value === id;
     await load(
-      { page: page.value, pageSize: pageSize.value },
-      operationPreferredId(operationStartActiveId),
+      {
+        page: renamedCurrentDraft ? DEFAULT_QUERY.page : page.value,
+        pageSize: pageSize.value,
+      },
+      renamedCurrentDraft ? id : (activeId.value ?? undefined),
     );
     return renamed;
   }

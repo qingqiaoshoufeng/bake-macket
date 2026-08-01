@@ -43,6 +43,8 @@ const mocks = vi.hoisted(() => ({
   draftsItemsRef: undefined as
     { value: readonly AdminHomepageDraftSummary[] } | undefined,
   draftIdRef: undefined as { value: string | null } | undefined,
+  editorNameRef: undefined as { value: string | undefined } | undefined,
+  editorVersionRef: undefined as { value: number } | undefined,
   dirtyRef: undefined as { value: boolean } | undefined,
   savingRef: undefined as { value: boolean } | undefined,
   publishingRef: undefined as { value: boolean } | undefined,
@@ -120,6 +122,8 @@ vi.mock('./hooks/useHomepageEditor.js', async () => {
   const { computed, ref } = await import('vue');
   const { createHomepageDraft } = await import('./config/defaults.js');
   mocks.draftIdRef = ref('12');
+  mocks.editorNameRef = ref('日常首页');
+  mocks.editorVersionRef = ref(3);
   mocks.dirtyRef = ref(false);
   mocks.savingRef = ref(false);
   mocks.publishingRef = ref(false);
@@ -128,12 +132,12 @@ vi.mock('./hooks/useHomepageEditor.js', async () => {
   return {
     useHomepageEditor: () => ({
       draftId: mocks.draftIdRef,
-      name: ref('日常首页'),
+      name: mocks.editorNameRef,
       status: ref(HomepageDraftStatus.DRAFT),
       draft: ref(createHomepageDraft()),
       categories: ref([]),
       products: ref([]),
-      version: ref(3),
+      version: mocks.editorVersionRef,
       publishedVersion: ref(undefined),
       issues: ref([
         {
@@ -230,6 +234,8 @@ describe('HomepageEditorView', () => {
     mocks.activeIdRef!.value = '12';
     mocks.draftsErrorRef!.value = null;
     mocks.draftIdRef!.value = '12';
+    mocks.editorNameRef!.value = '日常首页';
+    mocks.editorVersionRef!.value = 3;
     mocks.dirtyRef!.value = false;
     mocks.savingRef!.value = false;
     mocks.publishingRef!.value = false;
@@ -247,11 +253,19 @@ describe('HomepageEditorView', () => {
       mocks.activeIdRef!.value = '99';
       return { id: '99' };
     });
+    mocks.draftsRename.mockImplementation(async (id: string) =>
+      detail(id, { name: '新名称', version: 4 }),
+    );
     mocks.draftsRemove.mockImplementation(async (id: string) => {
       if (mocks.activeIdRef!.value === id) mocks.activeIdRef!.value = '13';
     });
     mocks.draftsSelect.mockImplementation((id: string) => {
       mocks.activeIdRef!.value = id;
+    });
+    mocks.editorReconcileMetadata.mockImplementation((view) => {
+      if (view.id !== mocks.draftIdRef!.value) return;
+      mocks.editorNameRef!.value = view.name;
+      mocks.editorVersionRef!.value = view.version;
     });
   });
 
@@ -602,6 +616,68 @@ describe('HomepageEditorView', () => {
       expect(mocks.draftsSelect).not.toHaveBeenCalled();
     },
   );
+
+  it('keeps the page-two current editor aligned after rename moves its summary to page one', async () => {
+    const pageTwoActive = {
+      id: '21',
+      name: '第二页首页',
+      status: HomepageDraftStatus.DRAFT,
+      version: 3,
+      ...timestamps,
+    };
+    const pageTwoNeighbor = {
+      id: '22',
+      name: '第二页其他首页',
+      status: HomepageDraftStatus.DRAFT,
+      version: 2,
+      ...timestamps,
+    };
+    const renamed = detail('21', {
+      name: '置顶后的首页',
+      version: 4,
+      updatedAt: '2026-08-01T04:00:00.000Z',
+    });
+    mocks.activeIdRef!.value = '21';
+    mocks.draftIdRef!.value = '21';
+    mocks.editorNameRef!.value = pageTwoActive.name;
+    mocks.editorVersionRef!.value = pageTwoActive.version;
+    const wrapper = await mountView();
+    await flushPromises();
+    mocks.draftsPageRef!.value = 2;
+    mocks.draftsItemsRef!.value = [pageTwoActive, pageTwoNeighbor];
+    mocks.draftsRename.mockImplementationOnce(async () => {
+      mocks.draftsPageRef!.value = 1;
+      mocks.draftsItemsRef!.value = [
+        {
+          ...pageTwoActive,
+          name: renamed.name!,
+          version: renamed.version,
+          updatedAt: renamed.updatedAt!,
+        },
+      ];
+      mocks.activeIdRef!.value = '21';
+      return renamed;
+    });
+    await flushPromises();
+    mocks.editorLoad.mockClear();
+
+    await draftRow(wrapper, '21')
+      .find('[data-action="rename"]')
+      .trigger('click');
+    await flushPromises();
+
+    expect(mocks.draftsRename).toHaveBeenCalledWith('21', '新名称');
+    expect(mocks.activeIdRef!.value).toBe('21');
+    expect(mocks.draftsPageRef!.value).toBe(1);
+    expect(mocks.draftIdRef!.value).toBe('21');
+    expect(mocks.editorNameRef!.value).toBe('置顶后的首页');
+    expect(mocks.editorVersionRef!.value).toBe(4);
+    expect(mocks.editorReconcileMetadata).toHaveBeenCalledWith(renamed);
+    expect(mocks.editorLoad).not.toHaveBeenCalled();
+    expect(wrapper.findComponent({ name: 'HomepageEditorForm' }).exists()).toBe(
+      true,
+    );
+  });
 
   it('renames a non-active draft without switching or reloading the editor', async () => {
     const wrapper = await mountView();
