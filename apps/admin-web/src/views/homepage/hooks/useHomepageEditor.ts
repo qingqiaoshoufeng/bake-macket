@@ -74,6 +74,11 @@ export function useHomepageEditor() {
     applyServerMetadata(view);
   }
 
+  function reconcileMetadata(view: AdminHomepageView): void {
+    if (view.id !== draftId.value) return;
+    applyServerMetadata(view);
+  }
+
   async function loadCatalog(): Promise<void> {
     const [loadedCategories, loadedProducts] = await Promise.all([
       loadAllCategories(),
@@ -206,7 +211,7 @@ export function useHomepageEditor() {
     return draftId.value;
   }
 
-  async function saveDraft(): Promise<boolean> {
+  async function saveDraft(): Promise<AdminHomepageView | false> {
     if (!draftId.value || loading.value || saving.value || publishing.value)
       return false;
     const id = requireDraftId();
@@ -218,7 +223,7 @@ export function useHomepageEditor() {
         version: version.value,
       });
       applyMutationSuccess(saved, token, id, capturedRevision);
-      return true;
+      return saved;
     } catch (error) {
       if (!isCurrentMutation(token, id)) return false;
       applyApiError(error);
@@ -274,6 +279,7 @@ export function useHomepageEditor() {
     canPublish,
     load,
     replaceDraft,
+    reconcileMetadata,
     saveDraft,
     publish,
   };

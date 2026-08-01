@@ -222,7 +222,7 @@ describe('useHomepageEditor', () => {
         ],
       }),
     );
-    await expect(save).resolves.toBe(true);
+    await expect(save).resolves.toMatchObject({ id: '12' });
 
     expect(editor.draftId.value).toBe('13');
     expect(editor.version.value).toBe(8);
@@ -258,7 +258,7 @@ describe('useHomepageEditor', () => {
         updatedAt: '2026-08-01T02:00:00.000Z',
       }),
     );
-    await expect(save).resolves.toBe(true);
+    await expect(save).resolves.toMatchObject({ id: '12' });
 
     expect(editor.draftId.value).toBe('12');
     expect(editor.version.value).toBe(8);
@@ -377,7 +377,7 @@ describe('useHomepageEditor', () => {
     expect(editor.canPublish.value).toBe(false);
 
     pendingSave.resolve(view('12', { version: 4 }));
-    await expect(save).resolves.toBe(true);
+    await expect(save).resolves.toMatchObject({ id: '12' });
 
     const pendingPublish = deferred<AdminHomepageView>();
     api.publish.mockReturnValue(pendingPublish.promise);
@@ -396,6 +396,85 @@ describe('useHomepageEditor', () => {
       }),
     );
     await expect(publish).resolves.toBe(true);
+  });
+
+  it('reconciles current clean draft metadata without replacing its content', async () => {
+    const initialConfig = createHomepageDraft();
+    api.getOne.mockResolvedValue(view('12', { draftConfig: initialConfig }));
+    categoryLoader.mockResolvedValue([]);
+    productLoader.mockResolvedValue([]);
+    const editor = useHomepageEditor();
+    await editor.load('12');
+    const renamed = view('12', {
+      name: '中秋首页',
+      status: HomepageDraftStatus.PUBLISHED_WITH_CHANGES,
+      version: 4,
+      updatedAt: '2026-08-01T03:00:00.000Z',
+    });
+
+    editor.reconcileMetadata(renamed);
+
+    expect(editor.name.value).toBe('中秋首页');
+    expect(editor.status.value).toBe(
+      HomepageDraftStatus.PUBLISHED_WITH_CHANGES,
+    );
+    expect(editor.version.value).toBe(4);
+    expect(editor.updatedAt.value).toBe('2026-08-01T03:00:00.000Z');
+    expect(editor.draft.value).toEqual(initialConfig);
+    expect(editor.dirty.value).toBe(false);
+  });
+
+  it('reconciles dirty draft metadata and saves local content with the new version', async () => {
+    api.getOne.mockResolvedValue(view('12'));
+    categoryLoader.mockResolvedValue([]);
+    productLoader.mockResolvedValue([]);
+    const editor = useHomepageEditor();
+    await editor.load('12');
+    const localConfig = {
+      ...createHomepageDraft(),
+      customerService: {
+        ...createHomepageDraft().customerService,
+        title: '本地尚未保存的客服标题',
+      },
+    };
+    editor.replaceDraft(localConfig);
+    editor.reconcileMetadata(
+      view('12', {
+        name: '重命名后的首页',
+        status: HomepageDraftStatus.PUBLISHED_WITH_CHANGES,
+        version: 4,
+        updatedAt: '2026-08-01T03:00:00.000Z',
+      }),
+    );
+    api.saveDraft.mockResolvedValue(
+      view('12', { draftConfig: localConfig, version: 5 }),
+    );
+
+    expect(editor.draft.value).toEqual(localConfig);
+    expect(editor.dirty.value).toBe(true);
+    expect(editor.name.value).toBe('重命名后的首页');
+    expect(editor.version.value).toBe(4);
+
+    await editor.saveDraft();
+
+    expect(api.saveDraft).toHaveBeenCalledWith('12', {
+      config: localConfig,
+      version: 4,
+    });
+  });
+
+  it('ignores metadata reconciliation for a different draft', async () => {
+    api.getOne.mockResolvedValue(view('12'));
+    categoryLoader.mockResolvedValue([]);
+    productLoader.mockResolvedValue([]);
+    const editor = useHomepageEditor();
+    await editor.load('12');
+
+    editor.reconcileMetadata(view('13', { name: '其他草稿', version: 9 }));
+
+    expect(editor.draftId.value).toBe('12');
+    expect(editor.name.value).toBe('草稿 12');
+    expect(editor.version.value).toBe(3);
   });
 
   it('merges saved metadata without replacing edits made during the request', async () => {
@@ -442,7 +521,7 @@ describe('useHomepageEditor', () => {
         draftConfig: savedConfig,
       }),
     );
-    await expect(save).resolves.toBe(true);
+    await expect(save).resolves.toMatchObject({ id: '12' });
 
     expect(editor.draft.value).toEqual(latestConfig);
     expect(editor.dirty.value).toBe(true);

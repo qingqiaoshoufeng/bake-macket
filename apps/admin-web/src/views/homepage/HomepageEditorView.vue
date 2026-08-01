@@ -82,8 +82,8 @@ async function refreshSummaries(
 async function save(showSuccess = true): Promise<boolean> {
   try {
     const currentDraftId = editor.draftId.value;
-    const succeeded = await editor.saveDraft();
-    if (!succeeded) return false;
+    const saved = await editor.saveDraft();
+    if (!saved) return false;
     await refreshSummaries(1, currentDraftId);
     if (showSuccess) ElMessage.success('首页草稿已保存');
     return true;
@@ -113,6 +113,20 @@ async function publish(): Promise<void> {
   }
 }
 
+async function saveForTransition(): Promise<boolean> {
+  try {
+    const saved = await editor.saveDraft();
+    if (!saved) return false;
+    drafts.reconcileDetail(saved);
+    return true;
+  } catch (error) {
+    if (!editor.conflict.value) {
+      ElMessage.error(message(error, '首页草稿保存失败'));
+    }
+    return false;
+  }
+}
+
 async function loadAndSelect(id: string): Promise<boolean> {
   try {
     await editor.load(id);
@@ -121,6 +135,30 @@ async function loadAndSelect(id: string): Promise<boolean> {
   } catch (error) {
     ElMessage.error(message(error, '首页草稿加载失败'));
     return false;
+  }
+}
+
+type DirtyTransitionOptions = {
+  readonly message: string;
+  readonly title: string;
+  readonly confirmButtonText: string;
+  readonly cancelButtonText: string;
+};
+
+async function resolveDirtyTransition(
+  options: DirtyTransitionOptions,
+): Promise<boolean> {
+  if (!editor.dirty.value) return true;
+  try {
+    await ElMessageBox.confirm(options.message, options.title, {
+      type: 'warning',
+      confirmButtonText: options.confirmButtonText,
+      cancelButtonText: options.cancelButtonText,
+      distinguishCancelAndClose: true,
+    });
+    return saveForTransition();
+  } catch (action) {
+    return action === 'cancel';
   }
 }
 
@@ -133,26 +171,15 @@ async function selectDraft(id: string): Promise<void> {
     switchingDraft.value
   )
     return;
-  if (!editor.dirty.value) {
-    await loadAndSelect(id);
-    return;
-  }
   switchingDraft.value = true;
   try {
-    await ElMessageBox.confirm(
-      '当前草稿尚未保存，请选择如何处理后再切换。',
-      '切换首页草稿',
-      {
-        type: 'warning',
-        confirmButtonText: '保存并切换',
-        cancelButtonText: '放弃修改并切换',
-        distinguishCancelAndClose: true,
-      },
-    );
-    const saved = await save(false);
-    if (saved) await loadAndSelect(id);
-  } catch (action) {
-    if (action === 'cancel') await loadAndSelect(id);
+    const canSwitch = await resolveDirtyTransition({
+      message: '当前草稿尚未保存，请选择如何处理后再切换。',
+      title: '切换首页草稿',
+      confirmButtonText: '保存并切换',
+      cancelButtonText: '放弃修改并切换',
+    });
+    if (canSwitch) await loadAndSelect(id);
   } finally {
     switchingDraft.value = false;
   }
@@ -163,6 +190,13 @@ function openCreateDialog(): void {
 }
 
 async function createDraft(form: HomepageDraftCreateForm): Promise<void> {
+  const canCreate = await resolveDirtyTransition({
+    message: '当前草稿尚未保存，请选择如何处理后再创建新草稿。',
+    title: '创建首页草稿',
+    confirmButtonText: '保存并创建',
+    cancelButtonText: '放弃修改并创建',
+  });
+  if (!canCreate) return;
   creating.value = true;
   try {
     const created = await drafts.create(form);
@@ -193,7 +227,8 @@ async function renameDraft(item: AdminHomepageDraftSummary): Promise<void> {
         cancelButtonText: '取消',
       },
     );
-    await drafts.rename(item.id, result.value.trim());
+    const renamed = await drafts.rename(item.id, result.value.trim());
+    editor.reconcileMetadata(renamed);
     ElMessage.success('草稿名称已更新');
   } catch (error) {
     if (error === 'cancel' || error === 'close') return;
@@ -528,9 +563,21 @@ onBeforeUnmount(() =>
     grid-template-areas:
       'drafts editor'
       'drafts preview';
-    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-rows: minmax(520px, auto) auto;
     gap: 12px;
     overflow-y: auto;
+  }
+
+  .homepage-editor-view__layout > [data-workspace-column='drafts'] {
+    position: sticky;
+    top: 0;
+    grid-row: 1 / -1;
+    max-height: 100%;
+  }
+
+  .homepage-editor-view__configuration {
+    min-height: 520px;
+    overflow: visible;
   }
 
   .homepage-editor-view__preview {
@@ -539,7 +586,7 @@ onBeforeUnmount(() =>
   }
 
   .homepage-editor-view__preview :deep(.homepage-phone-preview) {
-    min-height: 720px;
+    min-height: 560px;
   }
 }
 </style>

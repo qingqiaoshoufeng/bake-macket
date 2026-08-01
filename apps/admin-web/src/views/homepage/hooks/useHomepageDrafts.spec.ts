@@ -312,6 +312,40 @@ describe('useHomepageDrafts', () => {
     expect(drafts.activeId.value).toBe('1');
   });
 
+  it('reconciles a detail into the current page without loading another list', async () => {
+    const current = summary('21', HomepageDraftStatus.DRAFT, 3);
+    const target = summary('22');
+    api.list.mockResolvedValue({
+      items: [current, target],
+      total: 22,
+      page: 2,
+      pageSize: 20,
+    });
+    const drafts = useHomepageDrafts();
+    await drafts.refresh({ page: 2, pageSize: 20 });
+    const saved = detail({
+      ...current,
+      name: '已保存当前草稿',
+      version: 4,
+      updatedAt: '2026-08-01T04:00:00.000Z',
+    });
+
+    drafts.reconcileDetail(saved);
+
+    expect(api.list).toHaveBeenCalledOnce();
+    expect(drafts.page.value).toBe(2);
+    expect(drafts.items.value).toEqual([
+      expect.objectContaining({
+        id: '21',
+        name: '已保存当前草稿',
+        version: 4,
+        updatedAt: '2026-08-01T04:00:00.000Z',
+      }),
+      target,
+    ]);
+    expect(drafts.activeId.value).toBe('21');
+  });
+
   it('applies publish results to versions and published statuses', async () => {
     const previous = summary('1', HomepageDraftStatus.PUBLISHED);
     const target = summary('2', HomepageDraftStatus.DRAFT, 4);

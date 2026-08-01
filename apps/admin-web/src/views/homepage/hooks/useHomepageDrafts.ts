@@ -139,6 +139,10 @@ export function useHomepageDrafts() {
     activeId.value = id;
   }
 
+  function reconcileDetail(view: AdminHomepageView): void {
+    items.value = applySummary(items.value, view);
+  }
+
   function operationPreferredId(
     operationStartActiveId: string | null,
   ): string | undefined {
@@ -306,6 +310,7 @@ export function useHomepageDrafts() {
     load,
     refresh,
     select,
+    reconcileDetail,
     create,
     rename,
     remove,
