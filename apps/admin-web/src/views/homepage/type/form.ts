@@ -1,9 +1,15 @@
 import type {
   AdminCategoryView,
   AdminProductSummaryView,
+  CreateHomepageDraftRequest,
   HomepageDraftConfig,
   HomepageValidationIssue,
 } from '@bake-mall/contracts';
+
+export type HomepageDraftCreateForm = {
+  readonly name: string;
+  readonly mode: CreateHomepageDraftRequest['mode'];
+};
 
 export type HomepageEditorOptions = {
   readonly categories: readonly AdminCategoryView[];
