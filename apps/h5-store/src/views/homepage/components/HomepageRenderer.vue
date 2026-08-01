@@ -16,14 +16,12 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <div class="homepage-renderer">
+  <div v-if="config" class="homepage-renderer">
     <HomepageCarousel
-      v-if="config"
       :section="config.hero"
       @navigate="emit('navigate', $event)"
     />
-    <slot />
-    <div v-if="config" class="homepage-renderer__content">
+    <div class="homepage-renderer__content">
       <HomepageCustomerService :section="config.customerService" />
       <HomepageShortcutGrid
         :section="config.shortcutGrid"
