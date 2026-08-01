@@ -128,11 +128,13 @@ async function saveForTransition(): Promise<boolean> {
 }
 
 async function loadAndSelect(id: string): Promise<boolean> {
+  const previousId = drafts.activeId.value;
+  drafts.select(id);
   try {
     await editor.load(id);
-    drafts.select(id);
     return true;
   } catch (error) {
+    if (drafts.activeId.value === id && previousId) drafts.select(previousId);
     ElMessage.error(message(error, '首页草稿加载失败'));
     return false;
   }

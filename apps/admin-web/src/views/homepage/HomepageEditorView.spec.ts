@@ -361,6 +361,22 @@ describe('HomepageEditorView', () => {
     expect(mocks.draftsSelect).toHaveBeenCalledWith('13');
   });
 
+  it('restores the previous selection when the latest draft load fails', async () => {
+    const wrapper = await mountView();
+    await flushPromises();
+    mocks.editorLoad.mockClear();
+    mocks.draftsSelect.mockClear();
+    mocks.editorLoad.mockRejectedValueOnce(new Error('详情加载失败'));
+
+    await draftRow(wrapper, '13').trigger('click');
+    await flushPromises();
+
+    expect(mocks.draftsSelect.mock.calls).toEqual([['13'], ['12']]);
+    expect(mocks.activeIdRef!.value).toBe('12');
+    expect(mocks.draftIdRef!.value).toBe('12');
+    expect(mocks.error).toHaveBeenCalledWith('详情加载失败');
+  });
+
   it.each([
     ['saving', 'savingRef'],
     ['publishing', 'publishingRef'],
@@ -748,6 +764,56 @@ describe('HomepageEditorView', () => {
     expect(mocks.activeIdRef!.value).toBe('14');
     expect(mocks.editorLoad).toHaveBeenLastCalledWith('14');
     expect(mocks.draftIdRef!.value).toBe(mocks.activeIdRef!.value);
+  });
+
+  it('does not restore a removed draft when its stale detail finishes after removal', async () => {
+    const removeRequest = createDeferred();
+    const removedDetailRequest = createDeferred();
+    mocks.draftsRemove.mockImplementationOnce(async (id: string) => {
+      await removeRequest.promise;
+      mocks.draftsItemsRef!.value = mocks.draftsItemsRef!.value.filter(
+        ({ id: candidateId }) => candidateId !== id,
+      );
+      mocks.activeIdRef!.value = '14';
+    });
+    const wrapper = await mountView();
+    await flushPromises();
+    mocks.editorLoad.mockClear();
+    mocks.draftsSelect.mockClear();
+    let loadGeneration = 0;
+    mocks.editorLoad.mockImplementation(async (id: string) => {
+      const generation = loadGeneration + 1;
+      loadGeneration = generation;
+      if (id === '13') await removedDetailRequest.promise;
+      if (generation === loadGeneration) mocks.draftIdRef!.value = id;
+    });
+
+    await draftRow(wrapper, '13')
+      .find('[data-action="remove"]')
+      .trigger('click');
+    await flushPromises();
+    await draftRow(wrapper, '13').trigger('click');
+    await flushPromises();
+
+    expect(mocks.editorLoad).toHaveBeenLastCalledWith('13');
+
+    removeRequest.resolve();
+    await flushPromises();
+
+    expect(mocks.draftsItemsRef!.value).not.toContainEqual(
+      expect.objectContaining({ id: '13' }),
+    );
+    expect(mocks.activeIdRef!.value).toBe('14');
+    expect(mocks.draftIdRef!.value).toBe('14');
+
+    removedDetailRequest.resolve();
+    await flushPromises();
+
+    expect(mocks.draftsItemsRef!.value).not.toContainEqual(
+      expect.objectContaining({ id: '13' }),
+    );
+    expect(mocks.activeIdRef!.value).toBe('14');
+    expect(mocks.draftIdRef!.value).toBe('14');
   });
 
   it('does not send remove for a published-source draft', async () => {
