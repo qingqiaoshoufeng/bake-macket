@@ -49,6 +49,22 @@ const product: AdminProductSummaryView = {
   updatedAt: '2026-08-01T00:00:00.000Z',
 };
 
+type Deferred<T> = {
+  readonly promise: Promise<T>;
+  readonly resolve: (value: T) => void;
+  readonly reject: (reason: unknown) => void;
+};
+
+function deferred<T>(): Deferred<T> {
+  const resolve = vi.fn<(value: T) => void>();
+  const reject = vi.fn<(reason: unknown) => void>();
+  const promise = new Promise<T>((done, fail) => {
+    resolve.mockImplementation(done);
+    reject.mockImplementation(fail);
+  });
+  return { promise, resolve, reject };
+}
+
 function view(
   id: string,
   overrides: Partial<AdminHomepageView> = {},
@@ -92,6 +108,79 @@ describe('useHomepageEditor', () => {
     expect(editor.version.value).toBe(8);
     expect(editor.categories.value).toEqual([category]);
     expect(editor.products.value).toEqual([product]);
+  });
+
+  it('only lets the latest concurrent load update editor state and loading', async () => {
+    const stale = deferred<AdminHomepageView>();
+    const current = deferred<AdminHomepageView>();
+    api.getOne
+      .mockReturnValueOnce(stale.promise)
+      .mockReturnValueOnce(current.promise);
+    categoryLoader.mockResolvedValue([category]);
+    productLoader.mockResolvedValue([product]);
+    const editor = useHomepageEditor();
+
+    const first = editor.load('12');
+    const second = editor.load('13');
+    current.resolve(
+      view('13', {
+        version: 8,
+        draftConfig: {
+          ...createHomepageDraft(),
+          customerService: {
+            ...createHomepageDraft().customerService,
+            title: '当前配置',
+          },
+        },
+      }),
+    );
+    await second;
+
+    expect(editor.draftId.value).toBe('13');
+    expect(editor.version.value).toBe(8);
+    expect(editor.draft.value.customerService.title).toBe('当前配置');
+    expect(editor.lastError.value).toBeNull();
+    expect(editor.loading.value).toBe(false);
+
+    stale.resolve(view('12', { version: 4 }));
+    await first;
+
+    expect(editor.draftId.value).toBe('13');
+    expect(editor.version.value).toBe(8);
+    expect(editor.draft.value.customerService.title).toBe('当前配置');
+    expect(editor.lastError.value).toBeNull();
+    expect(editor.loading.value).toBe(false);
+    expect(categoryLoader).toHaveBeenCalledTimes(1);
+    expect(productLoader).toHaveBeenCalledTimes(1);
+    expect(editor.categories.value).toEqual([category]);
+    expect(editor.products.value).toEqual([product]);
+  });
+
+  it('ignores stale load errors while the latest request remains loading', async () => {
+    const stale = deferred<AdminHomepageView>();
+    const current = deferred<AdminHomepageView>();
+    api.getOne
+      .mockReturnValueOnce(stale.promise)
+      .mockReturnValueOnce(current.promise);
+    categoryLoader.mockResolvedValue([]);
+    productLoader.mockResolvedValue([]);
+    const editor = useHomepageEditor();
+
+    const first = editor.load('12');
+    const second = editor.load('13');
+    stale.reject(new Error('旧请求失败'));
+    await expect(first).rejects.toThrow('旧请求失败');
+
+    expect(editor.lastError.value).toBeNull();
+    expect(editor.loading.value).toBe(true);
+
+    current.resolve(view('13', { version: 8 }));
+    await second;
+
+    expect(editor.draftId.value).toBe('13');
+    expect(editor.version.value).toBe(8);
+    expect(editor.lastError.value).toBeNull();
+    expect(editor.loading.value).toBe(false);
   });
 
   it('saves and publishes the current ID and applies the returned view state', async () => {

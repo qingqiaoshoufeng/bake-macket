@@ -40,6 +40,7 @@ export function useHomepageEditor() {
   const conflict = ref<string | null>(null);
   const lastError = ref<string | null>(null);
   let catalogPromise: Promise<void> | null = null;
+  let loadSequence = 0;
 
   const canPublish = computed(
     () => !dirty.value && !saving.value && !publishing.value,
@@ -88,6 +89,8 @@ export function useHomepageEditor() {
   async function load(id?: string): Promise<void> {
     const nextId = id ?? draftId.value;
     if (!nextId) throw new Error('请先选择首页草稿');
+    const sequence = loadSequence + 1;
+    loadSequence = sequence;
     loading.value = true;
     lastError.value = null;
     try {
@@ -95,12 +98,14 @@ export function useHomepageEditor() {
         homepageApi.getOne(nextId),
         ensureCatalog(),
       ]);
-      applyView(view);
+      if (sequence === loadSequence) applyView(view);
     } catch (error) {
-      lastError.value = errorMessage(error, '首页配置加载失败');
+      if (sequence === loadSequence) {
+        lastError.value = errorMessage(error, '首页配置加载失败');
+      }
       throw error;
     } finally {
-      loading.value = false;
+      if (sequence === loadSequence) loading.value = false;
     }
   }
 

@@ -73,19 +73,29 @@ export function useHomepageDrafts() {
   const error = ref<string | null>(null);
   const activeId = ref<string | null>(null);
   const publishedDraftId = ref<string | null>(null);
-  let requestSequence = 0;
+  let stateGeneration = 0;
+
+  function invalidateListRequests(): number {
+    const generation = stateGeneration + 1;
+    stateGeneration = generation;
+    loading.value = false;
+    return generation;
+  }
+
+  function isCurrent(generation: number): boolean {
+    return generation === stateGeneration;
+  }
 
   async function load(
     query: AdminPageQuery,
     preferredId?: string,
   ): Promise<void> {
-    const sequence = requestSequence + 1;
-    requestSequence = sequence;
+    const generation = invalidateListRequests();
     loading.value = true;
     error.value = null;
     try {
       const result = await homepageApi.list(query);
-      if (sequence !== requestSequence) return;
+      if (!isCurrent(generation)) return;
       items.value = [...result.items];
       page.value = result.page;
       pageSize.value = result.pageSize;
@@ -99,16 +109,21 @@ export function useHomepageDrafts() {
           : preferredActiveId(items.value);
       } else if (!activeExists) activeId.value = preferredActiveId(items.value);
     } catch (cause) {
-      if (sequence === requestSequence) {
+      if (isCurrent(generation)) {
         error.value = errorMessage(cause, '首页草稿加载失败');
       }
     } finally {
-      if (sequence === requestSequence) loading.value = false;
+      if (isCurrent(generation)) loading.value = false;
     }
   }
 
   async function refresh(query?: AdminPageQuery): Promise<void> {
     await load(query ?? { page: page.value, pageSize: pageSize.value });
+  }
+
+  function beginMutation(): void {
+    invalidateListRequests();
+    error.value = null;
   }
 
   function select(id: string): void {
@@ -118,7 +133,7 @@ export function useHomepageDrafts() {
   async function create(
     form: HomepageDraftCreateForm,
   ): Promise<AdminHomepageView> {
-    error.value = null;
+    beginMutation();
     try {
       const created = await homepageApi.create(
         createRequest(form, activeId.value),
@@ -137,13 +152,14 @@ export function useHomepageDrafts() {
   async function rename(id: string, name: string): Promise<AdminHomepageView> {
     const item = items.value.find((candidate) => candidate.id === id);
     if (!item) throw new Error('未找到要重命名的草稿');
-    error.value = null;
+    beginMutation();
     try {
       const renamed = await homepageApi.rename(id, {
         name,
         version: item.version,
       });
       items.value = applySummary(items.value, renamed);
+      await load({ page: page.value, pageSize: pageSize.value }, id);
       return renamed;
     } catch (cause) {
       error.value = errorMessage(cause, '首页草稿重命名失败');
@@ -158,14 +174,20 @@ export function useHomepageDrafts() {
     if (id === publishedDraftId.value || isPublishedSource(item)) {
       throw new Error('当前线上来源草稿不能删除');
     }
-    error.value = null;
+    beginMutation();
     try {
       await homepageApi.remove(id);
       const nextActiveId =
         items.value[index + 1]?.id ?? items.value[index - 1]?.id ?? null;
-      items.value = items.value.filter((candidate) => candidate.id !== id);
-      total.value = Math.max(0, total.value - 1);
-      if (activeId.value === id) activeId.value = nextActiveId;
+      const nextTotal = Math.max(0, total.value - 1);
+      const lastPage = Math.max(1, Math.ceil(nextTotal / pageSize.value));
+      const targetPage = Math.min(page.value, lastPage);
+      await load(
+        { page: targetPage, pageSize: pageSize.value },
+        activeId.value === id
+          ? (nextActiveId ?? undefined)
+          : (activeId.value ?? undefined),
+      );
     } catch (cause) {
       error.value = errorMessage(cause, '首页草稿删除失败');
       throw cause;
@@ -176,7 +198,7 @@ export function useHomepageDrafts() {
     id: string,
     body: PublishHomepageRequest,
   ): Promise<AdminHomepageView> {
-    error.value = null;
+    beginMutation();
     try {
       const published = await homepageApi.publish(id, body);
       const publishedSummary = toSummary(published);
@@ -187,6 +209,7 @@ export function useHomepageDrafts() {
           : item;
       });
       publishedDraftId.value = id;
+      await load({ page: page.value, pageSize: pageSize.value }, id);
       return published;
     } catch (cause) {
       error.value = errorMessage(cause, '首页草稿发布失败');

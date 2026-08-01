@@ -73,6 +73,13 @@ function deferred<T>(): Deferred<T> {
   return { promise, resolve };
 }
 
+function named(
+  item: AdminHomepageDraftSummary,
+  name: string,
+): AdminHomepageDraftSummary {
+  return { ...item, name };
+}
+
 describe('useHomepageDrafts', () => {
   afterEach(() => {
     vi.resetAllMocks();
@@ -144,10 +151,11 @@ describe('useHomepageDrafts', () => {
 
   it('renames with the current version and applies the returned version to the list', async () => {
     const original = summary('1', HomepageDraftStatus.DRAFT, 3);
-    api.list.mockResolvedValue(list([original]));
-    api.rename.mockResolvedValue(
-      detail({ ...original, name: '中秋首页', version: 4 }),
-    );
+    const renamed = { ...original, name: '中秋首页', version: 4 };
+    api.list
+      .mockResolvedValueOnce(list([original]))
+      .mockResolvedValueOnce(list([renamed]));
+    api.rename.mockResolvedValue(detail(renamed));
     const drafts = useHomepageDrafts();
     await drafts.refresh();
 
@@ -184,9 +192,10 @@ describe('useHomepageDrafts', () => {
   });
 
   it('selects the next row, then the previous row, after deleting an ordinary draft', async () => {
-    api.list.mockResolvedValue(
-      list([summary('1'), summary('2'), summary('3')]),
-    );
+    api.list
+      .mockResolvedValueOnce(list([summary('1'), summary('2'), summary('3')]))
+      .mockResolvedValueOnce(list([summary('1'), summary('3')]))
+      .mockResolvedValueOnce(list([summary('1')]));
     api.remove.mockResolvedValue(undefined);
     const drafts = useHomepageDrafts();
     await drafts.refresh();
@@ -200,13 +209,115 @@ describe('useHomepageDrafts', () => {
     expect(drafts.items.value.map(({ id }) => id)).toEqual(['1']);
   });
 
+  it('keeps an authoritative remove result when an earlier refresh settles last', async () => {
+    const first = summary('1');
+    const removed = summary('2');
+    const stale = deferred<AdminHomepageDraftListView>();
+    api.list
+      .mockResolvedValueOnce(list([first, removed]))
+      .mockReturnValueOnce(stale.promise)
+      .mockResolvedValueOnce(list([first]));
+    api.remove.mockResolvedValue(undefined);
+    const drafts = useHomepageDrafts();
+    await drafts.refresh();
+
+    const refresh = drafts.refresh();
+    await drafts.remove('2');
+    stale.resolve(list([first, removed]));
+    await refresh;
+
+    expect(drafts.items.value).toEqual([first]);
+    expect(drafts.total.value).toBe(1);
+    expect(drafts.loading.value).toBe(false);
+    expect(api.list).toHaveBeenLastCalledWith({ page: 1, pageSize: 20 });
+  });
+
+  it('keeps an authoritative rename result when an earlier refresh settles last', async () => {
+    const original = summary('1', HomepageDraftStatus.DRAFT, 3);
+    const renamed = named({ ...original, version: 4 }, '中秋首页');
+    const stale = deferred<AdminHomepageDraftListView>();
+    api.list
+      .mockResolvedValueOnce(list([original]))
+      .mockReturnValueOnce(stale.promise)
+      .mockResolvedValueOnce(list([renamed]));
+    api.rename.mockResolvedValue(detail(renamed));
+    const drafts = useHomepageDrafts();
+    await drafts.refresh();
+
+    const refresh = drafts.refresh();
+    await drafts.rename('1', '中秋首页');
+    stale.resolve(list([original]));
+    await refresh;
+
+    expect(drafts.items.value).toEqual([renamed]);
+    expect(drafts.loading.value).toBe(false);
+  });
+
+  it('keeps an authoritative publish result when an earlier refresh settles last', async () => {
+    const previous = summary('1', HomepageDraftStatus.PUBLISHED);
+    const target = summary('2', HomepageDraftStatus.DRAFT, 4);
+    const published = { ...target, status: HomepageDraftStatus.PUBLISHED };
+    const stale = deferred<AdminHomepageDraftListView>();
+    api.list
+      .mockResolvedValueOnce(list([previous, target], '1'))
+      .mockReturnValueOnce(stale.promise)
+      .mockResolvedValueOnce(list([summary('1'), published], '2'));
+    api.publish.mockResolvedValue(detail(published));
+    const drafts = useHomepageDrafts();
+    await drafts.refresh();
+
+    const refresh = drafts.refresh();
+    await drafts.publish('2', { version: 4 });
+    stale.resolve(list([previous, target], '1'));
+    await refresh;
+
+    expect(drafts.publishedDraftId.value).toBe('2');
+    expect(drafts.items.value).toEqual([summary('1'), published]);
+    expect(drafts.loading.value).toBe(false);
+  });
+
+  it('reloads the last valid page after deleting the only item on a later page', async () => {
+    const onlyItem = summary('21');
+    const previousPage = Array.from({ length: 20 }, (_, index) =>
+      summary(String(index + 1)),
+    );
+    api.list
+      .mockResolvedValueOnce({
+        items: [onlyItem],
+        total: 21,
+        page: 2,
+        pageSize: 20,
+      })
+      .mockResolvedValueOnce({
+        items: previousPage,
+        total: 20,
+        page: 1,
+        pageSize: 20,
+      });
+    api.remove.mockResolvedValue(undefined);
+    const drafts = useHomepageDrafts();
+    await drafts.refresh({ page: 2, pageSize: 20 });
+
+    await drafts.remove('21');
+
+    expect(api.list).toHaveBeenLastCalledWith({ page: 1, pageSize: 20 });
+    expect(drafts.page.value).toBe(1);
+    expect(drafts.total.value).toBe(20);
+    expect(drafts.items.value).toEqual(previousPage);
+    expect(drafts.activeId.value).toBe('1');
+  });
+
   it('applies publish results to versions and published statuses', async () => {
     const previous = summary('1', HomepageDraftStatus.PUBLISHED);
     const target = summary('2', HomepageDraftStatus.DRAFT, 4);
-    api.list.mockResolvedValue(list([previous, target], '1'));
-    api.publish.mockResolvedValue(
-      detail({ ...target, status: HomepageDraftStatus.PUBLISHED }),
-    );
+    const published = {
+      ...target,
+      status: HomepageDraftStatus.PUBLISHED,
+    };
+    api.list
+      .mockResolvedValueOnce(list([previous, target], '1'))
+      .mockResolvedValueOnce(list([summary('1'), published], '2'));
+    api.publish.mockResolvedValue(detail(published));
     const drafts = useHomepageDrafts();
     await drafts.refresh();
 
