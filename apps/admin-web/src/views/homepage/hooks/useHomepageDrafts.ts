@@ -13,6 +13,10 @@ import type { HomepageDraftCreateForm } from '../type/form.js';
 
 const DEFAULT_QUERY: AdminPageQuery = { page: 1, pageSize: 20 };
 
+type LoadOptions = {
+  readonly throwOnError?: boolean;
+};
+
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
@@ -75,10 +79,9 @@ export function useHomepageDrafts() {
   const publishedDraftId = ref<string | null>(null);
   let stateGeneration = 0;
 
-  function invalidateListRequests(): number {
+  function nextGeneration(): number {
     const generation = stateGeneration + 1;
     stateGeneration = generation;
-    loading.value = false;
     return generation;
   }
 
@@ -89,29 +92,35 @@ export function useHomepageDrafts() {
   async function load(
     query: AdminPageQuery,
     preferredId?: string,
-  ): Promise<void> {
-    const generation = invalidateListRequests();
+    options: LoadOptions = {},
+  ): Promise<boolean> {
+    const generation = nextGeneration();
+    const loadStartActiveId = activeId.value;
     loading.value = true;
     error.value = null;
     try {
       const result = await homepageApi.list(query);
-      if (!isCurrent(generation)) return;
+      if (!isCurrent(generation)) return false;
       items.value = [...result.items];
       page.value = result.page;
       pageSize.value = result.pageSize;
       total.value = result.total;
       publishedDraftId.value = result.publishedDraftId ?? null;
-      const preferredExists = items.value.some(({ id }) => id === preferredId);
       const activeExists = items.value.some(({ id }) => id === activeId.value);
+      const activeChangedDuringLoad = activeId.value !== loadStartActiveId;
+      if (activeChangedDuringLoad && activeExists) return true;
+      const preferredExists = items.value.some(({ id }) => id === preferredId);
       if (preferredId !== undefined) {
         activeId.value = preferredExists
           ? preferredId
           : preferredActiveId(items.value);
       } else if (!activeExists) activeId.value = preferredActiveId(items.value);
+      return true;
     } catch (cause) {
-      if (isCurrent(generation)) {
-        error.value = errorMessage(cause, '首页草稿加载失败');
-      }
+      if (!isCurrent(generation)) return false;
+      error.value = errorMessage(cause, '首页草稿加载失败');
+      if (options.throwOnError) throw cause;
+      return true;
     } finally {
       if (isCurrent(generation)) loading.value = false;
     }
@@ -121,50 +130,95 @@ export function useHomepageDrafts() {
     await load(query ?? { page: page.value, pageSize: pageSize.value });
   }
 
-  function beginMutation(): void {
-    invalidateListRequests();
+  function beginMutation(): number {
+    const generation = nextGeneration();
     error.value = null;
+    return generation;
   }
 
   function select(id: string): void {
     activeId.value = id;
   }
 
+  function operationPreferredId(
+    targetId: string,
+    operationStartActiveId: string | null,
+  ): string | undefined {
+    return activeId.value === operationStartActiveId
+      ? targetId
+      : (activeId.value ?? undefined);
+  }
+
+  async function convergeAfterFailure(
+    generation: number,
+    cause: unknown,
+    fallback: string,
+    query: AdminPageQuery,
+    preferredId?: string,
+  ): Promise<never> {
+    if (!isCurrent(generation)) throw cause;
+    const refreshIsCurrent = await load(query, preferredId);
+    if (refreshIsCurrent) error.value = errorMessage(cause, fallback);
+    throw cause;
+  }
+
   async function create(
     form: HomepageDraftCreateForm,
   ): Promise<AdminHomepageView> {
-    beginMutation();
+    const sourceId = activeId.value;
+    const generation = beginMutation();
+    let created: AdminHomepageView;
     try {
-      const created = await homepageApi.create(
-        createRequest(form, activeId.value),
-      );
-      await load(
-        { page: DEFAULT_QUERY.page, pageSize: pageSize.value },
-        created.id,
-      );
-      return created;
+      created = await homepageApi.create(createRequest(form, sourceId));
     } catch (cause) {
-      error.value = errorMessage(cause, '首页草稿创建失败');
-      throw cause;
+      return convergeAfterFailure(
+        generation,
+        cause,
+        '首页草稿创建失败',
+        { page: page.value, pageSize: pageSize.value },
+        activeId.value ?? undefined,
+      );
     }
+    if (!isCurrent(generation)) return created;
+    items.value = applySummary(items.value, created);
+    total.value += 1;
+    page.value = DEFAULT_QUERY.page;
+    activeId.value = created.id;
+    await load(
+      { page: DEFAULT_QUERY.page, pageSize: pageSize.value },
+      created.id,
+    );
+    return created;
   }
 
   async function rename(id: string, name: string): Promise<AdminHomepageView> {
     const item = items.value.find((candidate) => candidate.id === id);
     if (!item) throw new Error('未找到要重命名的草稿');
-    beginMutation();
+    const operationStartActiveId = activeId.value;
+    const operationQuery = { page: page.value, pageSize: pageSize.value };
+    const generation = beginMutation();
+    let renamed: AdminHomepageView;
     try {
-      const renamed = await homepageApi.rename(id, {
+      renamed = await homepageApi.rename(id, {
         name,
         version: item.version,
       });
-      items.value = applySummary(items.value, renamed);
-      await load({ page: page.value, pageSize: pageSize.value }, id);
-      return renamed;
     } catch (cause) {
-      error.value = errorMessage(cause, '首页草稿重命名失败');
-      throw cause;
+      return convergeAfterFailure(
+        generation,
+        cause,
+        '首页草稿重命名失败',
+        operationQuery,
+        activeId.value ?? undefined,
+      );
     }
+    if (!isCurrent(generation)) return renamed;
+    items.value = applySummary(items.value, renamed);
+    await load(
+      { page: page.value, pageSize: pageSize.value },
+      operationPreferredId(id, operationStartActiveId),
+    );
+    return renamed;
   }
 
   async function remove(id: string): Promise<void> {
@@ -174,47 +228,82 @@ export function useHomepageDrafts() {
     if (id === publishedDraftId.value || isPublishedSource(item)) {
       throw new Error('当前线上来源草稿不能删除');
     }
-    beginMutation();
+    const operationStartActiveId = activeId.value;
+    const operationQuery = { page: page.value, pageSize: pageSize.value };
+    const generation = beginMutation();
     try {
       await homepageApi.remove(id);
-      const nextActiveId =
-        items.value[index + 1]?.id ?? items.value[index - 1]?.id ?? null;
-      const nextTotal = Math.max(0, total.value - 1);
-      const lastPage = Math.max(1, Math.ceil(nextTotal / pageSize.value));
-      const targetPage = Math.min(page.value, lastPage);
-      await load(
-        { page: targetPage, pageSize: pageSize.value },
-        activeId.value === id
-          ? (nextActiveId ?? undefined)
-          : (activeId.value ?? undefined),
-      );
     } catch (cause) {
-      error.value = errorMessage(cause, '首页草稿删除失败');
-      throw cause;
+      return convergeAfterFailure(
+        generation,
+        cause,
+        '首页草稿删除失败',
+        operationQuery,
+        activeId.value ?? undefined,
+      );
     }
+    if (!isCurrent(generation)) return;
+    const nextActiveId =
+      items.value[index + 1]?.id ?? items.value[index - 1]?.id ?? null;
+    const nextItems = items.value.filter((candidate) => candidate.id !== id);
+    const nextTotal = Math.max(0, total.value - 1);
+    const lastPage = Math.max(1, Math.ceil(nextTotal / pageSize.value));
+    const targetPage = Math.min(page.value, lastPage);
+    const selectedDuringOperation =
+      activeId.value === operationStartActiveId
+        ? operationStartActiveId
+        : activeId.value;
+    const preferredId =
+      selectedDuringOperation === id
+        ? nextActiveId
+        : (selectedDuringOperation ?? nextActiveId);
+    items.value = nextItems;
+    total.value = nextTotal;
+    page.value = targetPage;
+    activeId.value = nextItems.some(
+      ({ id: candidateId }) => candidateId === preferredId,
+    )
+      ? preferredId
+      : (nextItems[0]?.id ?? null);
+    await load(
+      { page: targetPage, pageSize: pageSize.value },
+      activeId.value ?? undefined,
+    );
   }
 
   async function publish(
     id: string,
     body: PublishHomepageRequest,
   ): Promise<AdminHomepageView> {
-    beginMutation();
+    const operationStartActiveId = activeId.value;
+    const operationQuery = { page: page.value, pageSize: pageSize.value };
+    const generation = beginMutation();
+    let published: AdminHomepageView;
     try {
-      const published = await homepageApi.publish(id, body);
-      const publishedSummary = toSummary(published);
-      items.value = items.value.map((item) => {
-        if (item.id === id) return publishedSummary;
-        return isPublishedSource(item)
-          ? { ...item, status: HomepageDraftStatus.DRAFT }
-          : item;
-      });
-      publishedDraftId.value = id;
-      await load({ page: page.value, pageSize: pageSize.value }, id);
-      return published;
+      published = await homepageApi.publish(id, body);
     } catch (cause) {
-      error.value = errorMessage(cause, '首页草稿发布失败');
-      throw cause;
+      return convergeAfterFailure(
+        generation,
+        cause,
+        '首页草稿发布失败',
+        operationQuery,
+        activeId.value ?? undefined,
+      );
     }
+    if (!isCurrent(generation)) return published;
+    const publishedSummary = toSummary(published);
+    items.value = items.value.map((item) => {
+      if (item.id === id) return publishedSummary;
+      return isPublishedSource(item)
+        ? { ...item, status: HomepageDraftStatus.DRAFT }
+        : item;
+    });
+    publishedDraftId.value = id;
+    await load(
+      { page: page.value, pageSize: pageSize.value },
+      operationPreferredId(id, operationStartActiveId),
+    );
+    return published;
   }
 
   return {

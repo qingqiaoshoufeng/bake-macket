@@ -65,12 +65,17 @@ function detail(item: AdminHomepageDraftSummary): AdminHomepageView {
 type Deferred<T> = {
   readonly promise: Promise<T>;
   readonly resolve: (value: T) => void;
+  readonly reject: (reason: unknown) => void;
 };
 
 function deferred<T>(): Deferred<T> {
   const resolve = vi.fn<(value: T) => void>();
-  const promise = new Promise<T>((done) => resolve.mockImplementation(done));
-  return { promise, resolve };
+  const reject = vi.fn<(reason: unknown) => void>();
+  const promise = new Promise<T>((done, fail) => {
+    resolve.mockImplementation(done);
+    reject.mockImplementation(fail);
+  });
+  return { promise, resolve, reject };
 }
 
 function named(
@@ -332,6 +337,216 @@ describe('useHomepageDrafts', () => {
         status: HomepageDraftStatus.PUBLISHED,
       }),
     ]);
+  });
+
+  it('refreshes authoritatively after a failed rename invalidates a pending refresh', async () => {
+    const original = summary('1', HomepageDraftStatus.DRAFT, 3);
+    const stale = deferred<AdminHomepageDraftListView>();
+    const failure = new Error('重命名失败');
+    api.list
+      .mockResolvedValueOnce(list([original]))
+      .mockReturnValueOnce(stale.promise)
+      .mockResolvedValueOnce(list([original]));
+    api.rename.mockRejectedValue(failure);
+    const drafts = useHomepageDrafts();
+    await drafts.refresh();
+
+    const refresh = drafts.refresh();
+    await expect(drafts.rename('1', '失败名称')).rejects.toBe(failure);
+    stale.resolve(list([named(original, '过期名称')]));
+    await refresh;
+
+    expect(api.list).toHaveBeenCalledTimes(3);
+    expect(drafts.items.value).toEqual([original]);
+    expect(drafts.error.value).toBe('重命名失败');
+    expect(drafts.loading.value).toBe(false);
+  });
+
+  it('refreshes authoritatively after a failed remove invalidates a pending refresh', async () => {
+    const first = summary('1');
+    const target = summary('2');
+    const stale = deferred<AdminHomepageDraftListView>();
+    const failure = new Error('删除失败');
+    api.list
+      .mockResolvedValueOnce(list([first, target]))
+      .mockReturnValueOnce(stale.promise)
+      .mockResolvedValueOnce(list([first, target]));
+    api.remove.mockRejectedValue(failure);
+    const drafts = useHomepageDrafts();
+    await drafts.refresh();
+
+    const refresh = drafts.refresh();
+    await expect(drafts.remove('2')).rejects.toBe(failure);
+    stale.resolve(list([first]));
+    await refresh;
+
+    expect(api.list).toHaveBeenCalledTimes(3);
+    expect(drafts.items.value).toEqual([first, target]);
+    expect(drafts.error.value).toBe('删除失败');
+  });
+
+  it('preserves a user selection changed while rename is pending', async () => {
+    const target = summary('1', HomepageDraftStatus.DRAFT, 3);
+    const selected = summary('2');
+    const pending = deferred<AdminHomepageView>();
+    api.list
+      .mockResolvedValueOnce(list([target, selected]))
+      .mockResolvedValueOnce(
+        list([named({ ...target, version: 4 }, '新名称'), selected]),
+      );
+    api.rename.mockReturnValue(pending.promise);
+    const drafts = useHomepageDrafts();
+    await drafts.refresh();
+
+    const rename = drafts.rename('1', '新名称');
+    drafts.select('2');
+    pending.resolve(detail(named({ ...target, version: 4 }, '新名称')));
+    await rename;
+
+    expect(drafts.activeId.value).toBe('2');
+  });
+
+  it('preserves a user selection changed while the rename refresh is pending', async () => {
+    const target = summary('1', HomepageDraftStatus.DRAFT, 3);
+    const second = summary('2');
+    const selected = summary('3');
+    const refresh = deferred<AdminHomepageDraftListView>();
+    api.list
+      .mockResolvedValueOnce(list([target, second, selected]))
+      .mockReturnValueOnce(refresh.promise);
+    api.rename.mockResolvedValue(
+      detail(named({ ...target, version: 4 }, '新名称')),
+    );
+    const drafts = useHomepageDrafts();
+    await drafts.refresh();
+
+    const rename = drafts.rename('1', '新名称');
+    await vi.waitFor(() => expect(api.list).toHaveBeenCalledTimes(2));
+    drafts.select('3');
+    refresh.resolve(
+      list([named({ ...target, version: 4 }, '新名称'), second, selected]),
+    );
+    await rename;
+
+    expect(drafts.activeId.value).toBe('3');
+  });
+
+  it('preserves a user selection changed while publish is pending', async () => {
+    const target = summary('1', HomepageDraftStatus.DRAFT, 3);
+    const selected = summary('2');
+    const published = {
+      ...target,
+      status: HomepageDraftStatus.PUBLISHED,
+    };
+    const pending = deferred<AdminHomepageView>();
+    api.list
+      .mockResolvedValueOnce(list([target, selected]))
+      .mockResolvedValueOnce(list([published, selected], '1'));
+    api.publish.mockReturnValue(pending.promise);
+    const drafts = useHomepageDrafts();
+    await drafts.refresh();
+
+    const publish = drafts.publish('1', { version: 3 });
+    drafts.select('2');
+    pending.resolve(detail(published));
+    await publish;
+
+    expect(drafts.activeId.value).toBe('2');
+  });
+
+  it('preserves a user selection changed while the publish refresh is pending', async () => {
+    const target = summary('1', HomepageDraftStatus.DRAFT, 3);
+    const second = summary('2');
+    const selected = summary('3');
+    const published = {
+      ...target,
+      status: HomepageDraftStatus.PUBLISHED,
+    };
+    const refresh = deferred<AdminHomepageDraftListView>();
+    api.list
+      .mockResolvedValueOnce(list([target, second, selected]))
+      .mockReturnValueOnce(refresh.promise);
+    api.publish.mockResolvedValue(detail(published));
+    const drafts = useHomepageDrafts();
+    await drafts.refresh();
+
+    const publish = drafts.publish('1', { version: 3 });
+    await vi.waitFor(() => expect(api.list).toHaveBeenCalledTimes(2));
+    drafts.select('3');
+    refresh.resolve(list([published, second, selected], '1'));
+    await publish;
+
+    expect(drafts.activeId.value).toBe('3');
+  });
+
+  it('keeps an optimistically created draft when the follow-up refresh fails', async () => {
+    const initial = summary('1');
+    const created = summary('2');
+    const refreshFailure = new Error('列表刷新失败');
+    api.list
+      .mockResolvedValueOnce(list([initial]))
+      .mockRejectedValueOnce(refreshFailure);
+    api.create.mockResolvedValue(detail(created));
+    const drafts = useHomepageDrafts();
+    await drafts.refresh();
+
+    await expect(
+      drafts.create({ name: '新方案', mode: 'BLANK' }),
+    ).resolves.toMatchObject({ id: '2' });
+
+    expect(drafts.items.value).toEqual([created, initial]);
+    expect(drafts.total.value).toBe(2);
+    expect(drafts.page.value).toBe(1);
+    expect(drafts.activeId.value).toBe('2');
+    expect(drafts.error.value).toBe('列表刷新失败');
+  });
+
+  it('keeps an optimistically removed draft absent when the follow-up refresh fails', async () => {
+    const first = summary('1');
+    const removed = summary('2');
+    const refreshFailure = new Error('列表刷新失败');
+    api.list
+      .mockResolvedValueOnce(list([first, removed]))
+      .mockRejectedValueOnce(refreshFailure);
+    api.remove.mockResolvedValue(undefined);
+    const drafts = useHomepageDrafts();
+    await drafts.refresh();
+    drafts.select('2');
+
+    await expect(drafts.remove('2')).resolves.toBeUndefined();
+
+    expect(drafts.items.value).toEqual([first]);
+    expect(drafts.total.value).toBe(1);
+    expect(drafts.page.value).toBe(1);
+    expect(drafts.activeId.value).toBe('1');
+    expect(drafts.error.value).toBe('列表刷新失败');
+  });
+
+  it('converges after a second mutation invalidates the first refresh and then fails', async () => {
+    const original = summary('1', HomepageDraftStatus.DRAFT, 3);
+    const renamed = named({ ...original, version: 4 }, '已保存名称');
+    const staleRefresh = deferred<AdminHomepageDraftListView>();
+    const secondFailure = new Error('第二次重命名失败');
+    api.list
+      .mockResolvedValueOnce(list([original]))
+      .mockReturnValueOnce(staleRefresh.promise)
+      .mockResolvedValueOnce(list([renamed]));
+    api.rename
+      .mockResolvedValueOnce(detail(renamed))
+      .mockRejectedValueOnce(secondFailure);
+    const drafts = useHomepageDrafts();
+    await drafts.refresh();
+
+    const firstMutation = drafts.rename('1', '已保存名称');
+    await vi.waitFor(() => expect(api.list).toHaveBeenCalledTimes(2));
+    await expect(drafts.rename('1', '失败名称')).rejects.toBe(secondFailure);
+    staleRefresh.resolve(list([original]));
+    await firstMutation;
+
+    expect(api.list).toHaveBeenCalledTimes(3);
+    expect(drafts.items.value).toEqual([renamed]);
+    expect(drafts.error.value).toBe('第二次重命名失败');
+    expect(drafts.loading.value).toBe(false);
   });
 
   it('ignores stale list responses and keeps loading until the newest request settles', async () => {

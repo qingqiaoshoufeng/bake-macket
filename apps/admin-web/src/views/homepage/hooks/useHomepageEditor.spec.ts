@@ -169,7 +169,7 @@ describe('useHomepageEditor', () => {
     const first = editor.load('12');
     const second = editor.load('13');
     stale.reject(new Error('旧请求失败'));
-    await expect(first).rejects.toThrow('旧请求失败');
+    await expect(first).resolves.toBeUndefined();
 
     expect(editor.lastError.value).toBeNull();
     expect(editor.loading.value).toBe(true);
@@ -181,6 +181,126 @@ describe('useHomepageEditor', () => {
     expect(editor.version.value).toBe(8);
     expect(editor.lastError.value).toBeNull();
     expect(editor.loading.value).toBe(false);
+  });
+
+  it('does not apply a stale save after another draft finishes loading', async () => {
+    api.getOne
+      .mockResolvedValueOnce(view('12'))
+      .mockResolvedValueOnce(view('13', { version: 8 }));
+    categoryLoader.mockResolvedValue([]);
+    productLoader.mockResolvedValue([]);
+    const pendingSave = deferred<AdminHomepageView>();
+    api.saveDraft.mockReturnValue(pendingSave.promise);
+    const editor = useHomepageEditor();
+    await editor.load('12');
+    editor.replaceDraft({
+      ...createHomepageDraft(),
+      imageBlocks: [],
+    });
+
+    const save = editor.saveDraft();
+    await editor.load('13');
+    pendingSave.resolve(
+      view('12', {
+        version: 4,
+        draftIssues: [
+          {
+            code: 'STALE_SAVE',
+            message: '旧保存结果',
+            sectionId: 'hero',
+          },
+        ],
+      }),
+    );
+    await expect(save).resolves.toMatchObject({ id: '12', version: 4 });
+
+    expect(editor.draftId.value).toBe('13');
+    expect(editor.version.value).toBe(8);
+    expect(editor.issues.value).toEqual([]);
+    expect(editor.conflict.value).toBeNull();
+    expect(editor.lastError.value).toBeNull();
+    expect(editor.saving.value).toBe(false);
+  });
+
+  it('swallows a stale save error after another draft finishes loading', async () => {
+    api.getOne
+      .mockResolvedValueOnce(view('12'))
+      .mockResolvedValueOnce(view('13', { version: 8 }));
+    categoryLoader.mockResolvedValue([]);
+    productLoader.mockResolvedValue([]);
+    const pendingSave = deferred<AdminHomepageView>();
+    api.saveDraft.mockReturnValue(pendingSave.promise);
+    const editor = useHomepageEditor();
+    await editor.load('12');
+
+    const save = editor.saveDraft();
+    await editor.load('13');
+    pendingSave.reject(new ApiClientError(409, '旧草稿冲突'));
+    await expect(save).resolves.toBeUndefined();
+
+    expect(editor.draftId.value).toBe('13');
+    expect(editor.version.value).toBe(8);
+    expect(editor.conflict.value).toBeNull();
+    expect(editor.lastError.value).toBeNull();
+  });
+
+  it('does not let an old load overwrite a save completed for the current draft', async () => {
+    const oldLoad = deferred<AdminHomepageView>();
+    api.getOne
+      .mockResolvedValueOnce(view('12'))
+      .mockReturnValueOnce(oldLoad.promise);
+    categoryLoader.mockResolvedValue([]);
+    productLoader.mockResolvedValue([]);
+    const editor = useHomepageEditor();
+    await editor.load('12');
+    editor.replaceDraft({
+      ...createHomepageDraft(),
+      customerService: {
+        ...createHomepageDraft().customerService,
+        title: '保存后的配置',
+      },
+    });
+    api.saveDraft.mockResolvedValue(
+      view('12', {
+        version: 4,
+        draftConfig: editor.draft.value,
+      }),
+    );
+
+    const load = editor.load('12');
+    await editor.saveDraft();
+    oldLoad.resolve(view('12', { version: 2 }));
+    await load;
+
+    expect(editor.draftId.value).toBe('12');
+    expect(editor.version.value).toBe(4);
+    expect(editor.draft.value.customerService.title).toBe('保存后的配置');
+    expect(editor.lastError.value).toBeNull();
+  });
+
+  it('keeps the latest save flag active when an older save settles first', async () => {
+    api.getOne.mockResolvedValue(view('12'));
+    categoryLoader.mockResolvedValue([]);
+    productLoader.mockResolvedValue([]);
+    const stale = deferred<AdminHomepageView>();
+    const current = deferred<AdminHomepageView>();
+    api.saveDraft
+      .mockReturnValueOnce(stale.promise)
+      .mockReturnValueOnce(current.promise);
+    const editor = useHomepageEditor();
+    await editor.load('12');
+
+    const first = editor.saveDraft();
+    const second = editor.saveDraft();
+    stale.resolve(view('12', { version: 4 }));
+    await first;
+    expect(editor.saving.value).toBe(true);
+
+    current.resolve(view('12', { version: 5 }));
+    await second;
+
+    expect(editor.version.value).toBe(5);
+    expect(editor.saving.value).toBe(false);
   });
 
   it('saves and publishes the current ID and applies the returned view state', async () => {

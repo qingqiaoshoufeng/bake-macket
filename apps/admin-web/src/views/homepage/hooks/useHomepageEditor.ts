@@ -40,7 +40,12 @@ export function useHomepageEditor() {
   const conflict = ref<string | null>(null);
   const lastError = ref<string | null>(null);
   let catalogPromise: Promise<void> | null = null;
-  let loadSequence = 0;
+  let operationGeneration = 0;
+  let currentOperation: {
+    readonly token: number;
+    readonly draftId: string;
+    readonly kind: 'load' | 'save' | 'publish';
+  } | null = null;
 
   const canPublish = computed(
     () => !dirty.value && !saving.value && !publishing.value,
@@ -86,26 +91,56 @@ export function useHomepageEditor() {
     return catalogPromise;
   }
 
+  function beginOperation(
+    kind: 'load' | 'save' | 'publish',
+    capturedDraftId: string,
+  ): number {
+    const token = operationGeneration + 1;
+    operationGeneration = token;
+    currentOperation = { token, draftId: capturedDraftId, kind };
+    loading.value = kind === 'load';
+    saving.value = kind === 'save';
+    publishing.value = kind === 'publish';
+    lastError.value = null;
+    return token;
+  }
+
+  function isCurrentOperation(token: number, capturedDraftId: string): boolean {
+    return (
+      currentOperation?.token === token &&
+      currentOperation.draftId === capturedDraftId &&
+      (draftId.value === capturedDraftId || currentOperation.kind === 'load')
+    );
+  }
+
+  function finishOperation(
+    token: number,
+    capturedDraftId: string,
+    kind: 'load' | 'save' | 'publish',
+  ): void {
+    if (!isCurrentOperation(token, capturedDraftId)) return;
+    if (kind === 'load') loading.value = false;
+    if (kind === 'save') saving.value = false;
+    if (kind === 'publish') publishing.value = false;
+    currentOperation = null;
+  }
+
   async function load(id?: string): Promise<void> {
     const nextId = id ?? draftId.value;
     if (!nextId) throw new Error('请先选择首页草稿');
-    const sequence = loadSequence + 1;
-    loadSequence = sequence;
-    loading.value = true;
-    lastError.value = null;
+    const token = beginOperation('load', nextId);
     try {
       const [view] = await Promise.all([
         homepageApi.getOne(nextId),
         ensureCatalog(),
       ]);
-      if (sequence === loadSequence) applyView(view);
+      if (isCurrentOperation(token, nextId)) applyView(view);
     } catch (error) {
-      if (sequence === loadSequence) {
-        lastError.value = errorMessage(error, '首页配置加载失败');
-      }
+      if (!isCurrentOperation(token, nextId)) return;
+      lastError.value = errorMessage(error, '首页配置加载失败');
       throw error;
     } finally {
-      if (sequence === loadSequence) loading.value = false;
+      finishOperation(token, nextId, 'load');
     }
   }
 
@@ -129,43 +164,43 @@ export function useHomepageEditor() {
     return draftId.value;
   }
 
-  async function saveDraft(): Promise<AdminHomepageView> {
+  async function saveDraft(): Promise<AdminHomepageView | undefined> {
     const id = requireDraftId();
-    saving.value = true;
-    lastError.value = null;
+    const token = beginOperation('save', id);
     try {
       const saved = await homepageApi.saveDraft(id, {
         config: clone(draft.value),
         version: version.value,
       });
-      applyView(saved);
+      if (isCurrentOperation(token, id)) applyView(saved);
       return saved;
     } catch (error) {
+      if (!isCurrentOperation(token, id)) return undefined;
       applyApiError(error);
       lastError.value = errorMessage(error, '草稿保存失败');
       throw error;
     } finally {
-      saving.value = false;
+      finishOperation(token, id, 'save');
     }
   }
 
-  async function publish(): Promise<AdminHomepageView> {
+  async function publish(): Promise<AdminHomepageView | undefined> {
     if (dirty.value) throw new Error('请先保存草稿再发布');
     const id = requireDraftId();
-    publishing.value = true;
-    lastError.value = null;
+    const token = beginOperation('publish', id);
     try {
       const published = await homepageApi.publish(id, {
         version: version.value,
       });
-      applyView(published);
+      if (isCurrentOperation(token, id)) applyView(published);
       return published;
     } catch (error) {
+      if (!isCurrentOperation(token, id)) return undefined;
       applyApiError(error);
       lastError.value = errorMessage(error, '首页发布失败');
       throw error;
     } finally {
-      publishing.value = false;
+      finishOperation(token, id, 'publish');
     }
   }
 
