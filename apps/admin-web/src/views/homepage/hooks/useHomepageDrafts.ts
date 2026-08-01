@@ -90,7 +90,7 @@ export function useHomepageDrafts() {
   }
 
   async function load(
-    query: AdminPageQuery,
+    query: AdminPageQuery = DEFAULT_QUERY,
     preferredId?: string,
     options: LoadOptions = {},
   ): Promise<boolean> {
@@ -303,6 +303,7 @@ export function useHomepageDrafts() {
     error,
     activeId,
     publishedDraftId,
+    load,
     refresh,
     select,
     create,

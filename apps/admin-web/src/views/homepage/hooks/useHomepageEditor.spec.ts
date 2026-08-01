@@ -222,6 +222,81 @@ describe('useHomepageEditor', () => {
     expect(editor.saving.value).toBe(false);
   });
 
+  it('does not apply a pending save after the same draft reloads newer state', async () => {
+    api.getOne
+      .mockResolvedValueOnce(view('12', { version: 3 }))
+      .mockResolvedValueOnce(
+        view('12', {
+          version: 8,
+          name: '重新加载后的名称',
+          updatedAt: '2026-08-01T04:00:00.000Z',
+        }),
+      );
+    categoryLoader.mockResolvedValue([]);
+    productLoader.mockResolvedValue([]);
+    const pendingSave = deferred<AdminHomepageView>();
+    api.saveDraft.mockReturnValue(pendingSave.promise);
+    const editor = useHomepageEditor();
+    await editor.load('12');
+
+    const save = editor.saveDraft();
+    await editor.load('12');
+    pendingSave.resolve(
+      view('12', {
+        version: 4,
+        name: '旧保存名称',
+        updatedAt: '2026-08-01T02:00:00.000Z',
+      }),
+    );
+    await expect(save).resolves.toBe(true);
+
+    expect(editor.draftId.value).toBe('12');
+    expect(editor.version.value).toBe(8);
+    expect(editor.name.value).toBe('重新加载后的名称');
+    expect(editor.updatedAt.value).toBe('2026-08-01T04:00:00.000Z');
+    expect(editor.saving.value).toBe(false);
+  });
+
+  it('does not apply a pending publish after the same draft reloads newer state', async () => {
+    api.getOne
+      .mockResolvedValueOnce(view('12', { version: 3 }))
+      .mockResolvedValueOnce(
+        view('12', {
+          version: 8,
+          status: HomepageDraftStatus.PUBLISHED_WITH_CHANGES,
+          publishedVersion: 7,
+          publishedAt: '2026-08-01T04:00:00.000Z',
+        }),
+      );
+    categoryLoader.mockResolvedValue([]);
+    productLoader.mockResolvedValue([]);
+    const pendingPublish = deferred<AdminHomepageView>();
+    api.publish.mockReturnValue(pendingPublish.promise);
+    const editor = useHomepageEditor();
+    await editor.load('12');
+
+    const publish = editor.publish();
+    await editor.load('12');
+    pendingPublish.resolve(
+      view('12', {
+        version: 4,
+        status: HomepageDraftStatus.PUBLISHED,
+        publishedVersion: 4,
+        publishedAt: '2026-08-01T02:00:00.000Z',
+      }),
+    );
+    await expect(publish).resolves.toBe(true);
+
+    expect(editor.draftId.value).toBe('12');
+    expect(editor.version.value).toBe(8);
+    expect(editor.status.value).toBe(
+      HomepageDraftStatus.PUBLISHED_WITH_CHANGES,
+    );
+    expect(editor.publishedVersion.value).toBe(7);
+    expect(editor.publishedAt.value).toBe('2026-08-01T04:00:00.000Z');
+    expect(editor.publishing.value).toBe(false);
+  });
+
   it('returns false for a stale save error after another draft finishes loading', async () => {
     api.getOne
       .mockResolvedValueOnce(view('12'))

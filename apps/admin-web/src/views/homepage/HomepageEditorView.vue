@@ -14,13 +14,17 @@ import AdminPage from '../../components/layout/AdminPage.vue';
 import HomepageEditorForm from './components/HomepageEditorForm.vue';
 import HomepagePhonePreview from './components/HomepagePhonePreview.vue';
 import HomepagePublishBar from './components/HomepagePublishBar.vue';
+import { useHomepageDrafts } from './hooks/useHomepageDrafts.js';
 import { useHomepageEditor } from './hooks/useHomepageEditor.js';
 
+const drafts = useHomepageDrafts();
 const editor = useHomepageEditor();
 const editorForm = ref<InstanceType<typeof HomepageEditorForm> | null>(null);
+const loading = computed(() => drafts.loading.value || editor.loading.value);
 const hasAlert = computed(
   () =>
-    Boolean(editor.lastError.value && !editor.loading.value) ||
+    Boolean(drafts.error.value && !loading.value) ||
+    Boolean(editor.lastError.value && !loading.value) ||
     Boolean(editor.conflict.value),
 );
 
@@ -30,7 +34,10 @@ function message(error: unknown, fallback: string): string {
 
 async function load(): Promise<void> {
   try {
-    await editor.load();
+    await drafts.load();
+    const id = drafts.activeId.value;
+    if (drafts.error.value || !id) return;
+    await editor.load(id);
   } catch (error) {
     ElMessage.error(message(error, '首页配置加载失败'));
   }
@@ -130,7 +137,15 @@ onBeforeUnmount(() =>
     >
       <div v-if="hasAlert" class="homepage-editor-view__alerts">
         <ElAlert
-          v-if="editor.lastError.value && !editor.loading.value"
+          v-if="drafts.error.value && !loading"
+          type="error"
+          title="首页草稿列表加载失败"
+          :description="drafts.error.value"
+          :closable="false"
+          show-icon
+        />
+        <ElAlert
+          v-if="editor.lastError.value && !loading"
           type="error"
           title="首页装修操作失败"
           :description="editor.lastError.value"
@@ -157,10 +172,7 @@ onBeforeUnmount(() =>
         </ElAlert>
       </div>
 
-      <section
-        v-if="editor.loading.value"
-        class="homepage-editor-view__loading"
-      >
+      <section v-if="loading" class="homepage-editor-view__loading">
         <strong>正在读取首页装修草稿</strong>
         <ElSkeleton :rows="10" animated />
       </section>
@@ -181,7 +193,7 @@ onBeforeUnmount(() =>
 
       <HomepagePublishBar
         :dirty="editor.dirty.value"
-        :loading="editor.loading.value"
+        :loading="loading"
         :saving="editor.saving.value"
         :publishing="editor.publishing.value"
         :can-publish="editor.canPublish.value"

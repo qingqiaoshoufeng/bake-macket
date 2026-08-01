@@ -148,10 +148,11 @@ export function useHomepageEditor() {
 
   function applyMutationSuccess(
     view: AdminHomepageView,
+    token: number,
     capturedDraftId: string,
     capturedRevision: number,
   ): void {
-    if (capturedDraftId !== draftId.value) return;
+    if (!isCurrentMutation(token, capturedDraftId)) return;
     if (capturedRevision === contentRevision) {
       applyView(view);
       return;
@@ -210,7 +211,7 @@ export function useHomepageEditor() {
         config: clone(draft.value),
         version: version.value,
       });
-      applyMutationSuccess(saved, id, capturedRevision);
+      applyMutationSuccess(saved, token, id, capturedRevision);
       return true;
     } catch (error) {
       if (!isCurrentMutation(token, id)) return false;
@@ -232,7 +233,7 @@ export function useHomepageEditor() {
       const published = await homepageApi.publish(id, {
         version: version.value,
       });
-      applyMutationSuccess(published, id, capturedRevision);
+      applyMutationSuccess(published, token, id, capturedRevision);
       return true;
     } catch (error) {
       if (!isCurrentMutation(token, id)) return false;

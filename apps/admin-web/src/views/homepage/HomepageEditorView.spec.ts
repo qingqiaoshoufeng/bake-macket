@@ -1,11 +1,15 @@
 import { flushPromises, mount } from '@vue/test-utils';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
+  editorLoad: vi.fn(),
+  draftsLoad: vi.fn(),
   saveDraft: vi.fn(),
   publish: vi.fn(),
   success: vi.fn(),
   error: vi.fn(),
+  activeId: '12' as string | null,
+  draftsErrorRef: undefined as { value: string | null } | undefined,
 }));
 
 vi.mock('vue-router', () => ({
@@ -49,10 +53,24 @@ vi.mock('./hooks/useHomepageEditor.js', async () => {
       conflict: ref(null),
       lastError: ref(null),
       canPublish: computed(() => true),
-      load: vi.fn(),
+      load: mocks.editorLoad,
       replaceDraft: vi.fn(),
       saveDraft: mocks.saveDraft,
       publish: mocks.publish,
+    }),
+  };
+});
+
+vi.mock('./hooks/useHomepageDrafts.js', async () => {
+  const { ref } = await import('vue');
+  mocks.draftsErrorRef = ref(null);
+
+  return {
+    useHomepageDrafts: () => ({
+      activeId: ref(mocks.activeId),
+      loading: ref(false),
+      error: mocks.draftsErrorRef,
+      load: mocks.draftsLoad,
     }),
   };
 });
@@ -72,8 +90,61 @@ async function mountView() {
 }
 
 describe('HomepageEditorView', () => {
+  beforeEach(() => {
+    mocks.activeId = '12';
+    if (mocks.draftsErrorRef) mocks.draftsErrorRef.value = null;
+    mocks.draftsLoad.mockResolvedValue(true);
+    mocks.editorLoad.mockResolvedValue(undefined);
+  });
+
   afterEach(() => {
     vi.resetAllMocks();
+  });
+
+  it('loads the draft list before loading its active editor draft', async () => {
+    const calls: string[] = [];
+    mocks.draftsLoad.mockImplementation(async () => {
+      calls.push('drafts');
+      return true;
+    });
+    mocks.editorLoad.mockImplementation(async () => {
+      calls.push('editor');
+    });
+
+    await mountView();
+    await flushPromises();
+
+    expect(mocks.draftsLoad).toHaveBeenCalledOnce();
+    expect(mocks.draftsLoad).toHaveBeenCalledWith();
+    expect(mocks.editorLoad).toHaveBeenCalledOnce();
+    expect(mocks.editorLoad).toHaveBeenCalledWith('12');
+    expect(calls).toEqual(['drafts', 'editor']);
+  });
+
+  it('keeps the empty workspace available without loading an editor draft', async () => {
+    mocks.activeId = null;
+
+    const wrapper = await mountView();
+    await flushPromises();
+
+    expect(mocks.draftsLoad).toHaveBeenCalledOnce();
+    expect(mocks.editorLoad).not.toHaveBeenCalled();
+    expect(wrapper.find('.homepage-editor-view__workspace').exists()).toBe(
+      true,
+    );
+  });
+
+  it('shows a draft-list failure without loading an editor draft', async () => {
+    mocks.draftsLoad.mockImplementation(async () => {
+      mocks.draftsErrorRef!.value = '首页草稿列表加载失败';
+      return true;
+    });
+
+    const wrapper = await mountView();
+    await flushPromises();
+
+    expect(mocks.editorLoad).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain('首页草稿列表加载失败');
   });
 
   it('starts directly with the editor workspace without a page introduction', async () => {
