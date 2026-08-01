@@ -836,7 +836,7 @@ export class HomepageService {
       const drafts = manager.getRepository(HomepageDraft);
       const page = await this.requirePage(pages, manager);
       const draft = draftId
-        ? await this.requireDraft(draftId, page.id, drafts)
+        ? await this.requireDraftForPublish(draftId, page.id, drafts)
         : await this.requireLegacyDraft(page.id, drafts, manager);
       if (draft.version !== request.version)
         this.throwVersionConflict(draft.version);
@@ -858,7 +858,6 @@ export class HomepageService {
       const previousPublishedConfig = page.publishedConfig
         ? structuredClone(page.publishedConfig)
         : null;
-      const previousPublishedVersion = page.publishedDraftVersion ?? 0;
       page.publishedConfig = toPublishedConfig(draft.draftConfig);
       const nextPublishedVersion = (page.publishedVersion ?? 0) + 1;
       page.publishedVersion = nextPublishedVersion;
@@ -873,16 +872,28 @@ export class HomepageService {
           targetEntity: 'homepage_pages',
           targetId: saved.id,
           action: 'HOMEPAGE_PUBLISHED',
-          changeSummary: this.auditSummary(
-            draft.draftConfig,
-            previousPublishedVersion,
-            draft.version,
-            collectChangedSections(previousPublishedConfig, draft.draftConfig),
-          ),
+          changeSummary: {
+            sourceDraftId: draft.id,
+            sourceVersion: draft.version,
+            publishedVersion: nextPublishedVersion,
+            ...this.configSummary(draft.draftConfig),
+            sectionTypes: [
+              HomepageSectionType.HERO_CAROUSEL,
+              HomepageSectionType.CUSTOMER_SERVICE,
+              HomepageSectionType.SHORTCUT_GRID,
+              HomepageSectionType.IMAGE_BLOCK,
+            ],
+            changedSections: collectChangedSections(
+              previousPublishedConfig,
+              draft.draftConfig,
+            ),
+          },
         },
         manager,
       );
-      return this.toAdminView(saved, draft, []);
+      return draftId
+        ? this.toAdminDraftView(saved, draft, [])
+        : this.toAdminView(saved, draft, []);
     });
   }
 
@@ -1003,6 +1014,21 @@ export class HomepageService {
     repository: Repository<HomepageDraft>,
   ): Promise<HomepageDraft> {
     const draft = await repository.findOneBy({ id, homepagePageId });
+    if (!draft) this.throwDraftNotFound();
+    return draft;
+  }
+
+  private async requireDraftForPublish(
+    id: string,
+    homepagePageId: string,
+    repository: Repository<HomepageDraft>,
+  ): Promise<HomepageDraft> {
+    const draft = await repository
+      .createQueryBuilder('draft')
+      .where('draft.id = :id', { id })
+      .andWhere('draft.homepagePageId = :homepagePageId', { homepagePageId })
+      .setLock('pessimistic_write')
+      .getOne();
     if (!draft) this.throwDraftNotFound();
     return draft;
   }

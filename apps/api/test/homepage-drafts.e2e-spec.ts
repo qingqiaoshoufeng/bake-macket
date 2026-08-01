@@ -28,8 +28,10 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { JWT_ADMIN_AUDIENCE } from '../src/auth/auth.constants.js';
 import { AdminUser } from '../src/database/entities/admin-user.entity.js';
 import { AuditLog } from '../src/database/entities/audit-log.entity.js';
+import { Category } from '../src/database/entities/category.entity.js';
 import { HomepageDraft } from '../src/database/entities/homepage-draft.entity.js';
 import { HomepagePage } from '../src/database/entities/homepage-page.entity.js';
+import { Product } from '../src/database/entities/product.entity.js';
 import * as entities from '../src/database/entities/index.js';
 import { InitialSchema1718000000000 } from '../src/database/migrations/0001-initial-schema.js';
 import { ProductSortOrder1718000000001 } from '../src/database/migrations/0002-product-sort-order.js';
@@ -873,9 +875,304 @@ describe.sequential('Admin homepage drafts (e2e)', () => {
     expect(renameMissing.body.code).toBe(ApiErrorCode.HOMEPAGE_DRAFT_NOT_FOUND);
   });
 
+  it('publishes addressed drafts as isolated public snapshots and switches derived status', async () => {
+    const drafts = dataSource.getRepository(HomepageDraft);
+    const pages = dataSource.getRepository(HomepagePage);
+    const createPublishableDraft = async (
+      name: string,
+      title: string,
+    ): Promise<AdminHomepageView> => {
+      const created = await request(app!.getHttpServer())
+        .post('/api/v1/admin/homepage/drafts')
+        .set(admin())
+        .send({ name, mode: 'BLANK' })
+        .expect(201);
+      const config = changedConfig(
+        publishableConfig((created.body as AdminHomepageView).draftConfig),
+        title,
+      );
+      const saved = await request(app!.getHttpServer())
+        .put(`/api/v1/admin/homepage/drafts/${created.body.id as string}`)
+        .set(admin())
+        .send({ config, version: created.body.version as number })
+        .expect(200);
+      return saved.body as AdminHomepageView;
+    };
+    let draftA = await createPublishableDraft('发布方案 A', '已发布 A');
+    const draftB = await createPublishableDraft('发布方案 B', '已发布 B');
+    const pageBefore = await pages.findOneByOrFail({ pageKey: 'HOME' });
+
+    const publishedA = await request(app!.getHttpServer())
+      .post(`/api/v1/admin/homepage/drafts/${draftA.id}/publish`)
+      .set(admin())
+      .send({ version: draftA.version })
+      .expect(201);
+    const pageAfterA = await pages.findOneByOrFail({ pageKey: 'HOME' });
+    const draftAfterPublish = await drafts.findOneByOrFail({ id: draftA.id });
+    const publicA = await request(app!.getHttpServer())
+      .get('/api/v1/public/homepage')
+      .expect(200);
+
+    expect(publishedA.body).toMatchObject({
+      id: draftA.id,
+      name: draftA.name,
+      status: HomepageDraftStatus.PUBLISHED,
+      version: draftA.version,
+      publishedVersion: (pageBefore.publishedVersion ?? 0) + 1,
+    });
+    expect(draftAfterPublish.version).toBe(draftA.version);
+    expect(pageAfterA).toMatchObject({
+      publishedConfig: draftA.draftConfig,
+      publishedDraftId: draftA.id,
+      publishedDraftVersion: draftA.version,
+      publishedVersion: (pageBefore.publishedVersion ?? 0) + 1,
+      publishedByAdminId: adminId,
+    });
+    expect(publicA.body).toMatchObject({
+      publishedVersion: pageAfterA.publishedVersion,
+      config: {
+        customerService: { title: '已发布 A' },
+      },
+    });
+
+    const changedAConfig = changedConfig(draftA.draftConfig, 'A 未发布修改');
+    const savedA = await request(app!.getHttpServer())
+      .put(`/api/v1/admin/homepage/drafts/${draftA.id}`)
+      .set(admin())
+      .send({ config: changedAConfig, version: draftA.version })
+      .expect(200);
+    draftA = savedA.body as AdminHomepageView;
+    const listAfterSave = await request(app!.getHttpServer())
+      .get('/api/v1/admin/homepage/drafts?page=1&pageSize=100')
+      .set(admin())
+      .expect(200);
+    const publicAfterSave = await request(app!.getHttpServer())
+      .get('/api/v1/public/homepage')
+      .expect(200);
+
+    expect(
+      (listAfterSave.body as AdminHomepageDraftListView).items.find(
+        ({ id }) => id === draftA.id,
+      )?.status,
+    ).toBe(HomepageDraftStatus.PUBLISHED_WITH_CHANGES);
+    expect(publicAfterSave.body).toEqual(publicA.body);
+
+    const publishedB = await request(app!.getHttpServer())
+      .post(`/api/v1/admin/homepage/drafts/${draftB.id}/publish`)
+      .set(admin())
+      .send({ version: draftB.version })
+      .expect(201);
+    const pageAfterB = await pages.findOneByOrFail({ pageKey: 'HOME' });
+    const listAfterB = await request(app!.getHttpServer())
+      .get('/api/v1/admin/homepage/drafts?page=1&pageSize=100')
+      .set(admin())
+      .expect(200);
+    const publicB = await request(app!.getHttpServer())
+      .get('/api/v1/public/homepage')
+      .expect(200);
+
+    expect(publishedB.body).toMatchObject({
+      id: draftB.id,
+      name: draftB.name,
+      status: HomepageDraftStatus.PUBLISHED,
+      version: draftB.version,
+      publishedVersion: pageAfterA.publishedVersion! + 1,
+    });
+    expect(pageAfterB).toMatchObject({
+      publishedConfig: draftB.draftConfig,
+      publishedDraftId: draftB.id,
+      publishedDraftVersion: draftB.version,
+      publishedVersion: pageAfterA.publishedVersion! + 1,
+    });
+    expect(
+      (listAfterB.body as AdminHomepageDraftListView).items.find(
+        ({ id }) => id === draftA.id,
+      )?.status,
+    ).toBe(HomepageDraftStatus.DRAFT);
+    expect(
+      (listAfterB.body as AdminHomepageDraftListView).items.find(
+        ({ id }) => id === draftB.id,
+      )?.status,
+    ).toBe(HomepageDraftStatus.PUBLISHED);
+    expect(publicB.body).toMatchObject({
+      publishedVersion: pageAfterB.publishedVersion,
+      config: { customerService: { title: '已发布 B' } },
+    });
+  });
+
+  it('rolls back invalid addressed publications and keeps public responses private', async () => {
+    const pages = dataSource.getRepository(HomepagePage);
+    const drafts = dataSource.getRepository(HomepageDraft);
+    const pageBefore = await pages.findOneByOrFail({ pageKey: 'HOME' });
+    const publicBefore = await request(app!.getHttpServer())
+      .get('/api/v1/public/homepage')
+      .expect(200);
+    const created = await request(app!.getHttpServer())
+      .post('/api/v1/admin/homepage/drafts')
+      .set(admin())
+      .send({ name: 'private-name-13800000000', mode: 'BLANK' })
+      .expect(201);
+    const invalidDraft = await drafts.findOneByOrFail({
+      id: created.body.id as string,
+    });
+
+    const invalid = await request(app!.getHttpServer())
+      .post(`/api/v1/admin/homepage/drafts/${invalidDraft.id}/publish`)
+      .set(admin())
+      .send({ version: invalidDraft.version })
+      .expect(422);
+    const pageAfter = await pages.findOneByOrFail({ pageKey: 'HOME' });
+    const publicAfter = await request(app!.getHttpServer())
+      .get('/api/v1/public/homepage')
+      .expect(200);
+    const publicJson = JSON.stringify(publicAfter.body);
+
+    expect(invalid.body).toMatchObject({
+      code: ApiErrorCode.HOMEPAGE_PUBLISH_INVALID,
+      details: {
+        issues: expect.arrayContaining([
+          expect.objectContaining({
+            code: 'HERO_EMPTY',
+            sectionId: invalidDraft.draftConfig.hero.id,
+            field: 'slides',
+          }),
+        ]),
+      },
+    });
+    expect(pageAfter).toMatchObject({
+      publishedConfig: pageBefore.publishedConfig,
+      publishedVersion: pageBefore.publishedVersion,
+      publishedDraftId: pageBefore.publishedDraftId,
+      publishedDraftVersion: pageBefore.publishedDraftVersion,
+      publishedByAdminId: pageBefore.publishedByAdminId,
+      publishedAt: pageBefore.publishedAt,
+    });
+    expect(publicAfter.body).toEqual(publicBefore.body);
+    expect(publicJson).not.toContain('"draftId"');
+    expect(publicJson).not.toContain('"name"');
+    expect(publicJson).not.toContain('"objectKey"');
+    expect(publicJson).not.toContain('"adminId"');
+    expect(publicJson).not.toContain(invalidDraft.name);
+
+    const stale = await request(app!.getHttpServer())
+      .post(`/api/v1/admin/homepage/drafts/${invalidDraft.id}/publish`)
+      .set(admin())
+      .send({ version: invalidDraft.version + 1 })
+      .expect(409);
+    expect(stale.body).toMatchObject({
+      code: ApiErrorCode.HOMEPAGE_VERSION_CONFLICT,
+      details: { currentVersion: invalidDraft.version },
+    });
+    const missing = await request(app!.getHttpServer())
+      .post('/api/v1/admin/homepage/drafts/999999999999/publish')
+      .set(admin())
+      .send({ version: 1 })
+      .expect(404);
+    expect(missing.body.code).toBe(ApiErrorCode.HOMEPAGE_DRAFT_NOT_FOUND);
+  });
+
+  it('degrades product and category links invalidated after publication to NONE', async () => {
+    const categoryRepository = dataSource.getRepository(Category);
+    const productRepository = dataSource.getRepository(Product);
+    const category = await categoryRepository.save(
+      categoryRepository.create({ name: '发布后下架分类', isActive: true }),
+    );
+    const product = await productRepository.save(
+      productRepository.create({
+        name: '发布后下架商品',
+        categoryId: category.id,
+        detailHtml: '<p>homepage link target</p>',
+        isActive: true,
+      }),
+    );
+    const created = await request(app!.getHttpServer())
+      .post('/api/v1/admin/homepage/drafts')
+      .set(admin())
+      .send({ name: '链接降级方案', mode: 'BLANK' })
+      .expect(201);
+    const config = publishableConfig(
+      (created.body as AdminHomepageView).draftConfig,
+    );
+    config.hero.slides[0]!.link = {
+      type: HomepageLinkType.PRODUCT,
+      targetId: product.id,
+    };
+    config.shortcutGrid.items[0]!.link = {
+      type: HomepageLinkType.CATEGORY,
+      targetId: category.id,
+    };
+    const saved = await request(app!.getHttpServer())
+      .put(`/api/v1/admin/homepage/drafts/${created.body.id as string}`)
+      .set(admin())
+      .send({ config, version: created.body.version as number })
+      .expect(200);
+    await request(app!.getHttpServer())
+      .post(`/api/v1/admin/homepage/drafts/${saved.body.id as string}/publish`)
+      .set(admin())
+      .send({ version: saved.body.version as number })
+      .expect(201);
+
+    await Promise.all([
+      productRepository.update(product.id, { isActive: false }),
+      categoryRepository.update(category.id, { isActive: false }),
+    ]);
+    const publicView = await request(app!.getHttpServer())
+      .get('/api/v1/public/homepage')
+      .expect(200);
+
+    expect(publicView.body.config.hero.slides[0].link).toEqual({
+      type: HomepageLinkType.NONE,
+    });
+    expect(publicView.body.config.shortcutGrid.items[0].link).toEqual({
+      type: HomepageLinkType.NONE,
+    });
+  });
+
+  it('records publication audit source and fixed summaries without private data', async () => {
+    const page = await dataSource
+      .getRepository(HomepagePage)
+      .findOneByOrFail({ pageKey: 'HOME' });
+    const audit = await dataSource.getRepository(AuditLog).findOneOrFail({
+      where: {
+        targetEntity: 'homepage_pages',
+        targetId: page.id,
+        action: 'HOMEPAGE_PUBLISHED',
+      },
+      order: { id: 'DESC' },
+    });
+    const summary = JSON.stringify(audit.changeSummary);
+
+    expect(audit.changeSummary).toMatchObject({
+      sourceDraftId: page.publishedDraftId,
+      sourceVersion: page.publishedDraftVersion,
+      publishedVersion: page.publishedVersion,
+      configHash: expect.any(String),
+      sectionTypes: [
+        HomepageSectionType.HERO_CAROUSEL,
+        HomepageSectionType.CUSTOMER_SERVICE,
+        HomepageSectionType.SHORTCUT_GRID,
+        HomepageSectionType.IMAGE_BLOCK,
+      ],
+      heroSlideCount: expect.any(Number),
+      shortcutCount: expect.any(Number),
+      imageBlockCount: expect.any(Number),
+    });
+    expect(summary).not.toContain('draftConfig');
+    expect(summary).not.toContain('name');
+    expect(summary).not.toContain('phone');
+    expect(summary).not.toContain('publicUrl');
+    expect(summary).not.toContain('objectKey');
+    expect(summary).not.toContain('http://');
+  });
+
   it('forbids deleting the page published source but deletes an ordinary draft', async () => {
+    const page = await dataSource
+      .getRepository(HomepagePage)
+      .findOneByOrFail({ pageKey: 'HOME' });
     const forbidden = await request(app!.getHttpServer())
-      .delete(`/api/v1/admin/homepage/drafts/${copiedDraft.id}`)
+      .delete(
+        `/api/v1/admin/homepage/drafts/${page.publishedDraftId as string}`,
+      )
       .set(admin())
       .expect(409);
     expect(forbidden.body.code).toBe(
