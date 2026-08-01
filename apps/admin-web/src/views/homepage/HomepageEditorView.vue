@@ -65,9 +65,15 @@ async function bootstrap(): Promise<boolean> {
   }
 }
 
-async function refreshSummaries(): Promise<void> {
+async function refreshSummaries(
+  page: number,
+  preferredId: string | null,
+): Promise<void> {
   try {
-    await drafts.refresh();
+    await drafts.load(
+      { page, pageSize: drafts.pageSize.value },
+      preferredId ?? undefined,
+    );
   } catch (error) {
     ElMessage.error(message(error, '首页草稿列表刷新失败'));
   }
@@ -75,9 +81,10 @@ async function refreshSummaries(): Promise<void> {
 
 async function save(showSuccess = true): Promise<boolean> {
   try {
+    const currentDraftId = editor.draftId.value;
     const succeeded = await editor.saveDraft();
     if (!succeeded) return false;
-    await refreshSummaries();
+    await refreshSummaries(1, currentDraftId);
     if (showSuccess) ElMessage.success('首页草稿已保存');
     return true;
   } catch (error) {
@@ -95,10 +102,10 @@ async function publish(): Promise<void> {
   }
   try {
     const activeId = drafts.activeId.value;
+    const currentPage = drafts.page.value;
     const succeeded = await editor.publish();
     if (!succeeded) return;
-    await refreshSummaries();
-    if (activeId && drafts.activeId.value !== activeId) drafts.select(activeId);
+    await refreshSummaries(currentPage, activeId);
     ElMessage.success('首页已发布到 H5');
   } catch (error) {
     ElMessage.error(message(error, '首页发布失败'));
@@ -460,8 +467,13 @@ onBeforeUnmount(() =>
   grid-template-columns:
     minmax(210px, 0.48fr) minmax(500px, 1.35fr)
     minmax(320px, 0.78fr);
+  grid-template-areas: 'drafts editor preview';
   gap: 18px;
   overflow: hidden;
+}
+
+.homepage-editor-view__layout > [data-workspace-column='drafts'] {
+  grid-area: drafts;
 }
 
 .homepage-editor-view__configuration,
@@ -471,6 +483,7 @@ onBeforeUnmount(() =>
 }
 
 .homepage-editor-view__configuration {
+  grid-area: editor;
   padding-right: 8px;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -480,6 +493,7 @@ onBeforeUnmount(() =>
 }
 
 .homepage-editor-view__preview {
+  grid-area: preview;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -508,12 +522,24 @@ onBeforeUnmount(() =>
   margin: 0 0 10px;
 }
 
-@media (max-width: 1180px) {
+@media (max-width: 1400px) {
   .homepage-editor-view__layout {
-    grid-template-columns:
-      minmax(190px, 0.42fr) minmax(430px, 1fr)
-      minmax(280px, 0.68fr);
+    grid-template-columns: minmax(180px, 0.32fr) minmax(0, 1fr);
+    grid-template-areas:
+      'drafts editor'
+      'drafts preview';
+    grid-template-rows: minmax(0, 1fr) auto;
     gap: 12px;
+    overflow-y: auto;
+  }
+
+  .homepage-editor-view__preview {
+    grid-area: preview;
+    overflow: visible;
+  }
+
+  .homepage-editor-view__preview :deep(.homepage-phone-preview) {
+    min-height: 720px;
   }
 }
 </style>

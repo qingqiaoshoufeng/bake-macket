@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 import { HomepageDraftStatus } from '@bake-mall/contracts';
 import { flushPromises, mount } from '@vue/test-utils';
 import {
@@ -25,8 +27,11 @@ const mocks = vi.hoisted(() => ({
   warning: vi.fn(),
   confirm: vi.fn(),
   prompt: vi.fn(),
+  routeLeaveGuard: undefined as (() => Promise<boolean>) | undefined,
   activeIdRef: undefined as { value: string | null } | undefined,
   draftsErrorRef: undefined as { value: string | null } | undefined,
+  draftsPageRef: undefined as { value: number } | undefined,
+  draftsPageSizeRef: undefined as { value: number } | undefined,
   draftIdRef: undefined as { value: string | null } | undefined,
   dirtyRef: undefined as { value: boolean } | undefined,
   savingRef: undefined as { value: boolean } | undefined,
@@ -62,7 +67,9 @@ const published = {
 };
 
 vi.mock('vue-router', () => ({
-  onBeforeRouteLeave: vi.fn(),
+  onBeforeRouteLeave: vi.fn((guard: () => Promise<boolean>) => {
+    mocks.routeLeaveGuard = guard;
+  }),
 }));
 
 vi.mock('element-plus', async (importOriginal) => {
@@ -128,21 +135,25 @@ vi.mock('./hooks/useHomepageDrafts.js', async () => {
   mocks.draftsErrorRef = ref(null);
 
   return {
-    useHomepageDrafts: () => ({
-      items: ref([ordinary, second, published]),
-      activeId: mocks.activeIdRef,
-      page: ref(1),
-      pageSize: ref(20),
-      total: ref(3),
-      loading: ref(false),
-      error: mocks.draftsErrorRef,
-      load: mocks.draftsLoad,
-      refresh: mocks.draftsRefresh,
-      select: mocks.draftsSelect,
-      create: mocks.draftsCreate,
-      rename: mocks.draftsRename,
-      remove: mocks.draftsRemove,
-    }),
+    useHomepageDrafts: () => {
+      mocks.draftsPageRef = ref(1);
+      mocks.draftsPageSizeRef = ref(20);
+      return {
+        items: ref([ordinary, second, published]),
+        activeId: mocks.activeIdRef,
+        page: mocks.draftsPageRef,
+        pageSize: mocks.draftsPageSizeRef,
+        total: ref(3),
+        loading: ref(false),
+        error: mocks.draftsErrorRef,
+        load: mocks.draftsLoad,
+        refresh: mocks.draftsRefresh,
+        select: mocks.draftsSelect,
+        create: mocks.draftsCreate,
+        rename: mocks.draftsRename,
+        remove: mocks.draftsRemove,
+      };
+    },
   };
 });
 
@@ -258,6 +269,20 @@ describe('HomepageEditorView', () => {
     );
   });
 
+  it('stacks the preview below the editor before the workspace can clip at 1024px', () => {
+    const source = readFileSync(
+      `${process.cwd()}/src/views/homepage/HomepageEditorView.vue`,
+      'utf8',
+    );
+
+    expect(source).toMatch(
+      /@media \(max-width: 1400px\) \{[\s\S]*?\.homepage-editor-view__layout \{[\s\S]*?grid-template-columns: minmax\(180px, 0\.32fr\) minmax\(0, 1fr\);[\s\S]*?grid-template-areas:[\s\S]*?'drafts editor'[\s\S]*?'drafts preview'/,
+    );
+    expect(source).toMatch(
+      /@media \(max-width: 1400px\) \{[\s\S]*?\.homepage-editor-view__preview \{[\s\S]*?grid-area: preview;[\s\S]*?overflow: visible/,
+    );
+  });
+
   it('loads and selects a clean target draft', async () => {
     const wrapper = await mountView();
     await flushPromises();
@@ -339,7 +364,10 @@ describe('HomepageEditorView', () => {
       }),
     );
     expect(mocks.saveDraft).toHaveBeenCalledOnce();
-    expect(mocks.draftsRefresh).toHaveBeenCalledOnce();
+    expect(mocks.draftsLoad).toHaveBeenLastCalledWith(
+      { page: 1, pageSize: 20 },
+      '12',
+    );
     expect(mocks.editorLoad).toHaveBeenCalledWith('13');
     expect(mocks.draftsSelect).toHaveBeenCalledWith('13');
   });
@@ -467,28 +495,43 @@ describe('HomepageEditorView', () => {
     ).toBe(true);
   });
 
-  it('refreshes the draft summary after an explicit save succeeds', async () => {
+  it('loads page one with the active draft preferred after saving from page two', async () => {
     const wrapper = await mountView();
     await flushPromises();
+    mocks.draftsPageRef!.value = 2;
 
     await actionButton(wrapper, '保存草稿')?.trigger('click');
     await flushPromises();
 
-    expect(mocks.draftsRefresh).toHaveBeenCalledOnce();
+    expect(mocks.draftsLoad).toHaveBeenLastCalledWith(
+      { page: 1, pageSize: 20 },
+      '12',
+    );
+    expect(mocks.activeIdRef!.value).toBe('12');
+    expect(wrapper.findComponent({ name: 'HomepageEditorForm' }).exists()).toBe(
+      true,
+    );
     expect(mocks.success).toHaveBeenCalledWith('首页草稿已保存');
   });
 
-  it('refreshes statuses after publishing and keeps the active selection', async () => {
+  it('refreshes page two with the active draft preferred after publishing', async () => {
     const wrapper = await mountView();
     await flushPromises();
+    mocks.draftsPageRef!.value = 2;
 
     await actionButton(wrapper, '发布到 H5')?.trigger('click');
     await flushPromises();
 
     expect(mocks.publish).toHaveBeenCalledOnce();
-    expect(mocks.draftsRefresh).toHaveBeenCalledOnce();
+    expect(mocks.draftsLoad).toHaveBeenLastCalledWith(
+      { page: 2, pageSize: 20 },
+      '12',
+    );
     expect(mocks.draftsSelect).not.toHaveBeenCalled();
     expect(mocks.activeIdRef!.value).toBe('12');
+    expect(wrapper.findComponent({ name: 'HomepageEditorForm' }).exists()).toBe(
+      true,
+    );
   });
 
   it('reloads only the current editor detail when resolving a conflict', async () => {
@@ -548,6 +591,61 @@ describe('HomepageEditorView', () => {
 
     expect(mocks.success).not.toHaveBeenCalled();
     expect(mocks.draftsRefresh).not.toHaveBeenCalled();
+  });
+
+  it('prevents browser unload only while the editor is dirty', async () => {
+    const wrapper = await mountView();
+    await flushPromises();
+    const cleanEvent = new Event('beforeunload', { cancelable: true });
+
+    window.dispatchEvent(cleanEvent);
+
+    expect(cleanEvent.defaultPrevented).toBe(false);
+
+    mocks.dirtyRef!.value = true;
+    const dirtyEvent = new Event('beforeunload', {
+      cancelable: true,
+    }) as BeforeUnloadEvent;
+    window.dispatchEvent(dirtyEvent);
+
+    expect(dirtyEvent.defaultPrevented).toBe(true);
+    expect(dirtyEvent.returnValue).toBe(false);
+    wrapper.unmount();
+  });
+
+  it('allows route leave without confirmation when the editor is clean', async () => {
+    await mountView();
+    await flushPromises();
+
+    await expect(mocks.routeLeaveGuard!()).resolves.toBe(true);
+
+    expect(mocks.confirm).not.toHaveBeenCalled();
+  });
+
+  it('allows route leave when dirty confirmation is accepted', async () => {
+    mocks.dirtyRef!.value = true;
+    await mountView();
+    await flushPromises();
+
+    await expect(mocks.routeLeaveGuard!()).resolves.toBe(true);
+
+    expect(mocks.confirm).toHaveBeenCalledWith(
+      expect.stringContaining('尚未保存'),
+      '离开编辑页面',
+      expect.objectContaining({
+        confirmButtonText: '离开',
+        cancelButtonText: '继续编辑',
+      }),
+    );
+  });
+
+  it('blocks route leave when dirty confirmation is rejected', async () => {
+    mocks.dirtyRef!.value = true;
+    mocks.confirm.mockRejectedValueOnce('cancel');
+    await mountView();
+    await flushPromises();
+
+    await expect(mocks.routeLeaveGuard!()).resolves.toBe(false);
   });
 
   it('does not show publish success or refresh for a stale publish result', async () => {
