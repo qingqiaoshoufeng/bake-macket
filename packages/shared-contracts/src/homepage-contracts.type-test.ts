@@ -2,6 +2,8 @@ import {
   HomepageDraftStatus,
   HomepageInternalPage,
   HomepageLinkType,
+  HomepageSectionType,
+  type AdminHomepageView,
   type CreateHomepageDraftRequest,
   type HomepageLink,
 } from './index.js';
@@ -30,6 +32,43 @@ const blankWithSource: CreateHomepageDraftRequest = {
   sourceDraftId: '12',
 };
 
+const adminHomepageView: AdminHomepageView = {
+  id: 'homepage-1',
+  pageKey: 'HOME',
+  draftConfig: {
+    schemaVersion: 1,
+    hero: {
+      id: 'hero',
+      type: HomepageSectionType.HERO_CAROUSEL,
+      enabled: true,
+      autoplayMs: 3000,
+      slides: [],
+    },
+    customerService: {
+      id: 'customer-service',
+      type: HomepageSectionType.CUSTOMER_SERVICE,
+      enabled: true,
+      title: '',
+      description: '',
+      phone: '',
+      serviceHours: '',
+      wechatQrCode: null,
+    },
+    shortcutGrid: {
+      id: 'shortcut-grid',
+      type: HomepageSectionType.SHORTCUT_GRID,
+      enabled: true,
+      title: '',
+      layout: 3,
+      items: [],
+    },
+    imageBlocks: [],
+  },
+  version: 1,
+  draftIssues: [],
+  publishedConfig: null,
+};
+
 const pageLink: HomepageLink = {
   type: HomepageLinkType.PAGE,
   page: HomepageInternalPage.PRODUCTS,
@@ -54,6 +93,7 @@ void [
   blank,
   missingSource,
   blankWithSource,
+  adminHomepageView,
   pageLink,
   invalidNoneLink,
   invalidPageLink,

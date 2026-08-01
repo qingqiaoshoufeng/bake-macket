@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 import {
   ApiErrorCode,
   HomepageDraftStatus,
+  HomepageSectionType,
   type AdminHomepageDraftListView,
+  type AdminHomepageView,
 } from './index.js';
 
 describe('homepage draft contracts', () => {
@@ -36,6 +38,48 @@ describe('homepage draft contracts', () => {
 
     expect(view.items[0]?.status).toBe(HomepageDraftStatus.PUBLISHED);
     expect(view.publishedDraftId).toBe('draft-1');
+  });
+
+  it('retains the legacy published config alongside draft fields', () => {
+    const view: AdminHomepageView = {
+      id: 'homepage-1',
+      pageKey: 'HOME',
+      draftConfig: {
+        schemaVersion: 1,
+        hero: {
+          id: 'hero',
+          type: HomepageSectionType.HERO_CAROUSEL,
+          enabled: true,
+          autoplayMs: 3000,
+          slides: [],
+        },
+        customerService: {
+          id: 'customer-service',
+          type: HomepageSectionType.CUSTOMER_SERVICE,
+          enabled: true,
+          title: '',
+          description: '',
+          phone: '',
+          serviceHours: '',
+          wechatQrCode: null,
+        },
+        shortcutGrid: {
+          id: 'shortcut-grid',
+          type: HomepageSectionType.SHORTCUT_GRID,
+          enabled: true,
+          title: '',
+          layout: 3,
+          items: [],
+        },
+        imageBlocks: [],
+      },
+      version: 1,
+      draftIssues: [],
+      publishedConfig: null,
+    };
+
+    expect(view.publishedConfig).toBeNull();
+    expect(view.draftConfig.schemaVersion).toBe(1);
   });
 
   it('exposes dedicated homepage draft error codes', () => {

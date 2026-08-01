@@ -270,14 +270,27 @@ export type RenameHomepageDraftRequest = {
 export type AdminHomepageView = {
   id: string;
   pageKey: 'HOME';
-  name: string;
-  status: HomepageDraftStatus;
+  /** 多草稿 API 迁移完成后必填；过渡期间允许旧 API 响应省略。 */
+  name?: string;
+  /** 多草稿 API 迁移完成后必填；过渡期间允许旧 API 响应省略。 */
+  status?: HomepageDraftStatus;
   draftConfig: HomepageDraftConfig;
+  /** 兼容现有 API 返回的已发布首页配置；迁移完成后由新草稿字段替代。 */
+  publishedConfig: HomepagePublishedConfig | null;
   version: number;
+  /** 多草稿 API 迁移完成后使用；过渡期间允许旧 API 响应省略。 */
   updatedByAdminId?: string;
-  updatedAt: string;
-  createdAt: string;
+  /** 多草稿 API 迁移完成后使用；过渡期间允许旧 API 响应省略。 */
+  updatedAt?: string;
+  /** 多草稿 API 迁移完成后使用；过渡期间允许旧 API 响应省略。 */
+  createdAt?: string;
   publishedVersion?: number;
+  /** 保留旧 API 的草稿审计字段，直到多草稿 API 迁移完成。 */
+  draftUpdatedByAdminId?: string;
+  /** 保留旧 API 的草稿审计字段，直到多草稿 API 迁移完成。 */
+  draftUpdatedAt?: string;
+  /** 保留旧 API 的发布审计字段，直到多草稿 API 迁移完成。 */
+  publishedByAdminId?: string;
   publishedAt?: string;
   /** 当前草稿的发布校验问题；为空时草稿满足发布条件。 */
   draftIssues: readonly HomepageValidationIssue[];
