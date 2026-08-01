@@ -28,6 +28,7 @@ import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import { AuditService } from '../audit/audit.service.js';
 import { MediaAssetPolicyService } from '../catalog/media-asset-policy.service.js';
 import { Category } from '../database/entities/category.entity.js';
+import { HomepageDraft } from '../database/entities/homepage-draft.entity.js';
 import { HomepagePage } from '../database/entities/homepage-page.entity.js';
 import { Product } from '../database/entities/product.entity.js';
 
@@ -377,6 +378,8 @@ export class HomepageService {
   constructor(
     @InjectRepository(HomepagePage)
     private readonly pages: Repository<HomepagePage>,
+    @InjectRepository(HomepageDraft)
+    private readonly drafts: Repository<HomepageDraft>,
     @InjectRepository(Product)
     private readonly products: Repository<Product>,
     @InjectRepository(Category)
@@ -388,9 +391,11 @@ export class HomepageService {
 
   async getAdminView(): Promise<AdminHomepageView> {
     const page = await this.requirePage(this.pages);
+    const draft = await this.requireLegacyDraft(page.id, this.drafts);
     return this.toAdminView(
       page,
-      await this.collectPublishIssues(page.draftConfig, this.dataSource.manager),
+      draft,
+      await this.collectPublishIssues(draft.draftConfig, this.dataSource.manager),
     );
   }
 
@@ -404,33 +409,34 @@ export class HomepageService {
     );
     return this.dataSource.transaction(async (manager) => {
       const pages = manager.getRepository(HomepagePage);
+      const drafts = manager.getRepository(HomepageDraft);
       const page = await this.requirePage(pages);
-      const previousConfig = structuredClone(page.draftConfig);
+      const draft = await this.requireLegacyDraft(page.id, drafts);
+      const previousConfig = structuredClone(draft.draftConfig);
       const nextVersion = request.version + 1;
-      const updatedAt = new Date();
-      const result = await pages
+      const result = await drafts
         .createQueryBuilder()
-        .update(HomepagePage)
+        .update(HomepageDraft)
         .set({
           draftConfig: structuredClone(request.config),
           version: nextVersion,
-          draftUpdatedByAdminId: adminUserId,
-          draftUpdatedAt: updatedAt,
+          updatedByAdminId: adminUserId,
+          updatedAt: new Date(),
         })
         .where('id = :id AND version = :version', {
-          id: page.id,
+          id: draft.id,
           version: request.version,
         })
         .execute();
       if (result.affected !== 1) {
-        const current = await this.requirePage(pages);
+        const current = await this.requireLegacyDraft(page.id, drafts);
         this.throwVersionConflict(current.version);
       }
-      const saved = await this.requirePage(pages);
+      const saved = await this.requireLegacyDraft(page.id, drafts);
       await this.audit.record(
         {
           adminUserId,
-          targetEntity: 'homepage_pages',
+          targetEntity: 'homepage_drafts',
           targetId: saved.id,
           action: 'HOMEPAGE_DRAFT_SAVED',
           changeSummary: this.auditSummary(
@@ -443,6 +449,7 @@ export class HomepageService {
         manager,
       );
       return this.toAdminView(
+        page,
         saved,
         await this.collectPublishIssues(saved.draftConfig, manager),
       );
@@ -455,9 +462,11 @@ export class HomepageService {
   ): Promise<AdminHomepageView> {
     return this.dataSource.transaction(async (manager) => {
       const pages = manager.getRepository(HomepagePage);
+      const drafts = manager.getRepository(HomepageDraft);
       const page = await this.requirePage(pages, manager);
-      if (page.version !== request.version) this.throwVersionConflict(page.version);
-      const issues = await this.collectPublishIssues(page.draftConfig, manager);
+      const draft = await this.requireLegacyDraft(page.id, drafts, manager);
+      if (draft.version !== request.version) this.throwVersionConflict(draft.version);
+      const issues = await this.collectPublishIssues(draft.draftConfig, manager);
       if (issues.length > 0) {
         throw new UnprocessableEntityException({
           code: ApiErrorCode.HOMEPAGE_PUBLISH_INVALID,
@@ -465,16 +474,17 @@ export class HomepageService {
           details: { issues },
         });
       }
-      collectAssets(page.draftConfig).forEach((asset) =>
+      collectAssets(draft.draftConfig).forEach((asset) =>
         this.mediaPolicy.assertHomepageAsset(asset),
       );
-      const previousVersion = page.version;
       const previousPublishedConfig = page.publishedConfig
         ? structuredClone(page.publishedConfig)
         : null;
-      page.publishedConfig = toPublishedConfig(page.draftConfig);
-      page.version += 1;
-      page.publishedVersion = page.version;
+      const previousPublishedVersion = page.publishedDraftVersion ?? 0;
+      page.publishedConfig = toPublishedConfig(draft.draftConfig);
+      page.publishedVersion = draft.version;
+      page.publishedDraftId = draft.id;
+      page.publishedDraftVersion = draft.version;
       page.publishedByAdminId = adminUserId;
       page.publishedAt = new Date();
       const saved = await pages.save(page);
@@ -485,18 +495,15 @@ export class HomepageService {
           targetId: saved.id,
           action: 'HOMEPAGE_PUBLISHED',
           changeSummary: this.auditSummary(
-            saved.draftConfig,
-            previousVersion,
-            saved.version,
-            collectChangedSectionIds(
-              previousPublishedConfig,
-              saved.draftConfig,
-            ),
+            draft.draftConfig,
+            previousPublishedVersion,
+            draft.version,
+            collectChangedSectionIds(previousPublishedConfig, draft.draftConfig),
           ),
         },
         manager,
       );
-      return this.toAdminView(saved, []);
+      return this.toAdminView(saved, draft, []);
     });
   }
 
@@ -611,26 +618,56 @@ export class HomepageService {
     return page;
   }
 
+  private async requireLegacyDraft(
+    homepagePageId: string,
+    repository: Repository<HomepageDraft>,
+    manager?: EntityManager,
+  ): Promise<HomepageDraft> {
+    if (!manager) {
+      const drafts = await repository.find({
+        where: { homepagePageId },
+        order: { id: 'ASC' },
+      });
+      const draft = drafts.find(({ name }) => name === '当前首页') ?? drafts[0];
+      if (!draft) throw new NotFoundException('首页草稿尚未初始化');
+      return draft;
+    }
+    const currentDraft = await repository
+      .createQueryBuilder('draft')
+      .where('draft.homepagePageId = :homepagePageId', { homepagePageId })
+      .andWhere('draft.name = :name', { name: '当前首页' })
+      .setLock('pessimistic_write')
+      .getOne();
+    if (currentDraft) return currentDraft;
+    const firstDraft = await repository
+      .createQueryBuilder('draft')
+      .where('draft.homepagePageId = :homepagePageId', { homepagePageId })
+      .orderBy('draft.id', 'ASC')
+      .setLock('pessimistic_write')
+      .getOne();
+    if (!firstDraft) throw new NotFoundException('首页草稿尚未初始化');
+    return firstDraft;
+  }
+
   private toAdminView(
     page: HomepagePage,
+    draft: HomepageDraft,
     draftIssues: readonly HomepageValidationIssue[],
   ): AdminHomepageView {
     return {
       id: page.id,
       pageKey: PAGE_KEY,
-      draftConfig: structuredClone(page.draftConfig),
+      draftConfig: structuredClone(draft.draftConfig),
       publishedConfig: page.publishedConfig
         ? structuredClone(page.publishedConfig)
         : null,
-      version: page.version,
+      version: draft.version,
+      ...(draft.updatedByAdminId
+        ? { draftUpdatedByAdminId: draft.updatedByAdminId }
+        : {}),
+      ...(toIso(draft.updatedAt) ? { draftUpdatedAt: toIso(draft.updatedAt) } : {}),
       ...(page.publishedVersion
         ? { publishedVersion: page.publishedVersion }
-        : {}),
-      ...(page.draftUpdatedByAdminId
-        ? { draftUpdatedByAdminId: page.draftUpdatedByAdminId }
-        : {}),
-      ...(toIso(page.draftUpdatedAt)
-        ? { draftUpdatedAt: toIso(page.draftUpdatedAt) }
         : {}),
       ...(page.publishedByAdminId
         ? { publishedByAdminId: page.publishedByAdminId }
