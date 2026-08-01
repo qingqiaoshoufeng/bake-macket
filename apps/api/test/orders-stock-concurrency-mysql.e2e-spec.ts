@@ -2,6 +2,7 @@ import 'reflect-metadata';
 
 import { ApiErrorCode, FulfillmentType } from '@bake-mall/contracts';
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { DataSource, type EntityManager, In } from 'typeorm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -25,6 +26,7 @@ import { MembershipEntitlementSegments1718000000005 } from '../src/database/migr
 import { DefaultMembershipLevels1718000000006 } from '../src/database/migrations/0007-default-membership-levels.js';
 import { OrderItemSourceIds1718000000007 } from '../src/database/migrations/0008-order-item-source-ids.js';
 import { HomepagePages1718000000008 } from '../src/database/migrations/0009-homepage-pages.js';
+import { HomepageMultipleDrafts1718000000009 } from '../src/database/migrations/0010-homepage-multiple-drafts.js';
 import { IdempotencyService } from '../src/idempotency/idempotency.service.js';
 import { MembershipCreditService } from '../src/membership/membership-credit.service.js';
 import { OrderQuoteTokenService } from '../src/membership/order-quote-token.service.js';
@@ -37,6 +39,7 @@ import {
 
 const DATABASE_NAME = `bake_mall_order_stock_${process.pid}_${randomUUID().replaceAll('-', '').slice(0, 8)}`;
 const APP_USER = process.env.TEST_MYSQL_APP_USER ?? 'bake_app';
+const migrationSpecSource = readFileSync(__filename, 'utf8');
 const DATABASE_OPTIONS = { databaseName: DATABASE_NAME, appUser: APP_USER };
 
 function errorCode(error: unknown): unknown {
@@ -95,6 +98,12 @@ function dataSourceWithTransactionBarrier(source: DataSource): DataSource {
   });
 }
 
+it('registers HomepageMultipleDrafts immediately after HomepagePages', () => {
+  expect(migrationSpecSource).toMatch(
+    /migrations:\s*\[[\s\S]*?HomepagePages1718000000008,\s*HomepageMultipleDrafts1718000000009,/,
+  );
+});
+
 describe.sequential('order stock concurrency (MySQL)', () => {
   const rootSql = createDockerRootSqlExecutor();
   let cleanupDatabase: (() => void) | undefined;
@@ -130,6 +139,7 @@ describe.sequential('order stock concurrency (MySQL)', () => {
           DefaultMembershipLevels1718000000006,
           OrderItemSourceIds1718000000007,
           HomepagePages1718000000008,
+          HomepageMultipleDrafts1718000000009,
         ],
         migrationsTableName: 'migrations',
       });
