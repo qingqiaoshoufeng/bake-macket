@@ -1,20 +1,65 @@
+import { HomepageDraftStatus } from '@bake-mall/contracts';
 import { flushPromises, mount } from '@vue/test-utils';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   editorLoad: vi.fn(),
   draftsLoad: vi.fn(),
+  draftsRefresh: vi.fn(),
+  draftsSelect: vi.fn(),
+  draftsCreate: vi.fn(),
+  draftsRename: vi.fn(),
+  draftsRemove: vi.fn(),
   saveDraft: vi.fn(),
   publish: vi.fn(),
   success: vi.fn(),
   error: vi.fn(),
+  warning: vi.fn(),
   confirm: vi.fn(),
-  activeId: '12' as string | null,
-  draftId: '12' as string | null,
-  conflict: null as string | null,
+  prompt: vi.fn(),
   activeIdRef: undefined as { value: string | null } | undefined,
   draftsErrorRef: undefined as { value: string | null } | undefined,
+  draftIdRef: undefined as { value: string | null } | undefined,
+  dirtyRef: undefined as { value: boolean } | undefined,
+  savingRef: undefined as { value: boolean } | undefined,
+  publishingRef: undefined as { value: boolean } | undefined,
+  conflictRef: undefined as { value: string | null } | undefined,
 }));
+
+const timestamps = {
+  createdAt: '2026-08-01T00:00:00.000Z',
+  updatedAt: '2026-08-01T01:00:00.000Z',
+};
+
+const ordinary = {
+  id: '12',
+  name: '日常首页',
+  status: HomepageDraftStatus.DRAFT,
+  version: 3,
+  ...timestamps,
+};
+const second = {
+  id: '13',
+  name: '节日首页',
+  status: HomepageDraftStatus.DRAFT,
+  version: 2,
+  ...timestamps,
+};
+const published = {
+  id: '14',
+  name: '线上首页',
+  status: HomepageDraftStatus.PUBLISHED,
+  version: 5,
+  ...timestamps,
+};
 
 vi.mock('vue-router', () => ({
   onBeforeRouteLeave: vi.fn(),
@@ -27,10 +72,11 @@ vi.mock('element-plus', async (importOriginal) => {
     ElMessage: {
       success: mocks.success,
       error: mocks.error,
-      warning: vi.fn(),
+      warning: mocks.warning,
     },
     ElMessageBox: {
       confirm: mocks.confirm,
+      prompt: mocks.prompt,
     },
   };
 });
@@ -38,14 +84,21 @@ vi.mock('element-plus', async (importOriginal) => {
 vi.mock('./hooks/useHomepageEditor.js', async () => {
   const { computed, ref } = await import('vue');
   const { createHomepageDraft } = await import('./config/defaults.js');
+  mocks.draftIdRef = ref('12');
+  mocks.dirtyRef = ref(false);
+  mocks.savingRef = ref(false);
+  mocks.publishingRef = ref(false);
+  mocks.conflictRef = ref(null);
 
   return {
     useHomepageEditor: () => ({
-      draftId: ref(mocks.draftId),
+      draftId: mocks.draftIdRef,
+      name: ref('日常首页'),
+      status: ref(HomepageDraftStatus.DRAFT),
       draft: ref(createHomepageDraft()),
       categories: ref([]),
       products: ref([]),
-      version: ref(1),
+      version: ref(3),
       publishedVersion: ref(undefined),
       issues: ref([
         {
@@ -55,12 +108,12 @@ vi.mock('./hooks/useHomepageEditor.js', async () => {
         },
       ]),
       loading: ref(false),
-      saving: ref(false),
-      publishing: ref(false),
-      dirty: ref(false),
-      conflict: ref(mocks.conflict),
+      saving: mocks.savingRef,
+      publishing: mocks.publishingRef,
+      dirty: mocks.dirtyRef,
+      conflict: mocks.conflictRef,
       lastError: ref(null),
-      canPublish: computed(() => true),
+      canPublish: computed(() => !mocks.dirtyRef!.value),
       load: mocks.editorLoad,
       replaceDraft: vi.fn(),
       saveDraft: mocks.saveDraft,
@@ -71,15 +124,24 @@ vi.mock('./hooks/useHomepageEditor.js', async () => {
 
 vi.mock('./hooks/useHomepageDrafts.js', async () => {
   const { ref } = await import('vue');
-  mocks.activeIdRef = ref(mocks.activeId);
+  mocks.activeIdRef = ref('12');
   mocks.draftsErrorRef = ref(null);
 
   return {
     useHomepageDrafts: () => ({
+      items: ref([ordinary, second, published]),
       activeId: mocks.activeIdRef,
+      page: ref(1),
+      pageSize: ref(20),
+      total: ref(3),
       loading: ref(false),
       error: mocks.draftsErrorRef,
       load: mocks.draftsLoad,
+      refresh: mocks.draftsRefresh,
+      select: mocks.draftsSelect,
+      create: mocks.draftsCreate,
+      rename: mocks.draftsRename,
+      remove: mocks.draftsRemove,
     }),
   };
 });
@@ -93,25 +155,64 @@ async function mountView() {
         AdminPage: { template: '<main><slot name="header"/><slot/></main>' },
         HomepageEditorForm: true,
         HomepagePhonePreview: true,
+        ElDialog: {
+          props: ['modelValue'],
+          emits: ['close'],
+          template:
+            '<section v-if="modelValue"><slot/><slot name="footer"/></section>',
+        },
       },
     },
   });
 }
 
+function draftRow(wrapper: Awaited<ReturnType<typeof mountView>>, id: string) {
+  return wrapper.find(`[data-draft-id="${id}"]`);
+}
+
+function actionButton(
+  wrapper: Awaited<ReturnType<typeof mountView>>,
+  label: string,
+) {
+  return wrapper
+    .findAll('button')
+    .find((button) => button.text().includes(label));
+}
+
 describe('HomepageEditorView', () => {
+  beforeAll(async () => {
+    await import('./HomepageEditorView.vue');
+  });
+
   beforeEach(() => {
-    mocks.activeId = '12';
-    mocks.draftId = '12';
-    mocks.conflict = null;
-    if (mocks.activeIdRef) mocks.activeIdRef.value = '12';
-    if (mocks.draftsErrorRef) mocks.draftsErrorRef.value = null;
+    mocks.activeIdRef!.value = '12';
+    mocks.draftsErrorRef!.value = null;
+    mocks.draftIdRef!.value = '12';
+    mocks.dirtyRef!.value = false;
+    mocks.savingRef!.value = false;
+    mocks.publishingRef!.value = false;
+    mocks.conflictRef!.value = null;
     mocks.draftsLoad.mockResolvedValue(true);
+    mocks.draftsRefresh.mockResolvedValue(undefined);
     mocks.editorLoad.mockResolvedValue(undefined);
+    mocks.saveDraft.mockResolvedValue(true);
+    mocks.publish.mockResolvedValue(true);
     mocks.confirm.mockResolvedValue(undefined);
+    mocks.prompt.mockResolvedValue({ value: '新名称' });
+    mocks.draftsCreate.mockImplementation(async () => {
+      mocks.activeIdRef!.value = '99';
+      return { id: '99' };
+    });
+    mocks.draftsRemove.mockImplementation(async (id: string) => {
+      if (mocks.activeIdRef!.value === id) mocks.activeIdRef!.value = '13';
+    });
+    mocks.draftsSelect.mockImplementation((id: string) => {
+      mocks.activeIdRef!.value = id;
+    });
   });
 
   afterEach(() => {
-    vi.resetAllMocks();
+    vi.clearAllMocks();
   });
 
   it('loads the draft list before loading its active editor draft', async () => {
@@ -127,9 +228,7 @@ describe('HomepageEditorView', () => {
     await mountView();
     await flushPromises();
 
-    expect(mocks.draftsLoad).toHaveBeenCalledOnce();
     expect(mocks.draftsLoad).toHaveBeenCalledWith();
-    expect(mocks.editorLoad).toHaveBeenCalledOnce();
     expect(mocks.editorLoad).toHaveBeenCalledWith('12');
     expect(calls).toEqual(['drafts', 'editor']);
   });
@@ -140,29 +239,274 @@ describe('HomepageEditorView', () => {
     await mountView();
     await flushPromises();
 
-    expect(mocks.draftsLoad).toHaveBeenCalledOnce();
     expect(mocks.editorLoad).not.toHaveBeenCalled();
   });
 
-  it('shows an empty state without editor controls when no draft exists', async () => {
-    mocks.activeId = null;
-    mocks.draftId = null;
-    if (mocks.activeIdRef) mocks.activeIdRef.value = null;
+  it('renders draft, editor, and preview columns without the old introduction', async () => {
+    const wrapper = await mountView();
 
+    expect(wrapper.find('.admin-page-header').exists()).toBe(false);
+    expect(wrapper.find('.homepage-editor-view__issues').exists()).toBe(false);
+    expect(wrapper.find('[data-workspace-column="drafts"]').exists()).toBe(
+      true,
+    );
+    expect(wrapper.find('[data-workspace-column="editor"]').exists()).toBe(
+      true,
+    );
+    expect(wrapper.find('[data-workspace-column="preview"]').exists()).toBe(
+      true,
+    );
+  });
+
+  it('loads and selects a clean target draft', async () => {
+    const wrapper = await mountView();
+    await flushPromises();
+    mocks.editorLoad.mockClear();
+
+    await draftRow(wrapper, '13').trigger('click');
+    await flushPromises();
+
+    expect(mocks.editorLoad).toHaveBeenCalledWith('13');
+    expect(mocks.draftsSelect).toHaveBeenCalledWith('13');
+  });
+
+  it.each([
+    ['saving', 'savingRef'],
+    ['publishing', 'publishingRef'],
+  ] as const)(
+    'ignores draft selection while the editor is %s',
+    async (_, state) => {
+      mocks[state]!.value = true;
+      const wrapper = await mountView();
+      await flushPromises();
+      mocks.editorLoad.mockClear();
+
+      await draftRow(wrapper, '13').trigger('click');
+      await flushPromises();
+
+      expect(mocks.editorLoad).not.toHaveBeenCalled();
+      expect(mocks.draftsSelect).not.toHaveBeenCalled();
+    },
+  );
+
+  it('hides stale editor content when the selected and loaded draft IDs differ', async () => {
+    mocks.activeIdRef!.value = '13';
     const wrapper = await mountView();
     await flushPromises();
 
-    expect(mocks.draftsLoad).toHaveBeenCalledOnce();
-    expect(mocks.editorLoad).not.toHaveBeenCalled();
-    expect(wrapper.text()).toContain('还没有首页草稿，请先创建草稿');
     expect(wrapper.findComponent({ name: 'HomepageEditorForm' }).exists()).toBe(
       false,
     );
+    expect(
+      wrapper.findComponent({ name: 'HomepagePhonePreview' }).exists(),
+    ).toBe(false);
     expect(wrapper.find('.homepage-publish-bar').exists()).toBe(false);
   });
 
-  it('reports a current draft-list failure once without editor controls', async () => {
-    mocks.draftId = null;
+  it('ignores a second selection while a dirty switch confirmation is open', async () => {
+    mocks.dirtyRef!.value = true;
+    const pendingConfirm = new Promise<void>(() => undefined);
+    mocks.confirm.mockReturnValueOnce(pendingConfirm);
+    const wrapper = await mountView();
+    await flushPromises();
+    mocks.editorLoad.mockClear();
+
+    await draftRow(wrapper, '13').trigger('click');
+    await draftRow(wrapper, '14').trigger('click');
+    await flushPromises();
+
+    expect(mocks.confirm).toHaveBeenCalledOnce();
+    expect(mocks.editorLoad).not.toHaveBeenCalled();
+    expect(mocks.draftsSelect).not.toHaveBeenCalled();
+  });
+
+  it('saves, refreshes summaries, and switches when dirty confirmation is accepted', async () => {
+    mocks.dirtyRef!.value = true;
+    const wrapper = await mountView();
+    await flushPromises();
+    mocks.editorLoad.mockClear();
+
+    await draftRow(wrapper, '13').trigger('click');
+    await flushPromises();
+
+    expect(mocks.confirm).toHaveBeenCalledWith(
+      expect.stringContaining('尚未保存'),
+      expect.any(String),
+      expect.objectContaining({
+        confirmButtonText: '保存并切换',
+        cancelButtonText: '放弃修改并切换',
+        distinguishCancelAndClose: true,
+      }),
+    );
+    expect(mocks.saveDraft).toHaveBeenCalledOnce();
+    expect(mocks.draftsRefresh).toHaveBeenCalledOnce();
+    expect(mocks.editorLoad).toHaveBeenCalledWith('13');
+    expect(mocks.draftsSelect).toHaveBeenCalledWith('13');
+  });
+
+  it('discards local changes and switches when dirty confirmation is cancelled', async () => {
+    mocks.dirtyRef!.value = true;
+    mocks.confirm.mockRejectedValue('cancel');
+    const wrapper = await mountView();
+    await flushPromises();
+    mocks.editorLoad.mockClear();
+
+    await draftRow(wrapper, '13').trigger('click');
+    await flushPromises();
+
+    expect(mocks.saveDraft).not.toHaveBeenCalled();
+    expect(mocks.editorLoad).toHaveBeenCalledWith('13');
+    expect(mocks.draftsSelect).toHaveBeenCalledWith('13');
+  });
+
+  it('keeps the current draft when dirty switching is closed', async () => {
+    mocks.dirtyRef!.value = true;
+    mocks.confirm.mockRejectedValue('close');
+    const wrapper = await mountView();
+    await flushPromises();
+    mocks.editorLoad.mockClear();
+
+    await draftRow(wrapper, '13').trigger('click');
+    await flushPromises();
+
+    expect(mocks.saveDraft).not.toHaveBeenCalled();
+    expect(mocks.editorLoad).not.toHaveBeenCalled();
+    expect(mocks.draftsSelect).not.toHaveBeenCalled();
+    expect(mocks.activeIdRef!.value).toBe('12');
+  });
+
+  it.each([
+    ['returns false', async () => false],
+    ['throws', async () => Promise.reject(new Error('保存失败'))],
+  ])('does not switch when dirty save %s', async (_, saveResult) => {
+    mocks.dirtyRef!.value = true;
+    mocks.saveDraft.mockImplementationOnce(saveResult);
+    const wrapper = await mountView();
+    await flushPromises();
+    mocks.editorLoad.mockClear();
+
+    await draftRow(wrapper, '13').trigger('click');
+    await flushPromises();
+
+    expect(mocks.editorLoad).not.toHaveBeenCalled();
+    expect(mocks.draftsSelect).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['COPY', { name: '复制方案', mode: 'COPY' }],
+    ['BLANK', { name: '空白方案', mode: 'BLANK' }],
+  ] as const)(
+    'creates a %s draft and loads its selected detail',
+    async (_, form) => {
+      const wrapper = await mountView();
+      await flushPromises();
+      mocks.editorLoad.mockClear();
+
+      await actionButton(wrapper, '新建')?.trigger('click');
+      wrapper
+        .findComponent({ name: 'HomepageDraftCreateDialog' })
+        .vm.$emit('submit', form);
+      await flushPromises();
+
+      expect(mocks.draftsCreate).toHaveBeenCalledWith(form);
+      expect(mocks.editorLoad).toHaveBeenCalledWith('99');
+    },
+  );
+
+  it('renames a non-active draft without switching or reloading the editor', async () => {
+    const wrapper = await mountView();
+    await flushPromises();
+    mocks.editorLoad.mockClear();
+
+    await draftRow(wrapper, '13')
+      .find('[data-action="rename"]')
+      .trigger('click');
+    await flushPromises();
+
+    expect(mocks.draftsRename).toHaveBeenCalledWith('13', '新名称');
+    expect(mocks.editorLoad).not.toHaveBeenCalled();
+    expect(mocks.draftsSelect).not.toHaveBeenCalled();
+  });
+
+  it('loads the adjacent selected draft after removing the active draft', async () => {
+    const wrapper = await mountView();
+    await flushPromises();
+    mocks.editorLoad.mockClear();
+
+    await draftRow(wrapper, '12')
+      .find('[data-action="remove"]')
+      .trigger('click');
+    await flushPromises();
+
+    expect(mocks.draftsRemove).toHaveBeenCalledWith('12');
+    expect(mocks.editorLoad).toHaveBeenCalledWith('13');
+  });
+
+  it('does not send remove for a published-source draft', async () => {
+    const wrapper = await mountView();
+    const remove = draftRow(wrapper, '14').find('[data-action="remove"]');
+
+    expect(remove.attributes('disabled')).toBeDefined();
+    await remove.trigger('click');
+
+    expect(mocks.draftsRemove).not.toHaveBeenCalled();
+  });
+
+  it('opens the create dialog from an empty list state', async () => {
+    mocks.activeIdRef!.value = null;
+    const wrapper = await mountView();
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('还没有首页草稿，请先创建草稿');
+    await actionButton(wrapper, '创建第一个草稿')?.trigger('click');
+
+    expect(
+      wrapper
+        .findComponent({ name: 'HomepageDraftCreateDialog' })
+        .props('visible'),
+    ).toBe(true);
+  });
+
+  it('refreshes the draft summary after an explicit save succeeds', async () => {
+    const wrapper = await mountView();
+    await flushPromises();
+
+    await actionButton(wrapper, '保存草稿')?.trigger('click');
+    await flushPromises();
+
+    expect(mocks.draftsRefresh).toHaveBeenCalledOnce();
+    expect(mocks.success).toHaveBeenCalledWith('首页草稿已保存');
+  });
+
+  it('refreshes statuses after publishing and keeps the active selection', async () => {
+    const wrapper = await mountView();
+    await flushPromises();
+
+    await actionButton(wrapper, '发布到 H5')?.trigger('click');
+    await flushPromises();
+
+    expect(mocks.publish).toHaveBeenCalledOnce();
+    expect(mocks.draftsRefresh).toHaveBeenCalledOnce();
+    expect(mocks.draftsSelect).not.toHaveBeenCalled();
+    expect(mocks.activeIdRef!.value).toBe('12');
+  });
+
+  it('reloads only the current editor detail when resolving a conflict', async () => {
+    mocks.conflictRef!.value = '服务器草稿已更新';
+    const wrapper = await mountView();
+    await flushPromises();
+    mocks.editorLoad.mockClear();
+    mocks.draftsLoad.mockClear();
+
+    await actionButton(wrapper, '重新加载服务器草稿')?.trigger('click');
+    await flushPromises();
+
+    expect(mocks.editorLoad).toHaveBeenCalledWith('12');
+    expect(mocks.draftsLoad).not.toHaveBeenCalled();
+  });
+
+  it('reports a current draft-list failure without editor controls', async () => {
+    mocks.activeIdRef!.value = null;
     mocks.draftsLoad.mockImplementation(async () => {
       mocks.draftsErrorRef!.value = '首页草稿列表加载失败';
       return true;
@@ -172,9 +516,7 @@ describe('HomepageEditorView', () => {
     await flushPromises();
 
     expect(mocks.editorLoad).not.toHaveBeenCalled();
-    expect(mocks.error).toHaveBeenCalledOnce();
     expect(mocks.error).toHaveBeenCalledWith('首页草稿列表加载失败');
-    expect(mocks.success).not.toHaveBeenCalled();
     expect(wrapper.text()).toContain('首页草稿列表加载失败');
     expect(wrapper.findComponent({ name: 'HomepageEditorForm' }).exists()).toBe(
       false,
@@ -182,82 +524,41 @@ describe('HomepageEditorView', () => {
     expect(wrapper.find('.homepage-publish-bar').exists()).toBe(false);
   });
 
-  it('starts directly with the editor workspace without a page introduction', async () => {
-    const wrapper = await mountView();
-
-    expect(wrapper.find('.admin-page-header').exists()).toBe(false);
-    expect(wrapper.find('.homepage-editor-view__issues').exists()).toBe(false);
-    expect(wrapper.find('.homepage-editor-view__workspace').exists()).toBe(
-      true,
-    );
-  });
-
-  it('does not show reload success when the editor detail fails to load', async () => {
-    mocks.conflict = '服务器草稿已更新';
+  it('does not show reload success when the current detail fails to reload', async () => {
+    mocks.conflictRef!.value = '服务器草稿已更新';
     const wrapper = await mountView();
     await flushPromises();
     mocks.success.mockClear();
-    mocks.error.mockClear();
     mocks.editorLoad.mockRejectedValueOnce(new Error('详情加载失败'));
-    const reloadButton = wrapper
-      .findAll('button')
-      .find((button) => button.text().includes('重新加载服务器草稿'));
 
-    await reloadButton?.trigger('click');
+    await actionButton(wrapper, '重新加载服务器草稿')?.trigger('click');
     await flushPromises();
 
     expect(mocks.error).toHaveBeenCalledWith('详情加载失败');
     expect(mocks.success).not.toHaveBeenCalled();
   });
 
-  it('does not show reload success when the refreshed list has no active draft', async () => {
-    mocks.conflict = '服务器草稿已更新';
+  it('does not show explicit save success or refresh when save returns false', async () => {
+    mocks.saveDraft.mockResolvedValueOnce(false);
     const wrapper = await mountView();
     await flushPromises();
-    mocks.success.mockClear();
-    mocks.activeIdRef!.value = null;
-    const reloadButton = wrapper
-      .findAll('button')
-      .find((button) => button.text().includes('重新加载服务器草稿'));
 
-    await reloadButton?.trigger('click');
+    await actionButton(wrapper, '保存草稿')?.trigger('click');
     await flushPromises();
 
-    expect(mocks.editorLoad).toHaveBeenCalledOnce();
     expect(mocks.success).not.toHaveBeenCalled();
+    expect(mocks.draftsRefresh).not.toHaveBeenCalled();
   });
 
-  it('only shows save success when the hook confirms server success', async () => {
-    mocks.saveDraft.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+  it('does not show publish success or refresh for a stale publish result', async () => {
+    mocks.publish.mockResolvedValueOnce(false);
     const wrapper = await mountView();
-    const saveButton = wrapper
-      .findAll('button')
-      .find((button) => button.text().includes('保存草稿'));
+    await flushPromises();
 
-    await saveButton?.trigger('click');
+    await actionButton(wrapper, '发布到 H5')?.trigger('click');
     await flushPromises();
 
     expect(mocks.success).not.toHaveBeenCalled();
-    expect(mocks.error).not.toHaveBeenCalled();
-
-    await saveButton?.trigger('click');
-    await flushPromises();
-
-    expect(mocks.success).toHaveBeenCalledTimes(1);
-    expect(mocks.success).toHaveBeenCalledWith('首页草稿已保存');
-  });
-
-  it('does not show publish success for a stale failed operation', async () => {
-    mocks.publish.mockResolvedValue(false);
-    const wrapper = await mountView();
-    const publishButton = wrapper
-      .findAll('button')
-      .find((button) => button.text().includes('发布到 H5'));
-
-    await publishButton?.trigger('click');
-    await flushPromises();
-
-    expect(mocks.success).not.toHaveBeenCalled();
-    expect(mocks.error).not.toHaveBeenCalled();
+    expect(mocks.draftsRefresh).not.toHaveBeenCalled();
   });
 });

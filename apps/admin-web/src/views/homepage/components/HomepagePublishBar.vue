@@ -1,9 +1,14 @@
 <script setup lang="ts">
-import type { HomepageValidationIssue } from '@bake-mall/contracts';
+import type {
+  AdminHomepageView,
+  HomepageValidationIssue,
+} from '@bake-mall/contracts';
 import { ElButton, ElTag } from 'element-plus';
 
 withDefaults(
   defineProps<{
+    readonly name?: string;
+    readonly status?: AdminHomepageView['status'];
     readonly dirty: boolean;
     readonly loading: boolean;
     readonly saving: boolean;
@@ -13,7 +18,12 @@ withDefaults(
     readonly publishedVersion?: number;
     readonly issues?: readonly HomepageValidationIssue[];
   }>(),
-  { publishedVersion: undefined, issues: () => [] },
+  {
+    name: undefined,
+    status: undefined,
+    publishedVersion: undefined,
+    issues: () => [],
+  },
 );
 
 const emit = defineEmits<{
@@ -26,6 +36,8 @@ const emit = defineEmits<{
 <template>
   <footer class="homepage-publish-bar">
     <div class="homepage-publish-bar__status">
+      <strong v-if="name">{{ name }}</strong>
+      <ElTag v-if="status" type="info" effect="plain">{{ status }}</ElTag>
       <ElTag :type="dirty ? 'warning' : 'success'">
         {{ dirty ? '有未保存内容' : '草稿已保存' }}
       </ElTag>

@@ -1,5 +1,8 @@
 <script setup lang="ts">
-import type { HomepageValidationIssue } from '@bake-mall/contracts';
+import type {
+  AdminHomepageDraftSummary,
+  HomepageValidationIssue,
+} from '@bake-mall/contracts';
 import {
   ElAlert,
   ElButton,
@@ -11,21 +14,32 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { onBeforeRouteLeave } from 'vue-router';
 
 import AdminPage from '../../components/layout/AdminPage.vue';
+import HomepageDraftCreateDialog from './components/HomepageDraftCreateDialog.vue';
+import HomepageDraftSidebar from './components/HomepageDraftSidebar.vue';
 import HomepageEditorForm from './components/HomepageEditorForm.vue';
 import HomepagePhonePreview from './components/HomepagePhonePreview.vue';
 import HomepagePublishBar from './components/HomepagePublishBar.vue';
 import { useHomepageDrafts } from './hooks/useHomepageDrafts.js';
 import { useHomepageEditor } from './hooks/useHomepageEditor.js';
+import type { HomepageDraftCreateForm } from './type/form.js';
 
 const drafts = useHomepageDrafts();
 const editor = useHomepageEditor();
 const editorForm = ref<InstanceType<typeof HomepageEditorForm> | null>(null);
-const loading = computed(() => drafts.loading.value || editor.loading.value);
-const hasDraft = computed(() => Boolean(editor.draftId.value));
+const createDialogVisible = ref(false);
+const creating = ref(false);
+const switchingDraft = ref(false);
+const listLoading = computed(() => drafts.loading.value);
+const editorLoading = computed(() => editor.loading.value);
+const hasDraft = computed(
+  () =>
+    Boolean(drafts.activeId.value) &&
+    drafts.activeId.value === editor.draftId.value,
+);
 const hasAlert = computed(
   () =>
-    Boolean(drafts.error.value && !loading.value) ||
-    Boolean(editor.lastError.value && !loading.value) ||
+    Boolean(drafts.error.value && !listLoading.value) ||
+    Boolean(editor.lastError.value && !editorLoading.value) ||
     Boolean(editor.conflict.value),
 );
 
@@ -33,7 +47,7 @@ function message(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
-async function load(): Promise<boolean> {
+async function bootstrap(): Promise<boolean> {
   try {
     const current = await drafts.load();
     if (!current) return false;
@@ -51,14 +65,26 @@ async function load(): Promise<boolean> {
   }
 }
 
-async function save(): Promise<void> {
+async function refreshSummaries(): Promise<void> {
+  try {
+    await drafts.refresh();
+  } catch (error) {
+    ElMessage.error(message(error, '首页草稿列表刷新失败'));
+  }
+}
+
+async function save(showSuccess = true): Promise<boolean> {
   try {
     const succeeded = await editor.saveDraft();
-    if (succeeded) ElMessage.success('首页草稿已保存');
+    if (!succeeded) return false;
+    await refreshSummaries();
+    if (showSuccess) ElMessage.success('首页草稿已保存');
+    return true;
   } catch (error) {
     if (!editor.conflict.value) {
       ElMessage.error(message(error, '首页草稿保存失败'));
     }
+    return false;
   }
 }
 
@@ -68,12 +94,137 @@ async function publish(): Promise<void> {
     return;
   }
   try {
+    const activeId = drafts.activeId.value;
     const succeeded = await editor.publish();
-    if (succeeded) ElMessage.success('首页已发布到 H5');
+    if (!succeeded) return;
+    await refreshSummaries();
+    if (activeId && drafts.activeId.value !== activeId) drafts.select(activeId);
+    ElMessage.success('首页已发布到 H5');
   } catch (error) {
     ElMessage.error(message(error, '首页发布失败'));
     if (editor.issues.value[0]) void locateIssue(editor.issues.value[0]);
   }
+}
+
+async function loadAndSelect(id: string): Promise<boolean> {
+  try {
+    await editor.load(id);
+    drafts.select(id);
+    return true;
+  } catch (error) {
+    ElMessage.error(message(error, '首页草稿加载失败'));
+    return false;
+  }
+}
+
+async function selectDraft(id: string): Promise<void> {
+  if (
+    id === drafts.activeId.value ||
+    editor.loading.value ||
+    editor.saving.value ||
+    editor.publishing.value ||
+    switchingDraft.value
+  )
+    return;
+  if (!editor.dirty.value) {
+    await loadAndSelect(id);
+    return;
+  }
+  switchingDraft.value = true;
+  try {
+    await ElMessageBox.confirm(
+      '当前草稿尚未保存，请选择如何处理后再切换。',
+      '切换首页草稿',
+      {
+        type: 'warning',
+        confirmButtonText: '保存并切换',
+        cancelButtonText: '放弃修改并切换',
+        distinguishCancelAndClose: true,
+      },
+    );
+    const saved = await save(false);
+    if (saved) await loadAndSelect(id);
+  } catch (action) {
+    if (action === 'cancel') await loadAndSelect(id);
+  } finally {
+    switchingDraft.value = false;
+  }
+}
+
+function openCreateDialog(): void {
+  createDialogVisible.value = true;
+}
+
+async function createDraft(form: HomepageDraftCreateForm): Promise<void> {
+  creating.value = true;
+  try {
+    const created = await drafts.create(form);
+    createDialogVisible.value = false;
+    await editor.load(created.id);
+    ElMessage.success('首页草稿已创建');
+  } catch (error) {
+    ElMessage.error(message(error, '首页草稿创建失败'));
+  } finally {
+    creating.value = false;
+  }
+}
+
+async function renameDraft(item: AdminHomepageDraftSummary): Promise<void> {
+  try {
+    const result = await ElMessageBox.prompt(
+      '请输入新的草稿名称',
+      '重命名草稿',
+      {
+        inputValue: item.name,
+        inputPlaceholder: '草稿名称',
+        inputValidator: (value: string) => {
+          const length = value.trim().length;
+          if (length === 0) return '请输入草稿名称';
+          return length <= 120 || '草稿名称不能超过 120 个字符';
+        },
+        confirmButtonText: '保存名称',
+        cancelButtonText: '取消',
+      },
+    );
+    await drafts.rename(item.id, result.value.trim());
+    ElMessage.success('草稿名称已更新');
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') return;
+    ElMessage.error(message(error, '首页草稿重命名失败'));
+  }
+}
+
+async function removeDraft(item: AdminHomepageDraftSummary): Promise<void> {
+  const wasActive = item.id === drafts.activeId.value;
+  try {
+    await ElMessageBox.confirm(
+      `删除“${item.name}”后无法恢复，是否继续？`,
+      '删除首页草稿',
+      {
+        type: 'warning',
+        confirmButtonText: '删除草稿',
+        cancelButtonText: '取消',
+      },
+    );
+    await drafts.remove(item.id);
+    if (wasActive && drafts.activeId.value) {
+      await editor.load(drafts.activeId.value);
+    }
+    ElMessage.success('首页草稿已删除');
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') return;
+    ElMessage.error(message(error, '首页草稿删除失败'));
+  }
+}
+
+async function changePage(page: number): Promise<void> {
+  if (editor.dirty.value) {
+    ElMessage.warning('请先保存当前草稿再翻页');
+    return;
+  }
+  const current = await drafts.load({ page, pageSize: drafts.pageSize.value });
+  if (!current || !drafts.activeId.value) return;
+  await editor.load(drafts.activeId.value);
 }
 
 async function reloadServerDraft(): Promise<void> {
@@ -87,10 +238,13 @@ async function reloadServerDraft(): Promise<void> {
         cancelButtonText: '保留本地草稿',
       },
     );
-    const loaded = await load();
-    if (loaded) ElMessage.success('已加载服务器最新草稿');
-  } catch {
-    // 取消时必须保留本地草稿和冲突提示。
+    const id = drafts.activeId.value;
+    if (!id) return;
+    await editor.load(id);
+    ElMessage.success('已加载服务器最新草稿');
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') return;
+    ElMessage.error(message(error, '首页草稿加载失败'));
   }
 }
 
@@ -129,7 +283,7 @@ onBeforeRouteLeave(async () => {
 
 onMounted(() => {
   window.addEventListener('beforeunload', confirmUnload);
-  void load();
+  void bootstrap();
 });
 
 onBeforeUnmount(() =>
@@ -145,7 +299,7 @@ onBeforeUnmount(() =>
     >
       <div v-if="hasAlert" class="homepage-editor-view__alerts">
         <ElAlert
-          v-if="drafts.error.value && !loading"
+          v-if="drafts.error.value && !listLoading"
           type="error"
           title="首页草稿列表加载失败"
           :description="drafts.error.value"
@@ -153,7 +307,7 @@ onBeforeUnmount(() =>
           show-icon
         />
         <ElAlert
-          v-if="editor.lastError.value && !loading"
+          v-if="editor.lastError.value && !editorLoading"
           type="error"
           title="首页装修操作失败"
           :description="editor.lastError.value"
@@ -180,14 +334,33 @@ onBeforeUnmount(() =>
         </ElAlert>
       </div>
 
-      <section v-if="loading" class="homepage-editor-view__loading">
-        <strong>正在读取首页装修草稿</strong>
-        <ElSkeleton :rows="10" animated />
-      </section>
+      <div class="homepage-editor-view__layout">
+        <HomepageDraftSidebar
+          data-workspace-column="drafts"
+          :items="drafts.items.value"
+          :active-id="drafts.activeId.value"
+          :loading="listLoading"
+          :page="drafts.page.value"
+          :page-size="drafts.pageSize.value"
+          :total="drafts.total.value"
+          @select="selectDraft"
+          @create="openCreateDialog"
+          @rename="renameDraft"
+          @remove="removeDraft"
+          @page-change="changePage"
+        />
 
-      <div v-else-if="hasDraft" class="homepage-editor-view__layout">
-        <div class="homepage-editor-view__configuration" data-editor-scroll>
+        <section
+          class="homepage-editor-view__configuration"
+          data-workspace-column="editor"
+          data-editor-scroll
+        >
+          <div v-if="editorLoading" class="homepage-editor-view__loading">
+            <strong>正在读取首页装修草稿</strong>
+            <ElSkeleton :rows="10" animated />
+          </div>
           <HomepageEditorForm
+            v-else-if="hasDraft"
             ref="editorForm"
             :draft="editor.draft.value"
             :categories="editor.categories.value"
@@ -195,22 +368,41 @@ onBeforeUnmount(() =>
             :issues="editor.issues.value"
             @update:draft="editor.replaceDraft"
           />
-        </div>
-        <HomepagePhonePreview :draft="editor.draft.value" />
-      </div>
+          <div v-else class="homepage-editor-view__empty">
+            <span>
+              {{
+                drafts.error.value
+                  ? '首页草稿暂时无法加载'
+                  : '还没有首页草稿，请先创建草稿'
+              }}
+            </span>
+            <ElButton
+              v-if="!drafts.error.value"
+              type="primary"
+              @click="openCreateDialog"
+            >
+              创建第一个草稿
+            </ElButton>
+          </div>
+        </section>
 
-      <div v-else class="homepage-editor-view__empty">
-        {{
-          drafts.error.value
-            ? '首页草稿暂时无法加载'
-            : '还没有首页草稿，请先创建草稿'
-        }}
+        <aside
+          class="homepage-editor-view__preview"
+          data-workspace-column="preview"
+        >
+          <HomepagePhonePreview v-if="hasDraft" :draft="editor.draft.value" />
+          <div v-else class="homepage-editor-view__preview-empty">
+            选择或创建草稿后查看手机预览
+          </div>
+        </aside>
       </div>
 
       <HomepagePublishBar
         v-if="hasDraft"
+        :name="editor.name.value"
+        :status="editor.status.value"
         :dirty="editor.dirty.value"
-        :loading="loading"
+        :loading="editorLoading"
         :saving="editor.saving.value"
         :publishing="editor.publishing.value"
         :can-publish="editor.canPublish.value"
@@ -222,6 +414,14 @@ onBeforeUnmount(() =>
         @locate-issue="locateIssue"
       />
     </div>
+
+    <HomepageDraftCreateDialog
+      :visible="createDialogVisible"
+      :active-draft-id="drafts.activeId.value"
+      :submitting="creating"
+      @submit="createDraft"
+      @cancel="createDialogVisible = false"
+    />
   </AdminPage>
 </template>
 
@@ -257,14 +457,20 @@ onBeforeUnmount(() =>
 .homepage-editor-view__layout {
   display: grid;
   height: 100%;
-  grid-template-columns: minmax(500px, 1.45fr) minmax(320px, 0.8fr);
-  gap: 22px;
+  grid-template-columns:
+    minmax(210px, 0.48fr) minmax(500px, 1.35fr)
+    minmax(320px, 0.78fr);
+  gap: 18px;
   overflow: hidden;
 }
 
-.homepage-editor-view__configuration {
+.homepage-editor-view__configuration,
+.homepage-editor-view__preview {
   min-width: 0;
   min-height: 0;
+}
+
+.homepage-editor-view__configuration {
   padding-right: 8px;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -273,12 +479,14 @@ onBeforeUnmount(() =>
   scrollbar-width: thin;
 }
 
-.homepage-editor-view__configuration > * + * {
-  margin-top: 14px;
+.homepage-editor-view__preview {
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .homepage-editor-view__loading,
-.homepage-editor-view__empty {
+.homepage-editor-view__empty,
+.homepage-editor-view__preview-empty {
   display: grid;
   gap: 14px;
   padding: 20px;
@@ -288,9 +496,12 @@ onBeforeUnmount(() =>
   box-shadow: var(--admin-shadow-card);
 }
 
-.homepage-editor-view__empty {
+.homepage-editor-view__empty,
+.homepage-editor-view__preview-empty {
   place-items: center;
+  min-height: 180px;
   color: var(--admin-muted);
+  text-align: center;
 }
 
 .homepage-editor-view__alert-copy {
@@ -299,8 +510,10 @@ onBeforeUnmount(() =>
 
 @media (max-width: 1180px) {
   .homepage-editor-view__layout {
-    grid-template-columns: minmax(430px, 1fr) minmax(280px, 0.72fr);
-    gap: 14px;
+    grid-template-columns:
+      minmax(190px, 0.42fr) minmax(430px, 1fr)
+      minmax(280px, 0.68fr);
+    gap: 12px;
   }
 }
 </style>
