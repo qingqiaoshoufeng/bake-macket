@@ -237,7 +237,6 @@ async function renameDraft(item: AdminHomepageDraftSummary): Promise<void> {
 }
 
 async function removeDraft(item: AdminHomepageDraftSummary): Promise<void> {
-  const wasActive = item.id === drafts.activeId.value;
   try {
     await ElMessageBox.confirm(
       `删除“${item.name}”后无法恢复，是否继续？`,
@@ -249,8 +248,9 @@ async function removeDraft(item: AdminHomepageDraftSummary): Promise<void> {
       },
     );
     await drafts.remove(item.id);
-    if (wasActive && drafts.activeId.value) {
-      await editor.load(drafts.activeId.value);
+    const nextId = drafts.activeId.value;
+    if (nextId && nextId !== editor.draftId.value) {
+      await editor.load(nextId);
     }
     ElMessage.success('首页草稿已删除');
   } catch (error) {

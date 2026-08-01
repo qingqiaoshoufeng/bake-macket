@@ -96,6 +96,19 @@ function detail(
   };
 }
 
+type Deferred = {
+  readonly promise: Promise<void>;
+  readonly resolve: () => void;
+};
+
+function createDeferred(): Deferred {
+  const resolve = vi.fn<() => void>();
+  const promise = new Promise<void>((promiseResolve) => {
+    resolve.mockImplementation(promiseResolve);
+  });
+  return { promise, resolve };
+}
+
 vi.mock('vue-router', () => ({
   onBeforeRouteLeave: vi.fn((guard: () => Promise<boolean>) => {
     mocks.routeLeaveGuard = guard;
@@ -706,6 +719,35 @@ describe('HomepageEditorView', () => {
 
     expect(mocks.draftsRemove).toHaveBeenCalledWith('12');
     expect(mocks.editorLoad).toHaveBeenCalledWith('13');
+  });
+
+  it('loads the final active draft when selection changes during removal', async () => {
+    const removeRequest = createDeferred();
+    mocks.draftsRemove.mockImplementationOnce(async () => {
+      await removeRequest.promise;
+      mocks.activeIdRef!.value = '14';
+    });
+    const wrapper = await mountView();
+    await flushPromises();
+    mocks.editorLoad.mockClear();
+    mocks.editorLoad.mockImplementation(async (id: string) => {
+      mocks.draftIdRef!.value = id;
+    });
+
+    await draftRow(wrapper, '13')
+      .find('[data-action="remove"]')
+      .trigger('click');
+    await flushPromises();
+    await draftRow(wrapper, '13').trigger('click');
+    await flushPromises();
+
+    expect(mocks.editorLoad).toHaveBeenLastCalledWith('13');
+    removeRequest.resolve();
+    await flushPromises();
+
+    expect(mocks.activeIdRef!.value).toBe('14');
+    expect(mocks.editorLoad).toHaveBeenLastCalledWith('14');
+    expect(mocks.draftIdRef!.value).toBe(mocks.activeIdRef!.value);
   });
 
   it('does not send remove for a published-source draft', async () => {
