@@ -75,22 +75,29 @@ export function useHomepageDrafts() {
   const publishedDraftId = ref<string | null>(null);
   let requestSequence = 0;
 
-  async function refresh(query?: AdminPageQuery): Promise<void> {
-    const nextQuery = query ?? { page: page.value, pageSize: pageSize.value };
+  async function load(
+    query: AdminPageQuery,
+    preferredId?: string,
+  ): Promise<void> {
     const sequence = requestSequence + 1;
     requestSequence = sequence;
     loading.value = true;
     error.value = null;
     try {
-      const result = await homepageApi.list(nextQuery);
+      const result = await homepageApi.list(query);
       if (sequence !== requestSequence) return;
       items.value = [...result.items];
       page.value = result.page;
       pageSize.value = result.pageSize;
       total.value = result.total;
       publishedDraftId.value = result.publishedDraftId ?? null;
+      const preferredExists = items.value.some(({ id }) => id === preferredId);
       const activeExists = items.value.some(({ id }) => id === activeId.value);
-      if (!activeExists) activeId.value = preferredActiveId(items.value);
+      if (preferredId !== undefined) {
+        activeId.value = preferredExists
+          ? preferredId
+          : preferredActiveId(items.value);
+      } else if (!activeExists) activeId.value = preferredActiveId(items.value);
     } catch (cause) {
       if (sequence === requestSequence) {
         error.value = errorMessage(cause, '首页草稿加载失败');
@@ -98,6 +105,10 @@ export function useHomepageDrafts() {
     } finally {
       if (sequence === requestSequence) loading.value = false;
     }
+  }
+
+  async function refresh(query?: AdminPageQuery): Promise<void> {
+    await load(query ?? { page: page.value, pageSize: pageSize.value });
   }
 
   function select(id: string): void {
@@ -112,9 +123,10 @@ export function useHomepageDrafts() {
       const created = await homepageApi.create(
         createRequest(form, activeId.value),
       );
-      items.value = applySummary(items.value, created);
-      total.value += 1;
-      activeId.value = created.id;
+      await load(
+        { page: DEFAULT_QUERY.page, pageSize: pageSize.value },
+        created.id,
+      );
       return created;
     } catch (cause) {
       error.value = errorMessage(cause, '首页草稿创建失败');

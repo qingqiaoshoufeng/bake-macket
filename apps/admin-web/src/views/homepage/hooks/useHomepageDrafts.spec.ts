@@ -106,16 +106,19 @@ describe('useHomepageDrafts', () => {
     expect(drafts.activeId.value).toBe('1');
   });
 
-  it('creates COPY from the active draft and BLANK without a source, then selects immutable inserted rows', async () => {
-    api.list.mockResolvedValue(list([summary('1')]));
+  it('refreshes authoritative ordering after create and keeps the new draft selected', async () => {
+    const initial = summary('1');
     const copied = summary('2');
     const blank = summary('3');
+    api.list
+      .mockResolvedValueOnce(list([initial]))
+      .mockResolvedValueOnce(list([initial, copied]))
+      .mockResolvedValueOnce(list([copied, initial, blank]));
     api.create
       .mockResolvedValueOnce(detail(copied))
       .mockResolvedValueOnce(detail(blank));
     const drafts = useHomepageDrafts();
     await drafts.refresh();
-    const originalItems = drafts.items.value;
 
     await drafts.create({ name: '复制方案', mode: 'COPY' });
 
@@ -124,9 +127,9 @@ describe('useHomepageDrafts', () => {
       mode: 'COPY',
       sourceDraftId: '1',
     });
+    expect(api.list).toHaveBeenCalledTimes(2);
+    expect(drafts.items.value.map(({ id }) => id)).toEqual(['1', '2']);
     expect(drafts.activeId.value).toBe('2');
-    expect(drafts.items.value).not.toBe(originalItems);
-    expect(drafts.items.value.map(({ id }) => id)).toEqual(['2', '1']);
 
     await drafts.create({ name: '空白方案', mode: 'BLANK' });
 
@@ -134,6 +137,8 @@ describe('useHomepageDrafts', () => {
       name: '空白方案',
       mode: 'BLANK',
     });
+    expect(api.list).toHaveBeenCalledTimes(3);
+    expect(drafts.items.value.map(({ id }) => id)).toEqual(['2', '1', '3']);
     expect(drafts.activeId.value).toBe('3');
   });
 
