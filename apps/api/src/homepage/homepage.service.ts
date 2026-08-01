@@ -638,12 +638,7 @@ export class HomepageService {
         )
         .execute();
       if (result.affected !== 1) {
-        const current = await drafts.findOneBy({
-          id,
-          homepagePageId: page.id,
-        });
-        if (!current) this.throwDraftNotFound();
-        this.throwVersionConflict(current.version);
+        await this.throwDraftUpdateConflict(id, page.id, drafts);
       }
       const saved = await this.requireDraft(id, page.id, drafts);
       await this.audit.record(
@@ -700,12 +695,7 @@ export class HomepageService {
           )
           .execute();
         if (result.affected !== 1) {
-          const current = await drafts.findOneBy({
-            id,
-            homepagePageId: page.id,
-          });
-          if (!current) this.throwDraftNotFound();
-          this.throwVersionConflict(current.version);
+          await this.throwDraftUpdateConflict(id, page.id, drafts);
         }
         const renamed = await this.requireDraft(id, page.id, drafts);
         await this.audit.record(
@@ -1015,6 +1005,21 @@ export class HomepageService {
     const draft = await repository.findOneBy({ id, homepagePageId });
     if (!draft) this.throwDraftNotFound();
     return draft;
+  }
+
+  private async throwDraftUpdateConflict(
+    id: string,
+    homepagePageId: string,
+    repository: Repository<HomepageDraft>,
+  ): Promise<never> {
+    const current = await repository
+      .createQueryBuilder('draft')
+      .where('draft.id = :id', { id })
+      .andWhere('draft.homepagePageId = :homepagePageId', { homepagePageId })
+      .setLock('pessimistic_read')
+      .getOne();
+    if (!current) this.throwDraftNotFound();
+    this.throwVersionConflict(current.version);
   }
 
   private async requireLegacyDraft(

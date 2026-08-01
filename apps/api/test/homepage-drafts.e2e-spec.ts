@@ -16,8 +16,14 @@ import { Test } from '@nestjs/testing';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { randomUUID } from 'node:crypto';
 import request from 'supertest';
-import { DataSource } from 'typeorm';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import {
+  DataSource,
+  EntityManager,
+  type EntityTarget,
+  type ObjectLiteral,
+  type Repository,
+} from 'typeorm';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { JWT_ADMIN_AUDIENCE } from '../src/auth/auth.constants.js';
 import { AdminUser } from '../src/database/entities/admin-user.entity.js';
@@ -45,6 +51,8 @@ const DATABASE_NAME = `bake_mall_homepage_drafts_${process.pid}_${randomUUID().r
 const APP_USER = process.env.TEST_MYSQL_APP_USER ?? 'bake_app';
 const ADMIN_SECRET = 'homepage-drafts-admin-secret-for-e2e';
 const DATABASE_OPTIONS = { databaseName: DATABASE_NAME, appUser: APP_USER };
+const MALFORMED_UNSIGNED_BIGINT_IDS = ['1abc', '1.0', '01', '0', '-1'] as const;
+const OVERFLOW_UNSIGNED_BIGINT_ID = '18446744073709551616';
 
 const changedConfig = (
   source: HomepageDraftConfig,
@@ -56,6 +64,87 @@ const changedConfig = (
     title,
   },
 });
+
+function createBarrier(parties: number): { wait: () => Promise<void> } {
+  let arrived = 0;
+  let release: () => void = () => undefined;
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return {
+    wait: async () => {
+      arrived += 1;
+      if (arrived >= parties) release();
+      await released;
+    },
+  };
+}
+
+function decorateManager(
+  manager: EntityManager,
+  decorateRepository: <Entity extends ObjectLiteral>(
+    entity: EntityTarget<Entity>,
+    repository: Repository<Entity>,
+  ) => Repository<Entity>,
+): EntityManager {
+  return new Proxy(manager, {
+    get(target, property, receiver) {
+      if (property !== 'getRepository') {
+        return Reflect.get(target, property, receiver);
+      }
+      return <Entity extends ObjectLiteral>(entity: EntityTarget<Entity>) => {
+        const repository = target.getRepository(entity);
+        return decorateRepository(entity, repository);
+      };
+    },
+  });
+}
+
+function dataSourceWithDraftReadBarrier(
+  source: DataSource,
+  draftId: string,
+  version: number,
+): DataSource {
+  const bothReadInitialVersion = createBarrier(2);
+  return {
+    transaction: async <T>(
+      operation: (manager: EntityManager) => Promise<T>,
+    ): Promise<T> => {
+      const runner = source.createQueryRunner();
+      await runner.connect();
+      await runner.startTransaction();
+      const manager = decorateManager(runner.manager, (entity, repository) => {
+        if (entity !== HomepageDraft) return repository;
+        return new Proxy(repository, {
+          get(target, property, receiver) {
+            if (property !== 'findOneBy') {
+              return Reflect.get(target, property, receiver);
+            }
+            return async (where: { id?: string }) => {
+              const draft = await (
+                target as unknown as Repository<HomepageDraft>
+              ).findOneBy(where);
+              if (where.id === draftId && draft?.version === version) {
+                await bothReadInitialVersion.wait();
+              }
+              return draft;
+            };
+          },
+        });
+      });
+      try {
+        const result = await operation(manager);
+        await runner.commitTransaction();
+        return result;
+      } catch (error) {
+        await runner.rollbackTransaction();
+        throw error;
+      } finally {
+        await runner.release();
+      }
+    },
+  } as DataSource;
+}
 
 const publishableConfig = (
   source: HomepageDraftConfig,
@@ -244,6 +333,89 @@ describe.sequential('Admin homepage drafts (e2e)', () => {
       .expect(400);
   });
 
+  it('rejects malformed COPY source ids without copying an existing draft', async () => {
+    const drafts = dataSource.getRepository(HomepageDraft);
+    const before = await drafts.findOneByOrFail({ id: initialDraft.id });
+    const draftCountBefore = await drafts.count();
+
+    for (const sourceDraftId of [
+      ...MALFORMED_UNSIGNED_BIGINT_IDS,
+      OVERFLOW_UNSIGNED_BIGINT_ID,
+    ]) {
+      await request(app!.getHttpServer())
+        .post('/api/v1/admin/homepage/drafts')
+        .set(admin())
+        .send({
+          name: `非法来源 ${sourceDraftId}`,
+          mode: 'COPY',
+          sourceDraftId,
+        })
+        .expect(400);
+    }
+
+    const after = await drafts.findOneByOrFail({ id: initialDraft.id });
+    expect(await drafts.count()).toBe(draftCountBefore);
+    expect(after).toMatchObject({
+      name: before.name,
+      version: before.version,
+      draftConfig: before.draftConfig,
+    });
+  });
+
+  it('rejects malformed path ids before reading or mutating an existing draft', async () => {
+    const drafts = dataSource.getRepository(HomepageDraft);
+    const pages = dataSource.getRepository(HomepagePage);
+    const before = await drafts.findOneByOrFail({ id: initialDraft.id });
+    const pageBefore = await pages.findOneByOrFail({ pageKey: 'HOME' });
+    const pathIds = [
+      ...MALFORMED_UNSIGNED_BIGINT_IDS,
+      OVERFLOW_UNSIGNED_BIGINT_ID,
+    ];
+
+    for (const id of pathIds) {
+      await request(app!.getHttpServer())
+        .get(`/api/v1/admin/homepage/drafts/${id}`)
+        .set(admin())
+        .expect(400);
+      await request(app!.getHttpServer())
+        .put(`/api/v1/admin/homepage/drafts/${id}`)
+        .set(admin())
+        .send({
+          config: changedConfig(before.draftConfig, `非法保存 ${id}`),
+          version: before.version,
+        })
+        .expect(400);
+      await request(app!.getHttpServer())
+        .patch(`/api/v1/admin/homepage/drafts/${id}`)
+        .set(admin())
+        .send({ name: `非法重命名 ${id}`, version: before.version })
+        .expect(400);
+      await request(app!.getHttpServer())
+        .delete(`/api/v1/admin/homepage/drafts/${id}`)
+        .set(admin())
+        .expect(400);
+      await request(app!.getHttpServer())
+        .post(`/api/v1/admin/homepage/drafts/${id}/publish`)
+        .set(admin())
+        .send({ version: before.version })
+        .expect(400);
+    }
+
+    const after = await drafts.findOneByOrFail({ id: initialDraft.id });
+    const pageAfter = await pages.findOneByOrFail({ pageKey: 'HOME' });
+    expect(after).toMatchObject({
+      name: before.name,
+      version: before.version,
+      draftConfig: before.draftConfig,
+    });
+    expect(pageAfter).toMatchObject({
+      publishedConfig: pageBefore.publishedConfig,
+      publishedVersion: pageBefore.publishedVersion,
+      publishedDraftId: pageBefore.publishedDraftId,
+      publishedDraftVersion: pageBefore.publishedDraftVersion,
+    });
+  });
+
   it('creates a trimmed BLANK draft from the API domain blank config', async () => {
     const response = await request(app!.getHttpServer())
       .post('/api/v1/admin/homepage/drafts')
@@ -365,6 +537,112 @@ describe.sequential('Admin homepage drafts (e2e)', () => {
       .set(admin())
       .expect(404);
     expect(missing.body.code).toBe(ApiErrorCode.HOMEPAGE_DRAFT_NOT_FOUND);
+  });
+
+  it('returns the committed version after overlapping saves conflict', async () => {
+    const created = await request(app!.getHttpServer())
+      .post('/api/v1/admin/homepage/drafts')
+      .set(admin())
+      .send({ name: '并发保存', mode: 'BLANK' })
+      .expect(201);
+    const existing = created.body as AdminHomepageView;
+    const barrierDataSource = dataSourceWithDraftReadBarrier(
+      dataSource,
+      existing.id,
+      existing.version,
+    );
+    const transaction = vi
+      .spyOn(dataSource, 'transaction')
+      .mockImplementation((<T>(
+        operation: (manager: EntityManager) => Promise<T>,
+      ) =>
+        barrierDataSource.transaction(operation)) as DataSource['transaction']);
+
+    try {
+      const responses = await Promise.all([
+        request(app!.getHttpServer())
+          .put(`/api/v1/admin/homepage/drafts/${existing.id}`)
+          .set(admin())
+          .send({
+            config: changedConfig(existing.draftConfig, '并发保存 A'),
+            version: existing.version,
+          }),
+        request(app!.getHttpServer())
+          .put(`/api/v1/admin/homepage/drafts/${existing.id}`)
+          .set(admin())
+          .send({
+            config: changedConfig(existing.draftConfig, '并发保存 B'),
+            version: existing.version,
+          }),
+      ]);
+      const succeeded = responses.find(({ status }) => status === 200);
+      const conflicted = responses.find(({ status }) => status === 409);
+      const persisted = await dataSource
+        .getRepository(HomepageDraft)
+        .findOneByOrFail({ id: existing.id });
+
+      expect(responses.map(({ status }) => status).sort()).toEqual([200, 409]);
+      expect(conflicted?.body).toMatchObject({
+        code: ApiErrorCode.HOMEPAGE_VERSION_CONFLICT,
+        details: { currentVersion: existing.version + 1 },
+      });
+      expect(persisted).toMatchObject({
+        version: existing.version + 1,
+        draftConfig: succeeded?.body.draftConfig,
+      });
+    } finally {
+      transaction.mockRestore();
+    }
+  });
+
+  it('returns the committed version after overlapping renames conflict', async () => {
+    const created = await request(app!.getHttpServer())
+      .post('/api/v1/admin/homepage/drafts')
+      .set(admin())
+      .send({ name: '并发重命名', mode: 'BLANK' })
+      .expect(201);
+    const existing = created.body as AdminHomepageView;
+    const barrierDataSource = dataSourceWithDraftReadBarrier(
+      dataSource,
+      existing.id,
+      existing.version,
+    );
+    const transaction = vi
+      .spyOn(dataSource, 'transaction')
+      .mockImplementation((<T>(
+        operation: (manager: EntityManager) => Promise<T>,
+      ) =>
+        barrierDataSource.transaction(operation)) as DataSource['transaction']);
+
+    try {
+      const responses = await Promise.all([
+        request(app!.getHttpServer())
+          .patch(`/api/v1/admin/homepage/drafts/${existing.id}`)
+          .set(admin())
+          .send({ name: '并发重命名 A', version: existing.version }),
+        request(app!.getHttpServer())
+          .patch(`/api/v1/admin/homepage/drafts/${existing.id}`)
+          .set(admin())
+          .send({ name: '并发重命名 B', version: existing.version }),
+      ]);
+      const succeeded = responses.find(({ status }) => status === 200);
+      const conflicted = responses.find(({ status }) => status === 409);
+      const persisted = await dataSource
+        .getRepository(HomepageDraft)
+        .findOneByOrFail({ id: existing.id });
+
+      expect(responses.map(({ status }) => status).sort()).toEqual([200, 409]);
+      expect(conflicted?.body).toMatchObject({
+        code: ApiErrorCode.HOMEPAGE_VERSION_CONFLICT,
+        details: { currentVersion: existing.version + 1 },
+      });
+      expect(persisted).toMatchObject({
+        name: succeeded?.body.name,
+        version: existing.version + 1,
+      });
+    } finally {
+      transaction.mockRestore();
+    }
   });
 
   it('saves only the addressed draft and rejects a stale version', async () => {

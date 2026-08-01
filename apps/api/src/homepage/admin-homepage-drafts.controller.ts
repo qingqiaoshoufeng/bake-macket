@@ -25,6 +25,7 @@ import type {
 import { JwtAdminGuard } from '../auth/admin-jwt.guard.js';
 import type { AuthenticatedAdmin } from '../auth/auth.types.js';
 import { CurrentAdmin } from '../auth/current-user.decorator.js';
+import { UnsignedBigIntStringPipe } from '../common/unsigned-bigint-string.pipe.js';
 import { AdminHomepageDraftListQueryDto } from './dto/admin-homepage-draft-list-query.dto.js';
 import { CreateHomepageDraftDto } from './dto/create-homepage-draft.dto.js';
 import { PublishHomepageDto } from './dto/publish-homepage.dto.js';
@@ -56,13 +57,15 @@ export class AdminHomepageDraftsController {
   }
 
   @Get(':id')
-  get(@Param('id') id: string): Promise<AdminHomepageView> {
+  get(
+    @Param('id', UnsignedBigIntStringPipe) id: string,
+  ): Promise<AdminHomepageView> {
     return this.homepage.getDraft(id);
   }
 
   @Put(':id')
   save(
-    @Param('id') id: string,
+    @Param('id', UnsignedBigIntStringPipe) id: string,
     @Body() dto: SaveHomepageDraftDto,
     @CurrentAdmin() admin: AuthenticatedAdmin,
   ): Promise<AdminHomepageView> {
@@ -75,7 +78,7 @@ export class AdminHomepageDraftsController {
 
   @Patch(':id')
   rename(
-    @Param('id') id: string,
+    @Param('id', UnsignedBigIntStringPipe) id: string,
     @Body() dto: RenameHomepageDraftDto,
     @CurrentAdmin() admin: AuthenticatedAdmin,
   ): Promise<AdminHomepageView> {
@@ -89,7 +92,7 @@ export class AdminHomepageDraftsController {
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   async remove(
-    @Param('id') id: string,
+    @Param('id', UnsignedBigIntStringPipe) id: string,
     @CurrentAdmin() admin: AuthenticatedAdmin,
   ): Promise<void> {
     await this.homepage.deleteDraft(id, admin.id);
@@ -97,7 +100,7 @@ export class AdminHomepageDraftsController {
 
   @Post(':id/publish')
   publish(
-    @Param('id') id: string,
+    @Param('id', UnsignedBigIntStringPipe) id: string,
     @Body() dto: PublishHomepageDto,
     @CurrentAdmin() admin: AuthenticatedAdmin,
   ): Promise<AdminHomepageView> {

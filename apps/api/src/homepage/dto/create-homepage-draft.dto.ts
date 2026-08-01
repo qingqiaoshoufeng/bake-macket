@@ -10,6 +10,8 @@ import {
   type ValidatorConstraintInterface,
 } from 'class-validator';
 
+import { isUnsignedBigIntString } from '../../common/unsigned-bigint-string.pipe.js';
+
 const trimmed = ({ value }: { value: unknown }): unknown =>
   typeof value === 'string' ? value.trim() : value;
 
@@ -18,7 +20,7 @@ class HomepageDraftSourceConstraint implements ValidatorConstraintInterface {
   validate(value: unknown, arguments_: ValidationArguments): boolean {
     const { mode } = arguments_.object as CreateHomepageDraftDto;
     return mode === 'COPY'
-      ? typeof value === 'string' && value.trim().length > 0
+      ? isUnsignedBigIntString(value)
       : mode === 'BLANK' && value === undefined;
   }
 
