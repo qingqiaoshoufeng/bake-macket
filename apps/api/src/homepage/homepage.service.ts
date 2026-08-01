@@ -54,17 +54,65 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const isNonEmptyText = (value: string): boolean => value.trim().length > 0;
 
-const isMediaAsset = (value: unknown): value is MediaAsset =>
-  isRecord(value) &&
-  typeof value.objectKey === 'string' &&
-  typeof value.publicUrl === 'string';
-
 const hasOnlyKeys = (
   value: Record<string, unknown>,
   keys: readonly string[],
 ): boolean =>
   Object.keys(value).length === keys.length &&
   Object.keys(value).every((key) => keys.includes(key));
+
+const ROOT_KEYS = [
+  'schemaVersion',
+  'hero',
+  'customerService',
+  'shortcutGrid',
+  'imageBlocks',
+] as const;
+const HERO_KEYS = ['id', 'type', 'enabled', 'autoplayMs', 'slides'] as const;
+const HERO_SLIDE_KEYS = [
+  'id',
+  'image',
+  'title',
+  'subtitle',
+  'altText',
+  'link',
+] as const;
+const CUSTOMER_SERVICE_KEYS = [
+  'id',
+  'type',
+  'enabled',
+  'title',
+  'description',
+  'phone',
+  'serviceHours',
+  'wechatQrCode',
+] as const;
+const SHORTCUT_GRID_KEYS = [
+  'id',
+  'type',
+  'enabled',
+  'title',
+  'layout',
+  'items',
+] as const;
+const SHORTCUT_ITEM_KEYS = ['id', 'label', 'image', 'link'] as const;
+const IMAGE_BLOCK_KEYS = [
+  'id',
+  'type',
+  'enabled',
+  'image',
+  'title',
+  'description',
+  'altText',
+  'link',
+] as const;
+const MEDIA_ASSET_KEYS = ['objectKey', 'publicUrl'] as const;
+
+const isMediaAsset = (value: unknown): value is MediaAsset =>
+  isRecord(value) &&
+  hasOnlyKeys(value, MEDIA_ASSET_KEYS) &&
+  typeof value.objectKey === 'string' &&
+  typeof value.publicUrl === 'string';
 
 const isHomepageLink = (value: unknown): value is HomepageLink => {
   if (!isRecord(value) || typeof value.type !== 'string') return false;
@@ -94,12 +142,17 @@ const isHomepageLink = (value: unknown): value is HomepageLink => {
 function assertDraftStructure(
   value: unknown,
 ): asserts value is HomepageDraftConfig {
-  if (!isRecord(value) || value.schemaVersion !== 1) {
+  if (
+    !isRecord(value) ||
+    !hasOnlyKeys(value, ROOT_KEYS) ||
+    value.schemaVersion !== 1
+  ) {
     throw new BadRequestException('首页草稿版本或根结构无效');
   }
   const { hero, customerService, shortcutGrid, imageBlocks } = value;
   if (
     !isRecord(hero) ||
+    !hasOnlyKeys(hero, HERO_KEYS) ||
     hero.type !== HomepageSectionType.HERO_CAROUSEL ||
     typeof hero.id !== 'string' ||
     typeof hero.enabled !== 'boolean' ||
@@ -113,6 +166,7 @@ function assertDraftStructure(
   const slidesValid = hero.slides.every(
     (slide) =>
       isRecord(slide) &&
+      hasOnlyKeys(slide, HERO_SLIDE_KEYS) &&
       typeof slide.id === 'string' &&
       (slide.image === null || isMediaAsset(slide.image)) &&
       typeof slide.title === 'string' &&
@@ -124,6 +178,7 @@ function assertDraftStructure(
 
   if (
     !isRecord(customerService) ||
+    !hasOnlyKeys(customerService, CUSTOMER_SERVICE_KEYS) ||
     customerService.type !== HomepageSectionType.CUSTOMER_SERVICE ||
     typeof customerService.id !== 'string' ||
     typeof customerService.enabled !== 'boolean' ||
@@ -139,6 +194,7 @@ function assertDraftStructure(
 
   if (
     !isRecord(shortcutGrid) ||
+    !hasOnlyKeys(shortcutGrid, SHORTCUT_GRID_KEYS) ||
     shortcutGrid.type !== HomepageSectionType.SHORTCUT_GRID ||
     typeof shortcutGrid.id !== 'string' ||
     typeof shortcutGrid.enabled !== 'boolean' ||
@@ -153,6 +209,7 @@ function assertDraftStructure(
   const shortcutItemsValid = shortcutGrid.items.every(
     (item) =>
       isRecord(item) &&
+      hasOnlyKeys(item, SHORTCUT_ITEM_KEYS) &&
       typeof item.id === 'string' &&
       typeof item.label === 'string' &&
       (item.image === null || isMediaAsset(item.image)) &&
@@ -166,6 +223,7 @@ function assertDraftStructure(
   const imageBlocksValid = imageBlocks.every(
     (block) =>
       isRecord(block) &&
+      hasOnlyKeys(block, IMAGE_BLOCK_KEYS) &&
       block.type === HomepageSectionType.IMAGE_BLOCK &&
       typeof block.id === 'string' &&
       typeof block.enabled === 'boolean' &&
@@ -346,32 +404,34 @@ const collectLocatedLinks = (
 const collectLinks = (config: HomepageDraftConfig): HomepageLink[] =>
   collectLocatedLinks(config).map(({ link }) => link);
 
-const collectChangedSectionIds = (
+const collectChangedSections = (
   before: HomepageDraftConfig | null,
   after: HomepageDraftConfig,
-): string[] => {
+): HomepageSectionType[] => {
   if (!before) {
     return [
-      after.hero.id,
-      after.customerService.id,
-      after.shortcutGrid.id,
-      ...after.imageBlocks.map(({ id }) => id),
+      HomepageSectionType.HERO_CAROUSEL,
+      HomepageSectionType.CUSTOMER_SERVICE,
+      HomepageSectionType.SHORTCUT_GRID,
+      HomepageSectionType.IMAGE_BLOCK,
     ];
   }
   return [
-    [before.hero, after.hero],
-    [before.customerService, after.customerService],
-    [before.shortcutGrid, after.shortcutGrid],
-  ]
-    .filter(
-      ([previous, next]) => JSON.stringify(previous) !== JSON.stringify(next),
-    )
-    .map(([, next]) => next.id)
-    .concat(
-      JSON.stringify(before.imageBlocks) === JSON.stringify(after.imageBlocks)
-        ? []
-        : after.imageBlocks.map(({ id }) => id),
-    );
+    ...(JSON.stringify(before.hero) === JSON.stringify(after.hero)
+      ? []
+      : [HomepageSectionType.HERO_CAROUSEL]),
+    ...(JSON.stringify(before.customerService) ===
+    JSON.stringify(after.customerService)
+      ? []
+      : [HomepageSectionType.CUSTOMER_SERVICE]),
+    ...(JSON.stringify(before.shortcutGrid) ===
+    JSON.stringify(after.shortcutGrid)
+      ? []
+      : [HomepageSectionType.SHORTCUT_GRID]),
+    ...(JSON.stringify(before.imageBlocks) === JSON.stringify(after.imageBlocks)
+      ? []
+      : [HomepageSectionType.IMAGE_BLOCK]),
+  ];
 };
 
 const toIso = (date: Date | null): string | undefined => date?.toISOString();
@@ -493,6 +553,7 @@ export class HomepageService {
                 ).draftConfig,
               )
             : createBlankHomepageDraftConfig();
+        assertDraftStructure(config);
         const draft = await drafts.save(
           drafts.create({
             homepagePageId: page.id,
@@ -509,7 +570,6 @@ export class HomepageService {
             targetId: draft.id,
             action: 'HOMEPAGE_DRAFT_CREATED',
             changeSummary: {
-              name: draft.name,
               mode: request.mode,
               version: draft.version,
               ...(request.mode === 'COPY'
@@ -596,7 +656,7 @@ export class HomepageService {
             saved.draftConfig,
             request.version,
             nextVersion,
-            collectChangedSectionIds(previous.draftConfig, saved.draftConfig),
+            collectChangedSections(previous.draftConfig, saved.draftConfig),
           ),
         },
         manager,
@@ -655,8 +715,6 @@ export class HomepageService {
             targetId: renamed.id,
             action: 'HOMEPAGE_DRAFT_RENAMED',
             changeSummary: {
-              previousName: previous.name,
-              name: renamed.name,
               previousVersion: request.version,
               nextVersion,
             },
@@ -693,7 +751,7 @@ export class HomepageService {
           targetEntity: 'homepage_drafts',
           targetId: draft.id,
           action: 'HOMEPAGE_DRAFT_DELETED',
-          changeSummary: { name: draft.name, version: draft.version },
+          changeSummary: { version: draft.version },
         },
         manager,
       );
@@ -765,7 +823,7 @@ export class HomepageService {
             saved.draftConfig,
             request.version,
             nextVersion,
-            collectChangedSectionIds(previousConfig, saved.draftConfig),
+            collectChangedSections(previousConfig, saved.draftConfig),
           ),
         },
         manager,
@@ -792,6 +850,7 @@ export class HomepageService {
         : await this.requireLegacyDraft(page.id, drafts, manager);
       if (draft.version !== request.version)
         this.throwVersionConflict(draft.version);
+      assertDraftStructure(draft.draftConfig);
       const issues = await this.collectPublishIssues(
         draft.draftConfig,
         manager,
@@ -828,10 +887,7 @@ export class HomepageService {
             draft.draftConfig,
             previousPublishedVersion,
             draft.version,
-            collectChangedSectionIds(
-              previousPublishedConfig,
-              draft.draftConfig,
-            ),
+            collectChangedSections(previousPublishedConfig, draft.draftConfig),
           ),
         },
         manager,
@@ -1127,13 +1183,13 @@ export class HomepageService {
     config: HomepageDraftConfig,
     previousVersion: number,
     nextVersion: number,
-    changedSectionIds: readonly string[],
+    changedSections: readonly HomepageSectionType[],
   ): Record<string, unknown> {
     return {
       previousVersion,
       nextVersion,
       ...this.configSummary(config),
-      changedSectionIds: [...changedSectionIds],
+      changedSections: [...changedSections],
     };
   }
 }

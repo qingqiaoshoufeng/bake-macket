@@ -57,6 +57,67 @@ const changedConfig = (
   },
 });
 
+const publishableConfig = (
+  source: HomepageDraftConfig,
+): HomepageDraftConfig => ({
+  ...structuredClone(source),
+  hero: {
+    ...structuredClone(source.hero),
+    slides: [
+      {
+        id: 'strict-hero-slide',
+        image: {
+          objectKey: 'homepage/strict-hero-slide.jpg',
+          publicUrl:
+            'http://127.0.0.1:43900/bake-mall/homepage/strict-hero-slide.jpg',
+        },
+        title: '',
+        subtitle: '',
+        altText: '',
+        link: { type: HomepageLinkType.NONE },
+      },
+    ],
+  },
+  customerService: {
+    ...structuredClone(source.customerService),
+    phone: '13800000000',
+    serviceHours: '09:00-18:00',
+    wechatQrCode: {
+      objectKey: 'homepage/strict-customer-service.jpg',
+      publicUrl:
+        'http://127.0.0.1:43900/bake-mall/homepage/strict-customer-service.jpg',
+    },
+  },
+  shortcutGrid: {
+    ...structuredClone(source.shortcutGrid),
+    items: Array.from({ length: source.shortcutGrid.layout }, (_, index) => ({
+      id: `strict-shortcut-${index + 1}`,
+      label: `入口 ${index + 1}`,
+      image: {
+        objectKey: `homepage/strict-shortcut-${index + 1}.jpg`,
+        publicUrl: `http://127.0.0.1:43900/bake-mall/homepage/strict-shortcut-${index + 1}.jpg`,
+      },
+      link: { type: HomepageLinkType.NONE },
+    })),
+  },
+  imageBlocks: [
+    {
+      id: 'strict-image-block',
+      type: HomepageSectionType.IMAGE_BLOCK,
+      enabled: true,
+      image: {
+        objectKey: 'homepage/strict-image-block.jpg',
+        publicUrl:
+          'http://127.0.0.1:43900/bake-mall/homepage/strict-image-block.jpg',
+      },
+      title: '',
+      description: '',
+      altText: '',
+      link: { type: HomepageLinkType.NONE },
+    },
+  ],
+});
+
 describe.sequential('Admin homepage drafts (e2e)', () => {
   const rootSql = createDockerRootSqlExecutor();
   let cleanupDatabase: (() => void) | undefined;
@@ -336,6 +397,132 @@ describe.sequential('Admin homepage drafts (e2e)', () => {
     blankDraft = saved.body as AdminHomepageView;
   });
 
+  it('rejects unknown keys at every config object depth without changing drafts', async () => {
+    const invalidConfigs = [
+      (config: HomepageDraftConfig) =>
+        Object.assign(config, { unexpected: 'root-secret' }),
+      (config: HomepageDraftConfig) =>
+        Object.assign(config.hero, { unexpected: 'hero-section-secret' }),
+      (config: HomepageDraftConfig) =>
+        Object.assign(config.customerService, {
+          unexpected: 'customer-service-secret',
+        }),
+      (config: HomepageDraftConfig) =>
+        Object.assign(config.shortcutGrid, {
+          unexpected: 'shortcut-grid-secret',
+        }),
+      (config: HomepageDraftConfig) => {
+        const complete = publishableConfig(config);
+        Object.assign(complete.imageBlocks[0]!, {
+          unexpected: 'image-block-secret',
+        });
+        return complete;
+      },
+      (config: HomepageDraftConfig) => {
+        const complete = publishableConfig(config);
+        Object.assign(complete.hero.slides[0]!, {
+          unexpected: 'hero-slide-secret',
+        });
+        return complete;
+      },
+      (config: HomepageDraftConfig) => {
+        const complete = publishableConfig(config);
+        Object.assign(complete.shortcutGrid.items[0]!, {
+          unexpected: 'shortcut-item-secret',
+        });
+        return complete;
+      },
+      (config: HomepageDraftConfig) => {
+        config.customerService.wechatQrCode = Object.assign(
+          {
+            objectKey: 'homepage/customer-service-strict.jpg',
+            publicUrl:
+              'http://127.0.0.1:43900/bake-mall/homepage/customer-service-strict.jpg',
+          },
+          { privateUrl: 'http://private.example.test/customer-service.jpg' },
+        );
+        return config;
+      },
+    ];
+    const results: Array<{
+      status: number;
+      before: HomepageDraft;
+      after: HomepageDraft;
+    }> = [];
+
+    for (const [index, makeInvalid] of invalidConfigs.entries()) {
+      const created = await request(app!.getHttpServer())
+        .post('/api/v1/admin/homepage/drafts')
+        .set(admin())
+        .send({ name: `严格校验 ${index + 1}`, mode: 'BLANK' })
+        .expect(201);
+      const before = await dataSource
+        .getRepository(HomepageDraft)
+        .findOneByOrFail({ id: created.body.id as string });
+      const response = await request(app!.getHttpServer())
+        .put(`/api/v1/admin/homepage/drafts/${before.id}`)
+        .set(admin())
+        .send({
+          config: makeInvalid(structuredClone(before.draftConfig)),
+          version: before.version,
+        });
+      const after = await dataSource
+        .getRepository(HomepageDraft)
+        .findOneByOrFail({ id: before.id });
+      results.push({ status: response.status, before, after });
+    }
+
+    expect(results.map(({ status }) => status)).toEqual(
+      invalidConfigs.map(() => 400),
+    );
+    for (const { before, after } of results) {
+      expect(after.version).toBe(before.version);
+      expect(after.draftConfig).toEqual(before.draftConfig);
+    }
+  });
+
+  it('strictly validates stored configs before COPY creation and publication', async () => {
+    const drafts = dataSource.getRepository(HomepageDraft);
+    const pages = dataSource.getRepository(HomepagePage);
+    const source = await drafts.findOneByOrFail({ id: copiedDraft.id });
+    const malformed = Object.assign(publishableConfig(source.draftConfig), {
+      unexpected: 'stored-secret',
+    });
+    await drafts.update(source.id, { draftConfig: malformed });
+    const draftCountBeforeCopy = await drafts.count();
+
+    const copyResponse = await request(app!.getHttpServer())
+      .post('/api/v1/admin/homepage/drafts')
+      .set(admin())
+      .send({
+        name: '非法来源副本',
+        mode: 'COPY',
+        sourceDraftId: source.id,
+      });
+    const draftCountAfterCopy = await drafts.count();
+    const pageBeforePublish = await pages.findOneByOrFail({ pageKey: 'HOME' });
+    const publishResponse = await request(app!.getHttpServer())
+      .post(`/api/v1/admin/homepage/drafts/${source.id}/publish`)
+      .set(admin())
+      .send({ version: source.version });
+    const pageAfterPublish = await pages.findOneByOrFail({ pageKey: 'HOME' });
+
+    await drafts.update(source.id, { draftConfig: source.draftConfig });
+    if (copyResponse.body.id) {
+      await drafts.delete({ id: copyResponse.body.id as string });
+    }
+
+    expect(copyResponse.status).toBe(400);
+    expect(draftCountAfterCopy).toBe(draftCountBeforeCopy);
+    expect(publishResponse.status).toBe(400);
+    expect(pageAfterPublish).toMatchObject({
+      publishedConfig: pageBeforePublish.publishedConfig,
+      publishedVersion: pageBeforePublish.publishedVersion,
+      publishedDraftId: pageBeforePublish.publishedDraftId,
+      publishedDraftVersion: pageBeforePublish.publishedDraftVersion,
+    });
+  });
+
   it('keeps save DTO strict and validates homepage media ownership', async () => {
     await request(app!.getHttpServer())
       .put(`/api/v1/admin/homepage/drafts/${blankDraft.id}`)
@@ -425,6 +612,61 @@ describe.sequential('Admin homepage drafts (e2e)', () => {
       .get(`/api/v1/admin/homepage/drafts/${blankDraft.id}`)
       .set(admin())
       .expect(404);
+  });
+
+  it('records fixed section types without sensitive ids or arbitrary user text', async () => {
+    const sensitiveName = 'secret-draft-name-13800000000';
+    const renamedSensitiveName = 'https://private.example.test/draft-name';
+    const created = await request(app!.getHttpServer())
+      .post('/api/v1/admin/homepage/drafts')
+      .set(admin())
+      .send({ name: sensitiveName, mode: 'BLANK' })
+      .expect(201);
+    const sensitiveId = 'https://private.example.test/?phone=13800000000';
+    const config = structuredClone(
+      (created.body as AdminHomepageView).draftConfig,
+    );
+    config.hero.id = sensitiveId;
+
+    const saved = await request(app!.getHttpServer())
+      .put(`/api/v1/admin/homepage/drafts/${created.body.id as string}`)
+      .set(admin())
+      .send({ config, version: created.body.version as number })
+      .expect(200);
+    const renamed = await request(app!.getHttpServer())
+      .patch(`/api/v1/admin/homepage/drafts/${created.body.id as string}`)
+      .set(admin())
+      .send({
+        name: renamedSensitiveName,
+        version: saved.body.version as number,
+      })
+      .expect(200);
+    await request(app!.getHttpServer())
+      .delete(`/api/v1/admin/homepage/drafts/${created.body.id as string}`)
+      .set(admin())
+      .expect(204);
+
+    const audits = await dataSource.getRepository(AuditLog).find({
+      where: {
+        targetEntity: 'homepage_drafts',
+        targetId: created.body.id as string,
+      },
+      order: { id: 'ASC' },
+    });
+    const summary = JSON.stringify(
+      audits.map(({ changeSummary }) => changeSummary),
+    );
+    expect(summary).not.toContain(sensitiveId);
+    expect(summary).not.toContain(sensitiveName);
+    expect(summary).not.toContain(renamedSensitiveName);
+    const savedAudit = audits.find(
+      ({ action }) => action === 'HOMEPAGE_DRAFT_SAVED',
+    );
+    expect(savedAudit?.changeSummary).toMatchObject({
+      changedSections: [HomepageSectionType.HERO_CAROUSEL],
+    });
+    expect(savedAudit?.changeSummary).not.toHaveProperty('changedSectionIds');
+    expect(renamed.body.version).toBe((saved.body.version as number) + 1);
   });
 
   it('writes mutation audit summaries without full config, phone, or URL data', async () => {
