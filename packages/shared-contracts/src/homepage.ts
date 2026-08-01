@@ -1,3 +1,4 @@
+import type { PaginatedView } from './admin-list.js';
 import type { MediaAsset } from './media.js';
 
 export enum HomepageSectionType {
@@ -33,6 +34,15 @@ export type HomepageLink =
     };
 
 export type HomepageDraftLink = HomepageLink;
+
+export const HomepageDraftStatus = {
+  PUBLISHED: 'PUBLISHED',
+  PUBLISHED_WITH_CHANGES: 'PUBLISHED_WITH_CHANGES',
+  DRAFT: 'DRAFT',
+} as const;
+
+export type HomepageDraftStatus =
+  (typeof HomepageDraftStatus)[keyof typeof HomepageDraftStatus];
 
 export type HomepageGridLayout = 3 | 4 | 5 | 6 | 9;
 export type HomepageAutoplayMs = 0 | 3000 | 5000 | 8000;
@@ -233,16 +243,41 @@ export type HomepageValidationIssue = {
   field?: string;
 };
 
+export type AdminHomepageDraftSummary = {
+  id: string;
+  name: string;
+  status: HomepageDraftStatus;
+  version: number;
+  updatedByAdminId?: string;
+  updatedAt: string;
+  createdAt: string;
+};
+
+export type AdminHomepageDraftListView =
+  PaginatedView<AdminHomepageDraftSummary> & {
+    publishedDraftId?: string;
+  };
+
+export type CreateHomepageDraftRequest =
+  | { name: string; mode: 'COPY'; sourceDraftId: string }
+  | { name: string; mode: 'BLANK'; sourceDraftId?: never };
+
+export type RenameHomepageDraftRequest = {
+  name: string;
+  version: number;
+};
+
 export type AdminHomepageView = {
   id: string;
   pageKey: 'HOME';
+  name: string;
+  status: HomepageDraftStatus;
   draftConfig: HomepageDraftConfig;
-  publishedConfig: HomepagePublishedConfig | null;
   version: number;
+  updatedByAdminId?: string;
+  updatedAt: string;
+  createdAt: string;
   publishedVersion?: number;
-  draftUpdatedByAdminId?: string;
-  draftUpdatedAt?: string;
-  publishedByAdminId?: string;
   publishedAt?: string;
   /** 当前草稿的发布校验问题；为空时草稿满足发布条件。 */
   draftIssues: readonly HomepageValidationIssue[];
