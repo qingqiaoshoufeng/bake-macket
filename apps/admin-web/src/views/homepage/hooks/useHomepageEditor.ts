@@ -41,14 +41,13 @@ export function useHomepageEditor() {
   const lastError = ref<string | null>(null);
   let catalogPromise: Promise<void> | null = null;
   let operationGeneration = 0;
-  let currentOperation: {
-    readonly token: number;
-    readonly draftId: string;
-    readonly kind: 'load' | 'save' | 'publish';
-  } | null = null;
+  let contentRevision = 0;
+  let loadGeneration = 0;
+  let pendingSaveCount = 0;
+  let pendingPublishCount = 0;
 
   const canPublish = computed(
-    () => !dirty.value && !saving.value && !publishing.value,
+    () => !loading.value && !dirty.value && !saving.value && !publishing.value,
   );
 
   function applyView(view: AdminHomepageView): void {
@@ -91,60 +90,84 @@ export function useHomepageEditor() {
     return catalogPromise;
   }
 
-  function beginOperation(
-    kind: 'load' | 'save' | 'publish',
-    capturedDraftId: string,
-  ): number {
+  function nextOperationGeneration(): number {
     const token = operationGeneration + 1;
     operationGeneration = token;
-    currentOperation = { token, draftId: capturedDraftId, kind };
-    loading.value = kind === 'load';
-    saving.value = kind === 'save';
-    publishing.value = kind === 'publish';
+    return token;
+  }
+
+  function beginLoad(): number {
+    const token = nextOperationGeneration();
+    loadGeneration = token;
+    loading.value = true;
     lastError.value = null;
     return token;
   }
 
-  function isCurrentOperation(token: number, capturedDraftId: string): boolean {
-    return (
-      currentOperation?.token === token &&
-      currentOperation.draftId === capturedDraftId &&
-      (draftId.value === capturedDraftId || currentOperation.kind === 'load')
-    );
+  function isCurrentLoad(token: number): boolean {
+    return token === loadGeneration && token === operationGeneration;
   }
 
-  function finishOperation(
+  function beginSave(): number {
+    const token = nextOperationGeneration();
+    pendingSaveCount += 1;
+    saving.value = true;
+    lastError.value = null;
+    return token;
+  }
+
+  function finishSave(): void {
+    pendingSaveCount = Math.max(0, pendingSaveCount - 1);
+    saving.value = pendingSaveCount > 0;
+  }
+
+  function beginPublish(): number {
+    const token = nextOperationGeneration();
+    pendingPublishCount += 1;
+    publishing.value = true;
+    lastError.value = null;
+    return token;
+  }
+
+  function finishPublish(): void {
+    pendingPublishCount = Math.max(0, pendingPublishCount - 1);
+    publishing.value = pendingPublishCount > 0;
+  }
+
+  function isCurrentMutation(
     token: number,
     capturedDraftId: string,
-    kind: 'load' | 'save' | 'publish',
-  ): void {
-    if (!isCurrentOperation(token, capturedDraftId)) return;
-    if (kind === 'load') loading.value = false;
-    if (kind === 'save') saving.value = false;
-    if (kind === 'publish') publishing.value = false;
-    currentOperation = null;
+    capturedRevision: number,
+  ): boolean {
+    return (
+      token === operationGeneration &&
+      capturedDraftId === draftId.value &&
+      capturedRevision === contentRevision
+    );
   }
 
   async function load(id?: string): Promise<void> {
     const nextId = id ?? draftId.value;
     if (!nextId) throw new Error('请先选择首页草稿');
-    const token = beginOperation('load', nextId);
+    const token = beginLoad();
     try {
       const [view] = await Promise.all([
         homepageApi.getOne(nextId),
         ensureCatalog(),
       ]);
-      if (isCurrentOperation(token, nextId)) applyView(view);
+      if (isCurrentLoad(token)) applyView(view);
     } catch (error) {
-      if (!isCurrentOperation(token, nextId)) return;
+      if (!isCurrentLoad(token)) return;
       lastError.value = errorMessage(error, '首页配置加载失败');
       throw error;
     } finally {
-      finishOperation(token, nextId, 'load');
+      if (token === loadGeneration) loading.value = false;
     }
   }
 
   function replaceDraft(value: HomepageDraftConfig): void {
+    nextOperationGeneration();
+    contentRevision += 1;
     draft.value = clone(value);
     dirty.value = true;
   }
@@ -165,42 +188,46 @@ export function useHomepageEditor() {
   }
 
   async function saveDraft(): Promise<AdminHomepageView | undefined> {
+    if (loading.value) throw new Error('草稿加载中，请稍候再保存');
     const id = requireDraftId();
-    const token = beginOperation('save', id);
+    const capturedRevision = contentRevision;
+    const token = beginSave();
     try {
       const saved = await homepageApi.saveDraft(id, {
         config: clone(draft.value),
         version: version.value,
       });
-      if (isCurrentOperation(token, id)) applyView(saved);
+      if (isCurrentMutation(token, id, capturedRevision)) applyView(saved);
       return saved;
     } catch (error) {
-      if (!isCurrentOperation(token, id)) return undefined;
+      if (!isCurrentMutation(token, id, capturedRevision)) return undefined;
       applyApiError(error);
       lastError.value = errorMessage(error, '草稿保存失败');
       throw error;
     } finally {
-      finishOperation(token, id, 'save');
+      finishSave();
     }
   }
 
   async function publish(): Promise<AdminHomepageView | undefined> {
+    if (loading.value) throw new Error('草稿加载中，请稍候再发布');
     if (dirty.value) throw new Error('请先保存草稿再发布');
     const id = requireDraftId();
-    const token = beginOperation('publish', id);
+    const capturedRevision = contentRevision;
+    const token = beginPublish();
     try {
       const published = await homepageApi.publish(id, {
         version: version.value,
       });
-      if (isCurrentOperation(token, id)) applyView(published);
+      if (isCurrentMutation(token, id, capturedRevision)) applyView(published);
       return published;
     } catch (error) {
-      if (!isCurrentOperation(token, id)) return undefined;
+      if (!isCurrentMutation(token, id, capturedRevision)) return undefined;
       applyApiError(error);
       lastError.value = errorMessage(error, '首页发布失败');
       throw error;
     } finally {
-      finishOperation(token, id, 'publish');
+      finishPublish();
     }
   }
 

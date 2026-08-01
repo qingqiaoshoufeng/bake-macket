@@ -244,7 +244,7 @@ describe('useHomepageEditor', () => {
     expect(editor.lastError.value).toBeNull();
   });
 
-  it('does not let an old load overwrite a save completed for the current draft', async () => {
+  it('does not let an old load overwrite newer edits to the current draft', async () => {
     const oldLoad = deferred<AdminHomepageView>();
     api.getOne
       .mockResolvedValueOnce(view('12'))
@@ -253,29 +253,25 @@ describe('useHomepageEditor', () => {
     productLoader.mockResolvedValue([]);
     const editor = useHomepageEditor();
     await editor.load('12');
-    editor.replaceDraft({
+    const changed = {
       ...createHomepageDraft(),
       customerService: {
         ...createHomepageDraft().customerService,
-        title: '保存后的配置',
+        title: '加载期间编辑的配置',
       },
-    });
-    api.saveDraft.mockResolvedValue(
-      view('12', {
-        version: 4,
-        draftConfig: editor.draft.value,
-      }),
-    );
+    };
 
     const load = editor.load('12');
-    await editor.saveDraft();
+    editor.replaceDraft(changed);
     oldLoad.resolve(view('12', { version: 2 }));
     await load;
 
     expect(editor.draftId.value).toBe('12');
-    expect(editor.version.value).toBe(4);
-    expect(editor.draft.value.customerService.title).toBe('保存后的配置');
+    expect(editor.version.value).toBe(3);
+    expect(editor.draft.value).toEqual(changed);
+    expect(editor.dirty.value).toBe(true);
     expect(editor.lastError.value).toBeNull();
+    expect(editor.loading.value).toBe(false);
   });
 
   it('keeps the latest save flag active when an older save settles first', async () => {
@@ -301,6 +297,102 @@ describe('useHomepageEditor', () => {
 
     expect(editor.version.value).toBe(5);
     expect(editor.saving.value).toBe(false);
+  });
+
+  it('does not apply a pending save after the user edits again', async () => {
+    api.getOne.mockResolvedValue(view('12'));
+    categoryLoader.mockResolvedValue([]);
+    productLoader.mockResolvedValue([]);
+    const pendingSave = deferred<AdminHomepageView>();
+    api.saveDraft.mockReturnValue(pendingSave.promise);
+    const editor = useHomepageEditor();
+    await editor.load('12');
+    const savedConfig = {
+      ...createHomepageDraft(),
+      customerService: {
+        ...createHomepageDraft().customerService,
+        title: '发起保存时的内容',
+      },
+    };
+    const latestConfig = {
+      ...savedConfig,
+      customerService: {
+        ...savedConfig.customerService,
+        title: '保存期间继续编辑',
+      },
+    };
+
+    editor.replaceDraft(savedConfig);
+    const save = editor.saveDraft();
+    editor.replaceDraft(latestConfig);
+    expect(editor.saving.value).toBe(true);
+    pendingSave.resolve(view('12', { version: 4, draftConfig: savedConfig }));
+    await save;
+
+    expect(editor.draft.value).toEqual(latestConfig);
+    expect(editor.version.value).toBe(3);
+    expect(editor.dirty.value).toBe(true);
+    expect(editor.saving.value).toBe(false);
+  });
+
+  it('does not apply a pending publish after the user edits again', async () => {
+    api.getOne.mockResolvedValue(view('12'));
+    categoryLoader.mockResolvedValue([]);
+    productLoader.mockResolvedValue([]);
+    const pendingPublish = deferred<AdminHomepageView>();
+    api.publish.mockReturnValue(pendingPublish.promise);
+    const editor = useHomepageEditor();
+    await editor.load('12');
+    const latestConfig = {
+      ...createHomepageDraft(),
+      customerService: {
+        ...createHomepageDraft().customerService,
+        title: '发布期间继续编辑',
+      },
+    };
+
+    const publish = editor.publish();
+    editor.replaceDraft(latestConfig);
+    expect(editor.publishing.value).toBe(true);
+    pendingPublish.resolve(
+      view('12', {
+        status: HomepageDraftStatus.PUBLISHED,
+        publishedVersion: 8,
+      }),
+    );
+    await publish;
+
+    expect(editor.draft.value).toEqual(latestConfig);
+    expect(editor.status.value).toBe(HomepageDraftStatus.DRAFT);
+    expect(editor.publishedVersion.value).toBeUndefined();
+    expect(editor.dirty.value).toBe(true);
+    expect(editor.publishing.value).toBe(false);
+  });
+
+  it('blocks save and publish while another draft is loading', async () => {
+    api.getOne.mockResolvedValueOnce(view('12'));
+    categoryLoader.mockResolvedValue([]);
+    productLoader.mockResolvedValue([]);
+    const pendingLoad = deferred<AdminHomepageView>();
+    api.getOne.mockReturnValueOnce(pendingLoad.promise);
+    const editor = useHomepageEditor();
+    await editor.load('12');
+
+    const load = editor.load('13');
+
+    expect(editor.loading.value).toBe(true);
+    expect(editor.canPublish.value).toBe(false);
+    await expect(editor.saveDraft()).rejects.toThrow('草稿加载中');
+    await expect(editor.publish()).rejects.toThrow('草稿加载中');
+    expect(api.saveDraft).not.toHaveBeenCalled();
+    expect(api.publish).not.toHaveBeenCalled();
+    expect(editor.loading.value).toBe(true);
+
+    pendingLoad.resolve(view('13', { version: 8 }));
+    await load;
+
+    expect(editor.draftId.value).toBe('13');
+    expect(editor.loading.value).toBe(false);
   });
 
   it('saves and publishes the current ID and applies the returned view state', async () => {

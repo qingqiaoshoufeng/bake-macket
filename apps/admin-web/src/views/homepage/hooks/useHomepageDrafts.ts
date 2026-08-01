@@ -130,10 +130,9 @@ export function useHomepageDrafts() {
     await load(query ?? { page: page.value, pageSize: pageSize.value });
   }
 
-  function beginMutation(): number {
-    const generation = nextGeneration();
+  function beginMutation(): void {
+    nextGeneration();
     error.value = null;
-    return generation;
   }
 
   function select(id: string): void {
@@ -141,22 +140,19 @@ export function useHomepageDrafts() {
   }
 
   function operationPreferredId(
-    targetId: string,
     operationStartActiveId: string | null,
   ): string | undefined {
     return activeId.value === operationStartActiveId
-      ? targetId
+      ? (operationStartActiveId ?? undefined)
       : (activeId.value ?? undefined);
   }
 
   async function convergeAfterFailure(
-    generation: number,
     cause: unknown,
     fallback: string,
     query: AdminPageQuery,
     preferredId?: string,
   ): Promise<never> {
-    if (!isCurrent(generation)) throw cause;
     const refreshIsCurrent = await load(query, preferredId);
     if (refreshIsCurrent) error.value = errorMessage(cause, fallback);
     throw cause;
@@ -166,20 +162,18 @@ export function useHomepageDrafts() {
     form: HomepageDraftCreateForm,
   ): Promise<AdminHomepageView> {
     const sourceId = activeId.value;
-    const generation = beginMutation();
+    beginMutation();
     let created: AdminHomepageView;
     try {
       created = await homepageApi.create(createRequest(form, sourceId));
     } catch (cause) {
       return convergeAfterFailure(
-        generation,
         cause,
         '首页草稿创建失败',
         { page: page.value, pageSize: pageSize.value },
         activeId.value ?? undefined,
       );
     }
-    if (!isCurrent(generation)) return created;
     items.value = applySummary(items.value, created);
     total.value += 1;
     page.value = DEFAULT_QUERY.page;
@@ -196,7 +190,7 @@ export function useHomepageDrafts() {
     if (!item) throw new Error('未找到要重命名的草稿');
     const operationStartActiveId = activeId.value;
     const operationQuery = { page: page.value, pageSize: pageSize.value };
-    const generation = beginMutation();
+    beginMutation();
     let renamed: AdminHomepageView;
     try {
       renamed = await homepageApi.rename(id, {
@@ -205,18 +199,16 @@ export function useHomepageDrafts() {
       });
     } catch (cause) {
       return convergeAfterFailure(
-        generation,
         cause,
         '首页草稿重命名失败',
         operationQuery,
         activeId.value ?? undefined,
       );
     }
-    if (!isCurrent(generation)) return renamed;
     items.value = applySummary(items.value, renamed);
     await load(
       { page: page.value, pageSize: pageSize.value },
-      operationPreferredId(id, operationStartActiveId),
+      operationPreferredId(operationStartActiveId),
     );
     return renamed;
   }
@@ -230,19 +222,17 @@ export function useHomepageDrafts() {
     }
     const operationStartActiveId = activeId.value;
     const operationQuery = { page: page.value, pageSize: pageSize.value };
-    const generation = beginMutation();
+    beginMutation();
     try {
       await homepageApi.remove(id);
     } catch (cause) {
       return convergeAfterFailure(
-        generation,
         cause,
         '首页草稿删除失败',
         operationQuery,
         activeId.value ?? undefined,
       );
     }
-    if (!isCurrent(generation)) return;
     const nextActiveId =
       items.value[index + 1]?.id ?? items.value[index - 1]?.id ?? null;
     const nextItems = items.value.filter((candidate) => candidate.id !== id);
@@ -277,20 +267,18 @@ export function useHomepageDrafts() {
   ): Promise<AdminHomepageView> {
     const operationStartActiveId = activeId.value;
     const operationQuery = { page: page.value, pageSize: pageSize.value };
-    const generation = beginMutation();
+    beginMutation();
     let published: AdminHomepageView;
     try {
       published = await homepageApi.publish(id, body);
     } catch (cause) {
       return convergeAfterFailure(
-        generation,
         cause,
         '首页草稿发布失败',
         operationQuery,
         activeId.value ?? undefined,
       );
     }
-    if (!isCurrent(generation)) return published;
     const publishedSummary = toSummary(published);
     items.value = items.value.map((item) => {
       if (item.id === id) return publishedSummary;
@@ -301,7 +289,7 @@ export function useHomepageDrafts() {
     publishedDraftId.value = id;
     await load(
       { page: page.value, pageSize: pageSize.value },
-      operationPreferredId(id, operationStartActiveId),
+      operationPreferredId(operationStartActiveId),
     );
     return published;
   }

@@ -549,6 +549,48 @@ describe('useHomepageDrafts', () => {
     expect(drafts.loading.value).toBe(false);
   });
 
+  it('converges an older successful rename after a newer remove refreshes stale data', async () => {
+    const original = summary('1', HomepageDraftStatus.DRAFT, 3);
+    const removed = summary('2');
+    const renamed = named({ ...original, version: 4 }, '中秋首页');
+    const pendingRename = deferred<AdminHomepageView>();
+    api.list
+      .mockResolvedValueOnce(list([original, removed]))
+      .mockResolvedValueOnce(list([original]))
+      .mockResolvedValueOnce(list([renamed]));
+    api.rename.mockReturnValue(pendingRename.promise);
+    api.remove.mockResolvedValue(undefined);
+    const drafts = useHomepageDrafts();
+    await drafts.refresh();
+
+    const rename = drafts.rename('1', '中秋首页');
+    await drafts.remove('2');
+    pendingRename.resolve(detail(renamed));
+    await rename;
+
+    expect(api.list).toHaveBeenCalledTimes(3);
+    expect(drafts.items.value).toEqual([renamed]);
+    expect(drafts.activeId.value).toBe('1');
+    expect(drafts.loading.value).toBe(false);
+  });
+
+  it('keeps the active draft selected when renaming a different draft', async () => {
+    const active = summary('1');
+    const target = summary('2', HomepageDraftStatus.DRAFT, 3);
+    const renamed = named({ ...target, version: 4 }, '节日首页');
+    api.list
+      .mockResolvedValueOnce(list([active, target]))
+      .mockResolvedValueOnce(list([active, renamed]));
+    api.rename.mockResolvedValue(detail(renamed));
+    const drafts = useHomepageDrafts();
+    await drafts.refresh();
+
+    await drafts.rename('2', '节日首页');
+
+    expect(drafts.items.value).toEqual([active, renamed]);
+    expect(drafts.activeId.value).toBe('1');
+  });
+
   it('ignores stale list responses and keeps loading until the newest request settles', async () => {
     const stale = deferred<AdminHomepageDraftListView>();
     const current = deferred<AdminHomepageDraftListView>();
