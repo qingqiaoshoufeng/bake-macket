@@ -14,6 +14,7 @@ import {
 } from 'typeorm';
 
 import { AdminUser } from './admin-user.entity.js';
+import { HomepageDraft } from './homepage-draft.entity.js';
 
 @Entity({ name: 'homepage_pages' })
 @Index('uniq_homepage_pages_page_key', ['pageKey'], { unique: true })
@@ -24,14 +25,23 @@ export class HomepagePage {
   @Column({ name: 'page_key', type: 'varchar', length: 32 })
   pageKey!: 'HOME';
 
-  @Column({ name: 'draft_config', type: 'json' })
-  draftConfig!: HomepageDraftConfig;
+  /**
+   * Temporary type-level compatibility for the legacy singleton service.
+   * Migration 0010 removes this column; task 4 moves editing to HomepageDraft.
+   */
+  declare draftConfig: HomepageDraftConfig;
+
+  /** @see draftConfig */
+  declare version: number;
+
+  /** @see draftConfig */
+  declare draftUpdatedByAdminId: string | null;
+
+  /** @see draftConfig */
+  declare draftUpdatedAt: Date | null;
 
   @Column({ name: 'published_config', type: 'json', nullable: true })
   publishedConfig!: HomepagePublishedConfig | null;
-
-  @Column({ type: 'int', unsigned: true, default: 1 })
-  version!: number;
 
   @Column({
     name: 'published_version',
@@ -42,31 +52,31 @@ export class HomepagePage {
   publishedVersion!: number | null;
 
   @Column({
-    name: 'draft_updated_by_admin_id',
+    name: 'published_draft_id',
     type: 'bigint',
     unsigned: true,
     nullable: true,
   })
-  draftUpdatedByAdminId!: string | null;
+  publishedDraftId!: string | null;
 
-  @ManyToOne(() => AdminUser, {
+  @ManyToOne(() => HomepageDraft, {
     nullable: true,
-    onDelete: 'SET NULL',
+    onDelete: 'RESTRICT',
     onUpdate: 'CASCADE',
   })
   @JoinColumn({
-    name: 'draft_updated_by_admin_id',
-    foreignKeyConstraintName: 'fk_homepage_draft_admin',
+    name: 'published_draft_id',
+    foreignKeyConstraintName: 'fk_homepage_pages_published_draft',
   })
-  draftUpdatedByAdmin!: AdminUser | null;
+  publishedDraft!: HomepageDraft | null;
 
   @Column({
-    name: 'draft_updated_at',
-    type: 'datetime',
-    precision: 0,
+    name: 'published_draft_version',
+    type: 'int',
+    unsigned: true,
     nullable: true,
   })
-  draftUpdatedAt!: Date | null;
+  publishedDraftVersion!: number | null;
 
   @Column({
     name: 'published_by_admin_id',

@@ -16,6 +16,7 @@ import { MembershipEntitlementSegments1718000000005 } from './migrations/0006-me
 import { DefaultMembershipLevels1718000000006 } from './migrations/0007-default-membership-levels.js';
 import { OrderItemSourceIds1718000000007 } from './migrations/0008-order-item-source-ids.js';
 import { HomepagePages1718000000008 } from './migrations/0009-homepage-pages.js';
+import { HomepageMultipleDrafts1718000000009 } from './migrations/0010-homepage-multiple-drafts.js';
 
 /**
  * Wires the validated environment into TypeORM. `synchronize` is hard-coded to
@@ -42,6 +43,7 @@ import { HomepagePages1718000000008 } from './migrations/0009-homepage-pages.js'
             DefaultMembershipLevels1718000000006,
             OrderItemSourceIds1718000000007,
             HomepagePages1718000000008,
+            HomepageMultipleDrafts1718000000009,
           ],
           migrationsTableName: 'migrations',
           migrationsRun: false,

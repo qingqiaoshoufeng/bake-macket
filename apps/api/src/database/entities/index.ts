@@ -4,6 +4,7 @@ export * from './audit-log.entity.js';
 export * from './banner.entity.js';
 export * from './cart-item.entity.js';
 export * from './category.entity.js';
+export * from './homepage-draft.entity.js';
 export * from './homepage-page.entity.js';
 export * from './idempotency-record.entity.js';
 export { MemberAccount } from './member-account.entity.js';
