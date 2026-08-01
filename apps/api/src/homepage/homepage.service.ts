@@ -482,7 +482,8 @@ export class HomepageService {
         : null;
       const previousPublishedVersion = page.publishedDraftVersion ?? 0;
       page.publishedConfig = toPublishedConfig(draft.draftConfig);
-      page.publishedVersion = draft.version;
+      const nextPublishedVersion = (page.publishedVersion ?? 0) + 1;
+      page.publishedVersion = nextPublishedVersion;
       page.publishedDraftId = draft.id;
       page.publishedDraftVersion = draft.version;
       page.publishedByAdminId = adminUserId;

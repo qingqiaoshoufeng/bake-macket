@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  HomepageLinkType,
   HomepageSectionType,
   type HomepageDraftConfig,
 } from '@bake-mall/contracts';
@@ -46,6 +47,109 @@ type HomepageServiceConstructor = new (
   audit: unknown,
   dataSource: unknown,
 ) => HomepageService;
+
+const publishableDraftConfig: HomepageDraftConfig = {
+  ...draftConfig,
+  hero: {
+    ...draftConfig.hero,
+    slides: [
+      {
+        id: 'hero-slide-1',
+        image: {
+          objectKey: 'homepage/hero-slide-1.jpg',
+          publicUrl: 'https://example.test/hero-slide-1.jpg',
+        },
+        title: '',
+        subtitle: '',
+        altText: '',
+        link: { type: HomepageLinkType.NONE },
+      },
+    ],
+  },
+  customerService: {
+    ...draftConfig.customerService,
+    phone: '13800000000',
+    serviceHours: '09:00-18:00',
+    wechatQrCode: {
+      objectKey: 'homepage/customer-service.jpg',
+      publicUrl: 'https://example.test/customer-service.jpg',
+    },
+  },
+  shortcutGrid: {
+    ...draftConfig.shortcutGrid,
+    items: Array.from({ length: 4 }, (_, index) => ({
+      id: `shortcut-${index + 1}`,
+      label: `入口 ${index + 1}`,
+      image: {
+        objectKey: `homepage/shortcut-${index + 1}.jpg`,
+        publicUrl: `https://example.test/shortcut-${index + 1}.jpg`,
+      },
+      link: { type: HomepageLinkType.NONE },
+    })),
+  },
+};
+
+const createPublishService = (publishedVersion: number | null) => {
+  const page = {
+    id: 'page-1',
+    pageKey: 'HOME' as const,
+    publishedConfig: null,
+    publishedVersion,
+    publishedDraftId: null,
+    publishedDraftVersion: null,
+    publishedByAdminId: null,
+    publishedAt: null,
+  };
+  const draft = {
+    id: 'draft-1',
+    homepagePageId: page.id,
+    name: '当前首页',
+    draftConfig: publishableDraftConfig,
+    version: 4,
+    updatedByAdminId: 'admin-1',
+    updatedAt: new Date('2026-08-01T00:00:00.000Z'),
+    createdAt: new Date('2026-08-01T00:00:00.000Z'),
+  };
+  const pageBuilder = {
+    where: vi.fn().mockReturnThis(),
+    setLock: vi.fn().mockReturnThis(),
+    getOne: vi.fn().mockResolvedValue(page),
+  };
+  const draftBuilder = {
+    where: vi.fn().mockReturnThis(),
+    andWhere: vi.fn().mockReturnThis(),
+    setLock: vi.fn().mockReturnThis(),
+    getOne: vi.fn().mockResolvedValue(draft),
+  };
+  const pages = {
+    createQueryBuilder: vi.fn(() => pageBuilder),
+    save: vi.fn(async (savedPage) => savedPage),
+  };
+  const drafts = { createQueryBuilder: vi.fn(() => draftBuilder) };
+  const manager = {
+    getRepository: vi.fn((entity) => {
+      if (entity.name === 'HomepagePage') return pages;
+      if (entity.name === 'HomepageDraft') return drafts;
+      throw new Error(`Unexpected repository: ${entity.name}`);
+    }),
+  };
+  const audit = { record: vi.fn().mockResolvedValue(undefined) };
+  const service = new (HomepageService as unknown as HomepageServiceConstructor)(
+    {},
+    {},
+    {},
+    {},
+    { assertHomepageAsset: vi.fn() },
+    audit,
+    {
+      manager,
+      transaction: (callback: (transactionManager: unknown) => unknown) =>
+        callback(manager),
+    },
+  );
+
+  return { page, service };
+};
 
 describe('HomepageService legacy singleton compatibility', () => {
   it('reads the migrated current HOME draft instead of removed homepage_pages draft columns', async () => {
@@ -109,6 +213,29 @@ describe('HomepageService legacy singleton compatibility', () => {
       version: 4,
       draftUpdatedByAdminId: 'admin-1',
       draftUpdatedAt: '2026-08-01T01:00:00.000Z',
+    });
+  });
+
+  it('starts the page publication sequence at one for its first publish', async () => {
+    const { page, service } = createPublishService(null);
+
+    await service.publish({ version: 4 }, 'admin-1');
+
+    expect(page).toMatchObject({
+      publishedVersion: 1,
+      publishedDraftVersion: 4,
+    });
+  });
+
+  it('increments the page publication sequence when publishing the same unchanged draft again', async () => {
+    const { page, service } = createPublishService(8);
+
+    await service.publish({ version: 4 }, 'admin-1');
+    await service.publish({ version: 4 }, 'admin-1');
+
+    expect(page).toMatchObject({
+      publishedVersion: 10,
+      publishedDraftVersion: 4,
     });
   });
 });
