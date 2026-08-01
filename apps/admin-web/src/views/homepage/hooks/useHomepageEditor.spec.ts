@@ -212,7 +212,7 @@ describe('useHomepageEditor', () => {
         ],
       }),
     );
-    await expect(save).resolves.toMatchObject({ id: '12', version: 4 });
+    await expect(save).resolves.toBe(true);
 
     expect(editor.draftId.value).toBe('13');
     expect(editor.version.value).toBe(8);
@@ -222,7 +222,7 @@ describe('useHomepageEditor', () => {
     expect(editor.saving.value).toBe(false);
   });
 
-  it('swallows a stale save error after another draft finishes loading', async () => {
+  it('returns false for a stale save error after another draft finishes loading', async () => {
     api.getOne
       .mockResolvedValueOnce(view('12'))
       .mockResolvedValueOnce(view('13', { version: 8 }));
@@ -236,7 +236,7 @@ describe('useHomepageEditor', () => {
     const save = editor.saveDraft();
     await editor.load('13');
     pendingSave.reject(new ApiClientError(409, '旧草稿冲突'));
-    await expect(save).resolves.toBeUndefined();
+    await expect(save).resolves.toBe(false);
 
     expect(editor.draftId.value).toBe('13');
     expect(editor.version.value).toBe(8);
@@ -274,32 +274,46 @@ describe('useHomepageEditor', () => {
     expect(editor.loading.value).toBe(false);
   });
 
-  it('keeps the latest save flag active when an older save settles first', async () => {
+  it('returns false without calling the API when save or publish is busy', async () => {
     api.getOne.mockResolvedValue(view('12'));
     categoryLoader.mockResolvedValue([]);
     productLoader.mockResolvedValue([]);
-    const stale = deferred<AdminHomepageView>();
-    const current = deferred<AdminHomepageView>();
-    api.saveDraft
-      .mockReturnValueOnce(stale.promise)
-      .mockReturnValueOnce(current.promise);
+    const pendingSave = deferred<AdminHomepageView>();
+    api.saveDraft.mockReturnValue(pendingSave.promise);
     const editor = useHomepageEditor();
     await editor.load('12');
 
-    const first = editor.saveDraft();
-    const second = editor.saveDraft();
-    stale.resolve(view('12', { version: 4 }));
-    await first;
-    expect(editor.saving.value).toBe(true);
+    const save = editor.saveDraft();
 
-    current.resolve(view('12', { version: 5 }));
-    await second;
+    await expect(editor.saveDraft()).resolves.toBe(false);
+    await expect(editor.publish()).resolves.toBe(false);
+    expect(api.saveDraft).toHaveBeenCalledTimes(1);
+    expect(api.publish).not.toHaveBeenCalled();
+    expect(editor.canPublish.value).toBe(false);
 
-    expect(editor.version.value).toBe(5);
-    expect(editor.saving.value).toBe(false);
+    pendingSave.resolve(view('12', { version: 4 }));
+    await expect(save).resolves.toBe(true);
+
+    const pendingPublish = deferred<AdminHomepageView>();
+    api.publish.mockReturnValue(pendingPublish.promise);
+    const publish = editor.publish();
+
+    await expect(editor.saveDraft()).resolves.toBe(false);
+    await expect(editor.publish()).resolves.toBe(false);
+    expect(api.saveDraft).toHaveBeenCalledTimes(1);
+    expect(api.publish).toHaveBeenCalledTimes(1);
+
+    pendingPublish.resolve(
+      view('12', {
+        version: 4,
+        status: HomepageDraftStatus.PUBLISHED,
+        publishedVersion: 8,
+      }),
+    );
+    await expect(publish).resolves.toBe(true);
   });
 
-  it('does not apply a pending save after the user edits again', async () => {
+  it('merges saved metadata without replacing edits made during the request', async () => {
     api.getOne.mockResolvedValue(view('12'));
     categoryLoader.mockResolvedValue([]);
     productLoader.mockResolvedValue([]);
@@ -321,21 +335,55 @@ describe('useHomepageEditor', () => {
         title: '保存期间继续编辑',
       },
     };
+    const issue = {
+      code: 'SERVICE_HOURS_REVIEW',
+      message: '请复核客服时间',
+      sectionId: 'customer-service',
+    };
 
     editor.replaceDraft(savedConfig);
     const save = editor.saveDraft();
     editor.replaceDraft(latestConfig);
     expect(editor.saving.value).toBe(true);
-    pendingSave.resolve(view('12', { version: 4, draftConfig: savedConfig }));
-    await save;
+    pendingSave.resolve(
+      view('12', {
+        name: '服务端确认名称',
+        status: HomepageDraftStatus.PUBLISHED_WITH_CHANGES,
+        version: 4,
+        updatedAt: '2026-08-01T03:00:00.000Z',
+        publishedVersion: 7,
+        publishedAt: '2026-08-01T02:00:00.000Z',
+        draftIssues: [issue],
+        draftConfig: savedConfig,
+      }),
+    );
+    await expect(save).resolves.toBe(true);
 
     expect(editor.draft.value).toEqual(latestConfig);
-    expect(editor.version.value).toBe(3);
     expect(editor.dirty.value).toBe(true);
+    expect(editor.version.value).toBe(4);
+    expect(editor.name.value).toBe('服务端确认名称');
+    expect(editor.status.value).toBe(
+      HomepageDraftStatus.PUBLISHED_WITH_CHANGES,
+    );
+    expect(editor.updatedAt.value).toBe('2026-08-01T03:00:00.000Z');
+    expect(editor.publishedVersion.value).toBe(7);
+    expect(editor.publishedAt.value).toBe('2026-08-01T02:00:00.000Z');
+    expect(editor.issues.value).toEqual([issue]);
     expect(editor.saving.value).toBe(false);
+
+    api.saveDraft.mockResolvedValue(
+      view('12', { version: 5, draftConfig: latestConfig }),
+    );
+    await editor.saveDraft();
+
+    expect(api.saveDraft).toHaveBeenNthCalledWith(2, '12', {
+      config: latestConfig,
+      version: 4,
+    });
   });
 
-  it('does not apply a pending publish after the user edits again', async () => {
+  it('merges published metadata without replacing edits made during the request', async () => {
     api.getOne.mockResolvedValue(view('12'));
     categoryLoader.mockResolvedValue([]);
     productLoader.mockResolvedValue([]);
@@ -356,20 +404,51 @@ describe('useHomepageEditor', () => {
     expect(editor.publishing.value).toBe(true);
     pendingPublish.resolve(
       view('12', {
+        name: '服务端发布名称',
         status: HomepageDraftStatus.PUBLISHED,
+        version: 4,
+        updatedAt: '2026-08-01T03:00:00.000Z',
         publishedVersion: 8,
+        publishedAt: '2026-08-01T03:00:00.000Z',
+        draftConfig: createHomepageDraft(),
       }),
     );
-    await publish;
+    await expect(publish).resolves.toBe(true);
 
     expect(editor.draft.value).toEqual(latestConfig);
-    expect(editor.status.value).toBe(HomepageDraftStatus.DRAFT);
-    expect(editor.publishedVersion.value).toBeUndefined();
     expect(editor.dirty.value).toBe(true);
+    expect(editor.name.value).toBe('服务端发布名称');
+    expect(editor.status.value).toBe(HomepageDraftStatus.PUBLISHED);
+    expect(editor.version.value).toBe(4);
+    expect(editor.updatedAt.value).toBe('2026-08-01T03:00:00.000Z');
+    expect(editor.publishedVersion.value).toBe(8);
+    expect(editor.publishedAt.value).toBe('2026-08-01T03:00:00.000Z');
     expect(editor.publishing.value).toBe(false);
   });
 
-  it('blocks save and publish while another draft is loading', async () => {
+  it('throws a current-draft save failure even when the user edits during the request', async () => {
+    api.getOne.mockResolvedValue(view('12'));
+    categoryLoader.mockResolvedValue([]);
+    productLoader.mockResolvedValue([]);
+    const pendingSave = deferred<AdminHomepageView>();
+    api.saveDraft.mockReturnValue(pendingSave.promise);
+    const editor = useHomepageEditor();
+    await editor.load('12');
+
+    const save = editor.saveDraft();
+    editor.replaceDraft({
+      ...createHomepageDraft(),
+      imageBlocks: [],
+    });
+    pendingSave.reject(new ApiClientError(409, '当前草稿保存冲突'));
+
+    await expect(save).rejects.toThrow('当前草稿保存冲突');
+    expect(editor.conflict.value).toBe('当前草稿保存冲突');
+    expect(editor.lastError.value).toBe('当前草稿保存冲突');
+    expect(editor.dirty.value).toBe(true);
+  });
+
+  it('returns false without calling the API while another draft is loading', async () => {
     api.getOne.mockResolvedValueOnce(view('12'));
     categoryLoader.mockResolvedValue([]);
     productLoader.mockResolvedValue([]);
@@ -382,8 +461,8 @@ describe('useHomepageEditor', () => {
 
     expect(editor.loading.value).toBe(true);
     expect(editor.canPublish.value).toBe(false);
-    await expect(editor.saveDraft()).rejects.toThrow('草稿加载中');
-    await expect(editor.publish()).rejects.toThrow('草稿加载中');
+    await expect(editor.saveDraft()).resolves.toBe(false);
+    await expect(editor.publish()).resolves.toBe(false);
     expect(api.saveDraft).not.toHaveBeenCalled();
     expect(api.publish).not.toHaveBeenCalled();
     expect(editor.loading.value).toBe(true);

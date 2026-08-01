@@ -50,19 +50,23 @@ export function useHomepageEditor() {
     () => !loading.value && !dirty.value && !saving.value && !publishing.value,
   );
 
-  function applyView(view: AdminHomepageView): void {
-    draftId.value = view.id;
+  function applyServerMetadata(view: AdminHomepageView): void {
     name.value = view.name;
     status.value = view.status;
-    draft.value = clone(view.draftConfig);
     version.value = view.version;
     publishedVersion.value = view.publishedVersion;
     publishedAt.value = view.publishedAt;
     updatedAt.value = view.updatedAt ?? view.draftUpdatedAt;
     createdAt.value = view.createdAt;
     issues.value = [...view.draftIssues];
-    dirty.value = false;
     conflict.value = null;
+  }
+
+  function applyView(view: AdminHomepageView): void {
+    draftId.value = view.id;
+    draft.value = clone(view.draftConfig);
+    dirty.value = false;
+    applyServerMetadata(view);
   }
 
   async function loadCatalog(): Promise<void> {
@@ -104,8 +108,12 @@ export function useHomepageEditor() {
     return token;
   }
 
-  function isCurrentLoad(token: number): boolean {
-    return token === loadGeneration && token === operationGeneration;
+  function isCurrentLoad(token: number, capturedRevision: number): boolean {
+    return (
+      token === loadGeneration &&
+      token === operationGeneration &&
+      capturedRevision === contentRevision
+    );
   }
 
   function beginSave(): number {
@@ -134,30 +142,36 @@ export function useHomepageEditor() {
     publishing.value = pendingPublishCount > 0;
   }
 
-  function isCurrentMutation(
-    token: number,
+  function isCurrentMutation(token: number, capturedDraftId: string): boolean {
+    return token === operationGeneration && capturedDraftId === draftId.value;
+  }
+
+  function applyMutationSuccess(
+    view: AdminHomepageView,
     capturedDraftId: string,
     capturedRevision: number,
-  ): boolean {
-    return (
-      token === operationGeneration &&
-      capturedDraftId === draftId.value &&
-      capturedRevision === contentRevision
-    );
+  ): void {
+    if (capturedDraftId !== draftId.value) return;
+    if (capturedRevision === contentRevision) {
+      applyView(view);
+      return;
+    }
+    applyServerMetadata(view);
   }
 
   async function load(id?: string): Promise<void> {
     const nextId = id ?? draftId.value;
     if (!nextId) throw new Error('请先选择首页草稿');
+    const capturedRevision = contentRevision;
     const token = beginLoad();
     try {
       const [view] = await Promise.all([
         homepageApi.getOne(nextId),
         ensureCatalog(),
       ]);
-      if (isCurrentLoad(token)) applyView(view);
+      if (isCurrentLoad(token, capturedRevision)) applyView(view);
     } catch (error) {
-      if (!isCurrentLoad(token)) return;
+      if (!isCurrentLoad(token, capturedRevision)) return;
       lastError.value = errorMessage(error, '首页配置加载失败');
       throw error;
     } finally {
@@ -166,7 +180,6 @@ export function useHomepageEditor() {
   }
 
   function replaceDraft(value: HomepageDraftConfig): void {
-    nextOperationGeneration();
     contentRevision += 1;
     draft.value = clone(value);
     dirty.value = true;
@@ -187,8 +200,8 @@ export function useHomepageEditor() {
     return draftId.value;
   }
 
-  async function saveDraft(): Promise<AdminHomepageView | undefined> {
-    if (loading.value) throw new Error('草稿加载中，请稍候再保存');
+  async function saveDraft(): Promise<boolean> {
+    if (loading.value || saving.value || publishing.value) return false;
     const id = requireDraftId();
     const capturedRevision = contentRevision;
     const token = beginSave();
@@ -197,10 +210,10 @@ export function useHomepageEditor() {
         config: clone(draft.value),
         version: version.value,
       });
-      if (isCurrentMutation(token, id, capturedRevision)) applyView(saved);
-      return saved;
+      applyMutationSuccess(saved, id, capturedRevision);
+      return true;
     } catch (error) {
-      if (!isCurrentMutation(token, id, capturedRevision)) return undefined;
+      if (!isCurrentMutation(token, id)) return false;
       applyApiError(error);
       lastError.value = errorMessage(error, '草稿保存失败');
       throw error;
@@ -209,8 +222,8 @@ export function useHomepageEditor() {
     }
   }
 
-  async function publish(): Promise<AdminHomepageView | undefined> {
-    if (loading.value) throw new Error('草稿加载中，请稍候再发布');
+  async function publish(): Promise<boolean> {
+    if (loading.value || saving.value || publishing.value) return false;
     if (dirty.value) throw new Error('请先保存草稿再发布');
     const id = requireDraftId();
     const capturedRevision = contentRevision;
@@ -219,10 +232,10 @@ export function useHomepageEditor() {
       const published = await homepageApi.publish(id, {
         version: version.value,
       });
-      if (isCurrentMutation(token, id, capturedRevision)) applyView(published);
-      return published;
+      applyMutationSuccess(published, id, capturedRevision);
+      return true;
     } catch (error) {
-      if (!isCurrentMutation(token, id, capturedRevision)) return undefined;
+      if (!isCurrentMutation(token, id)) return false;
       applyApiError(error);
       lastError.value = errorMessage(error, '首页发布失败');
       throw error;

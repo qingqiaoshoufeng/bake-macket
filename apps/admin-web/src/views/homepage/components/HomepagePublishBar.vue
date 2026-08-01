@@ -5,6 +5,7 @@ import { ElButton, ElTag } from 'element-plus';
 withDefaults(
   defineProps<{
     readonly dirty: boolean;
+    readonly loading: boolean;
     readonly saving: boolean;
     readonly publishing: boolean;
     readonly canPublish: boolean;
@@ -39,7 +40,13 @@ const emit = defineEmits<{
       </button>
     </div>
     <div class="homepage-publish-bar__actions">
-      <ElButton :loading="saving" @click="emit('save')">保存草稿</ElButton>
+      <ElButton
+        :loading="saving"
+        :disabled="loading || saving || publishing"
+        @click="emit('save')"
+      >
+        保存草稿
+      </ElButton>
       <ElButton
         type="primary"
         :loading="publishing"

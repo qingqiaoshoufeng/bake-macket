@@ -38,8 +38,8 @@ async function load(): Promise<void> {
 
 async function save(): Promise<void> {
   try {
-    await editor.saveDraft();
-    ElMessage.success('首页草稿已保存');
+    const succeeded = await editor.saveDraft();
+    if (succeeded) ElMessage.success('首页草稿已保存');
   } catch (error) {
     if (!editor.conflict.value) {
       ElMessage.error(message(error, '首页草稿保存失败'));
@@ -53,8 +53,8 @@ async function publish(): Promise<void> {
     return;
   }
   try {
-    await editor.publish();
-    ElMessage.success('首页已发布到 H5');
+    const succeeded = await editor.publish();
+    if (succeeded) ElMessage.success('首页已发布到 H5');
   } catch (error) {
     ElMessage.error(message(error, '首页发布失败'));
     if (editor.issues.value[0]) void locateIssue(editor.issues.value[0]);
@@ -181,6 +181,7 @@ onBeforeUnmount(() =>
 
       <HomepagePublishBar
         :dirty="editor.dirty.value"
+        :loading="editor.loading.value"
         :saving="editor.saving.value"
         :publishing="editor.publishing.value"
         :can-publish="editor.canPublish.value"
