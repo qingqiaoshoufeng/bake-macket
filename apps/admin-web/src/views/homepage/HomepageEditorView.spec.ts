@@ -8,7 +8,11 @@ const mocks = vi.hoisted(() => ({
   publish: vi.fn(),
   success: vi.fn(),
   error: vi.fn(),
+  confirm: vi.fn(),
   activeId: '12' as string | null,
+  draftId: '12' as string | null,
+  conflict: null as string | null,
+  activeIdRef: undefined as { value: string | null } | undefined,
   draftsErrorRef: undefined as { value: string | null } | undefined,
 }));
 
@@ -25,6 +29,9 @@ vi.mock('element-plus', async (importOriginal) => {
       error: mocks.error,
       warning: vi.fn(),
     },
+    ElMessageBox: {
+      confirm: mocks.confirm,
+    },
   };
 });
 
@@ -34,6 +41,7 @@ vi.mock('./hooks/useHomepageEditor.js', async () => {
 
   return {
     useHomepageEditor: () => ({
+      draftId: ref(mocks.draftId),
       draft: ref(createHomepageDraft()),
       categories: ref([]),
       products: ref([]),
@@ -50,7 +58,7 @@ vi.mock('./hooks/useHomepageEditor.js', async () => {
       saving: ref(false),
       publishing: ref(false),
       dirty: ref(false),
-      conflict: ref(null),
+      conflict: ref(mocks.conflict),
       lastError: ref(null),
       canPublish: computed(() => true),
       load: mocks.editorLoad,
@@ -63,11 +71,12 @@ vi.mock('./hooks/useHomepageEditor.js', async () => {
 
 vi.mock('./hooks/useHomepageDrafts.js', async () => {
   const { ref } = await import('vue');
+  mocks.activeIdRef = ref(mocks.activeId);
   mocks.draftsErrorRef = ref(null);
 
   return {
     useHomepageDrafts: () => ({
-      activeId: ref(mocks.activeId),
+      activeId: mocks.activeIdRef,
       loading: ref(false),
       error: mocks.draftsErrorRef,
       load: mocks.draftsLoad,
@@ -92,9 +101,13 @@ async function mountView() {
 describe('HomepageEditorView', () => {
   beforeEach(() => {
     mocks.activeId = '12';
+    mocks.draftId = '12';
+    mocks.conflict = null;
+    if (mocks.activeIdRef) mocks.activeIdRef.value = '12';
     if (mocks.draftsErrorRef) mocks.draftsErrorRef.value = null;
     mocks.draftsLoad.mockResolvedValue(true);
     mocks.editorLoad.mockResolvedValue(undefined);
+    mocks.confirm.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -121,20 +134,35 @@ describe('HomepageEditorView', () => {
     expect(calls).toEqual(['drafts', 'editor']);
   });
 
-  it('keeps the empty workspace available without loading an editor draft', async () => {
+  it('does not load an editor draft when the draft-list load is stale', async () => {
+    mocks.draftsLoad.mockResolvedValue(false);
+
+    await mountView();
+    await flushPromises();
+
+    expect(mocks.draftsLoad).toHaveBeenCalledOnce();
+    expect(mocks.editorLoad).not.toHaveBeenCalled();
+  });
+
+  it('shows an empty state without editor controls when no draft exists', async () => {
     mocks.activeId = null;
+    mocks.draftId = null;
+    if (mocks.activeIdRef) mocks.activeIdRef.value = null;
 
     const wrapper = await mountView();
     await flushPromises();
 
     expect(mocks.draftsLoad).toHaveBeenCalledOnce();
     expect(mocks.editorLoad).not.toHaveBeenCalled();
-    expect(wrapper.find('.homepage-editor-view__workspace').exists()).toBe(
-      true,
+    expect(wrapper.text()).toContain('还没有首页草稿，请先创建草稿');
+    expect(wrapper.findComponent({ name: 'HomepageEditorForm' }).exists()).toBe(
+      false,
     );
+    expect(wrapper.find('.homepage-publish-bar').exists()).toBe(false);
   });
 
-  it('shows a draft-list failure without loading an editor draft', async () => {
+  it('reports a current draft-list failure once without editor controls', async () => {
+    mocks.draftId = null;
     mocks.draftsLoad.mockImplementation(async () => {
       mocks.draftsErrorRef!.value = '首页草稿列表加载失败';
       return true;
@@ -144,7 +172,14 @@ describe('HomepageEditorView', () => {
     await flushPromises();
 
     expect(mocks.editorLoad).not.toHaveBeenCalled();
+    expect(mocks.error).toHaveBeenCalledOnce();
+    expect(mocks.error).toHaveBeenCalledWith('首页草稿列表加载失败');
+    expect(mocks.success).not.toHaveBeenCalled();
     expect(wrapper.text()).toContain('首页草稿列表加载失败');
+    expect(wrapper.findComponent({ name: 'HomepageEditorForm' }).exists()).toBe(
+      false,
+    );
+    expect(wrapper.find('.homepage-publish-bar').exists()).toBe(false);
   });
 
   it('starts directly with the editor workspace without a page introduction', async () => {
@@ -155,6 +190,41 @@ describe('HomepageEditorView', () => {
     expect(wrapper.find('.homepage-editor-view__workspace').exists()).toBe(
       true,
     );
+  });
+
+  it('does not show reload success when the editor detail fails to load', async () => {
+    mocks.conflict = '服务器草稿已更新';
+    const wrapper = await mountView();
+    await flushPromises();
+    mocks.success.mockClear();
+    mocks.error.mockClear();
+    mocks.editorLoad.mockRejectedValueOnce(new Error('详情加载失败'));
+    const reloadButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('重新加载服务器草稿'));
+
+    await reloadButton?.trigger('click');
+    await flushPromises();
+
+    expect(mocks.error).toHaveBeenCalledWith('详情加载失败');
+    expect(mocks.success).not.toHaveBeenCalled();
+  });
+
+  it('does not show reload success when the refreshed list has no active draft', async () => {
+    mocks.conflict = '服务器草稿已更新';
+    const wrapper = await mountView();
+    await flushPromises();
+    mocks.success.mockClear();
+    mocks.activeIdRef!.value = null;
+    const reloadButton = wrapper
+      .findAll('button')
+      .find((button) => button.text().includes('重新加载服务器草稿'));
+
+    await reloadButton?.trigger('click');
+    await flushPromises();
+
+    expect(mocks.editorLoad).toHaveBeenCalledOnce();
+    expect(mocks.success).not.toHaveBeenCalled();
   });
 
   it('only shows save success when the hook confirms server success', async () => {

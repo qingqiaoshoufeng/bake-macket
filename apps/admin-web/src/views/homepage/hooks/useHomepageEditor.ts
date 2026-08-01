@@ -47,7 +47,12 @@ export function useHomepageEditor() {
   let pendingPublishCount = 0;
 
   const canPublish = computed(
-    () => !loading.value && !dirty.value && !saving.value && !publishing.value,
+    () =>
+      Boolean(draftId.value) &&
+      !loading.value &&
+      !dirty.value &&
+      !saving.value &&
+      !publishing.value,
   );
 
   function applyServerMetadata(view: AdminHomepageView): void {
@@ -202,7 +207,8 @@ export function useHomepageEditor() {
   }
 
   async function saveDraft(): Promise<boolean> {
-    if (loading.value || saving.value || publishing.value) return false;
+    if (!draftId.value || loading.value || saving.value || publishing.value)
+      return false;
     const id = requireDraftId();
     const capturedRevision = contentRevision;
     const token = beginSave();
@@ -224,7 +230,8 @@ export function useHomepageEditor() {
   }
 
   async function publish(): Promise<boolean> {
-    if (loading.value || saving.value || publishing.value) return false;
+    if (!draftId.value || loading.value || saving.value || publishing.value)
+      return false;
     if (dirty.value) throw new Error('请先保存草稿再发布');
     const id = requireDraftId();
     const capturedRevision = contentRevision;

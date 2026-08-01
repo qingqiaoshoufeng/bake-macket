@@ -89,6 +89,16 @@ describe('useHomepageEditor', () => {
     vi.resetAllMocks();
   });
 
+  it('disables save and publish when no draft has loaded', async () => {
+    const editor = useHomepageEditor();
+
+    expect(editor.canPublish.value).toBe(false);
+    await expect(editor.saveDraft()).resolves.toBe(false);
+    await expect(editor.publish()).resolves.toBe(false);
+    expect(api.saveDraft).not.toHaveBeenCalled();
+    expect(api.publish).not.toHaveBeenCalled();
+  });
+
   it('loads a specified draft and caches the static catalog across draft switches', async () => {
     api.getOne
       .mockResolvedValueOnce(view('12'))

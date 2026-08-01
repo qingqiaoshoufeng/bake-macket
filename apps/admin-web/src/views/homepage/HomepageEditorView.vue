@@ -21,6 +21,7 @@ const drafts = useHomepageDrafts();
 const editor = useHomepageEditor();
 const editorForm = ref<InstanceType<typeof HomepageEditorForm> | null>(null);
 const loading = computed(() => drafts.loading.value || editor.loading.value);
+const hasDraft = computed(() => Boolean(editor.draftId.value));
 const hasAlert = computed(
   () =>
     Boolean(drafts.error.value && !loading.value) ||
@@ -32,14 +33,21 @@ function message(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
-async function load(): Promise<void> {
+async function load(): Promise<boolean> {
   try {
-    await drafts.load();
+    const current = await drafts.load();
+    if (!current) return false;
+    if (drafts.error.value) {
+      ElMessage.error(drafts.error.value);
+      return false;
+    }
     const id = drafts.activeId.value;
-    if (drafts.error.value || !id) return;
+    if (!id) return false;
     await editor.load(id);
+    return true;
   } catch (error) {
     ElMessage.error(message(error, '首页配置加载失败'));
+    return false;
   }
 }
 
@@ -79,8 +87,8 @@ async function reloadServerDraft(): Promise<void> {
         cancelButtonText: '保留本地草稿',
       },
     );
-    await load();
-    ElMessage.success('已加载服务器最新草稿');
+    const loaded = await load();
+    if (loaded) ElMessage.success('已加载服务器最新草稿');
   } catch {
     // 取消时必须保留本地草稿和冲突提示。
   }
@@ -177,7 +185,7 @@ onBeforeUnmount(() =>
         <ElSkeleton :rows="10" animated />
       </section>
 
-      <div v-else class="homepage-editor-view__layout">
+      <div v-else-if="hasDraft" class="homepage-editor-view__layout">
         <div class="homepage-editor-view__configuration" data-editor-scroll>
           <HomepageEditorForm
             ref="editorForm"
@@ -191,7 +199,16 @@ onBeforeUnmount(() =>
         <HomepagePhonePreview :draft="editor.draft.value" />
       </div>
 
+      <div v-else class="homepage-editor-view__empty">
+        {{
+          drafts.error.value
+            ? '首页草稿暂时无法加载'
+            : '还没有首页草稿，请先创建草稿'
+        }}
+      </div>
+
       <HomepagePublishBar
+        v-if="hasDraft"
         :dirty="editor.dirty.value"
         :loading="loading"
         :saving="editor.saving.value"
@@ -260,7 +277,8 @@ onBeforeUnmount(() =>
   margin-top: 14px;
 }
 
-.homepage-editor-view__loading {
+.homepage-editor-view__loading,
+.homepage-editor-view__empty {
   display: grid;
   gap: 14px;
   padding: 20px;
@@ -268,6 +286,11 @@ onBeforeUnmount(() =>
   border-radius: var(--admin-radius-card);
   background: var(--admin-surface);
   box-shadow: var(--admin-shadow-card);
+}
+
+.homepage-editor-view__empty {
+  place-items: center;
+  color: var(--admin-muted);
 }
 
 .homepage-editor-view__alert-copy {
