@@ -304,12 +304,12 @@ describe.sequential('Admin homepage drafts (e2e)', () => {
     initialDraft = (await dataSource.getRepository(HomepageDraft).findOneBy({
       name: '当前首页',
     })) as HomepageDraft;
-  });
+  }, 60_000);
 
   afterAll(async () => {
     await app?.close();
     cleanupDatabase?.();
-  });
+  }, 60_000);
 
   it('requires an admin JWT for the draft collection', async () => {
     await request(app!.getHttpServer())
