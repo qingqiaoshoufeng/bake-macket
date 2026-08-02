@@ -134,19 +134,13 @@ const createPublishService = (publishedVersion: number | null) => {
     }),
   };
   const audit = { record: vi.fn().mockResolvedValue(undefined) };
-  const service = new (HomepageService as unknown as HomepageServiceConstructor)(
-    {},
-    {},
-    {},
-    {},
-    { assertHomepageAsset: vi.fn() },
-    audit,
-    {
-      manager,
-      transaction: (callback: (transactionManager: unknown) => unknown) =>
-        callback(manager),
-    },
-  );
+  const service = new (
+    HomepageService as unknown as HomepageServiceConstructor
+  )({}, {}, {}, {}, { assertHomepageAsset: vi.fn() }, audit, {
+    manager,
+    transaction: (callback: (transactionManager: unknown) => unknown) =>
+      callback(manager),
+  });
 
   return { page, service };
 };
@@ -191,15 +185,9 @@ describe('HomepageService legacy singleton compatibility', () => {
       ]),
     };
     const manager = {};
-    const service = new (HomepageService as unknown as HomepageServiceConstructor)(
-      pages,
-      drafts,
-      {},
-      {},
-      {},
-      { manager },
-      { manager },
-    );
+    const service = new (
+      HomepageService as unknown as HomepageServiceConstructor
+    )(pages, drafts, {}, {}, {}, { manager }, { manager });
 
     const view = await service.getAdminView();
 

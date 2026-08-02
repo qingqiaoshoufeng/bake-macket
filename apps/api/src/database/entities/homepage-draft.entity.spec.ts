@@ -22,7 +22,9 @@ describe('HomepageDraft entity metadata', () => {
     const pageMetadata = dataSource.getMetadata(HomepagePage);
     const draftMetadata = dataSource.getMetadata(HomepageDraft);
 
-    expect(pageMetadata.columns.map(({ databaseName }) => databaseName).toSorted()).toEqual([
+    expect(
+      pageMetadata.columns.map(({ databaseName }) => databaseName).toSorted(),
+    ).toEqual([
       'created_at',
       'id',
       'page_key',
@@ -39,11 +41,14 @@ describe('HomepageDraft entity metadata', () => {
         ({ givenName, isUnique, columns }) =>
           givenName === 'uniq_homepage_pages_page_key' &&
           isUnique &&
-          columns.map(({ propertyName }) => propertyName).join(',') === 'pageKey',
+          columns.map(({ propertyName }) => propertyName).join(',') ===
+            'pageKey',
       ),
     ).toBe(true);
 
-    expect(draftMetadata.columns.map(({ databaseName }) => databaseName).toSorted()).toEqual([
+    expect(
+      draftMetadata.columns.map(({ databaseName }) => databaseName).toSorted(),
+    ).toEqual([
       'created_at',
       'draft_config',
       'homepage_page_id',
@@ -76,9 +81,9 @@ describe('HomepageDraft entity metadata', () => {
     );
     expect(pageRelation?.onDelete).toBe('CASCADE');
     expect(pageRelation?.onUpdate).toBe('CASCADE');
-    expect(pageRelation?.joinColumns.map(({ databaseName }) => databaseName)).toEqual([
-      'homepage_page_id',
-    ]);
+    expect(
+      pageRelation?.joinColumns.map(({ databaseName }) => databaseName),
+    ).toEqual(['homepage_page_id']);
     expect(pageRelation?.foreignKeys[0]?.name).toBe('fk_homepage_drafts_page');
 
     const editorRelation = draftMetadata.relations.find(
@@ -87,9 +92,9 @@ describe('HomepageDraft entity metadata', () => {
     expect(editorRelation?.isNullable).toBe(true);
     expect(editorRelation?.onDelete).toBe('SET NULL');
     expect(editorRelation?.onUpdate).toBe('CASCADE');
-    expect(editorRelation?.joinColumns.map(({ databaseName }) => databaseName)).toEqual([
-      'updated_by_admin_id',
-    ]);
+    expect(
+      editorRelation?.joinColumns.map(({ databaseName }) => databaseName),
+    ).toEqual(['updated_by_admin_id']);
     expect(editorRelation?.foreignKeys[0]?.name).toBe(
       'fk_homepage_drafts_updated_admin',
     );
@@ -101,7 +106,9 @@ describe('HomepageDraft entity metadata', () => {
     expect(publishedDraftRelation?.onDelete).toBe('RESTRICT');
     expect(publishedDraftRelation?.onUpdate).toBe('CASCADE');
     expect(
-      publishedDraftRelation?.joinColumns.map(({ databaseName }) => databaseName),
+      publishedDraftRelation?.joinColumns.map(
+        ({ databaseName }) => databaseName,
+      ),
     ).toEqual(['published_draft_id']);
     expect(publishedDraftRelation?.foreignKeys[0]?.name).toBe(
       'fk_homepage_pages_published_draft',

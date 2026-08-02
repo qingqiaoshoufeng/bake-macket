@@ -1,8 +1,6 @@
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class HomepageMultipleDrafts1718000000009
-  implements MigrationInterface
-{
+export class HomepageMultipleDrafts1718000000009 implements MigrationInterface {
   name = 'HomepageMultipleDrafts1718000000009';
 
   async up(queryRunner: QueryRunner): Promise<void> {

@@ -45,7 +45,10 @@ const PUBLISHED_HOMEPAGE: PublicHomepageView = {
           title: '今天也要甜一点',
           subtitle: '门店新鲜制作',
           altText: '首页欢迎横幅',
-          link: { type: HomepageLinkType.PAGE, page: HomepageInternalPage.PRODUCTS },
+          link: {
+            type: HomepageLinkType.PAGE,
+            page: HomepageInternalPage.PRODUCTS,
+          },
         },
       ],
     },
@@ -62,7 +65,10 @@ const PUBLISHED_HOMEPAGE: PublicHomepageView = {
           id: 'shortcut-products',
           label: '浏览商品',
           image: { imageUrl: '' },
-          link: { type: HomepageLinkType.PAGE, page: HomepageInternalPage.PRODUCTS },
+          link: {
+            type: HomepageLinkType.PAGE,
+            page: HomepageInternalPage.PRODUCTS,
+          },
         },
       ],
     },
@@ -141,16 +147,28 @@ describe('HomepageView', () => {
     expect(wrapper.text()).not.toContain('单层分类');
     expect(wrapper.text()).not.toContain('人气烘焙');
     expect(wrapper.text()).not.toContain('下一炉，值得期待');
-    expect(wrapper.find('[data-testid="homepage-product-grid"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="homepage-product-grid"]').exists()).toBe(
+      false,
+    );
 
-    const sectionTexts = ['今天也要甜一点', '烘焙师在线', '本周精选', '季节限定'];
+    const sectionTexts = [
+      '今天也要甜一点',
+      '烘焙师在线',
+      '本周精选',
+      '季节限定',
+    ];
     const elements = sectionTexts.map((text) => {
-      const element = wrapper.findAll('*').find((candidate) => candidate.text().trim() === text)?.element;
+      const element = wrapper
+        .findAll('*')
+        .find((candidate) => candidate.text().trim() === text)?.element;
       expect(element, `应显示“${text}”`).toBeDefined();
       return element!;
     });
     elements.slice(1).forEach((element, index) => {
-      expect(elements[index]!.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+      expect(
+        elements[index]!.compareDocumentPosition(element) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).not.toBe(0);
     });
   });
 
@@ -166,7 +184,9 @@ describe('HomepageView', () => {
   });
 
   it('shows a loading state while the published homepage is loading', async () => {
-    homepageApiMock.get.mockImplementationOnce(() => new Promise(() => undefined));
+    homepageApiMock.get.mockImplementationOnce(
+      () => new Promise(() => undefined),
+    );
 
     const { wrapper } = await mountHomepageRoute();
 
@@ -181,7 +201,9 @@ describe('HomepageView', () => {
 
     const { wrapper } = await mountHomepageRoute();
 
-    await vi.waitFor(() => expect(wrapper.text()).toContain('装修服务暂不可用'));
+    await vi.waitFor(() =>
+      expect(wrapper.text()).toContain('装修服务暂不可用'),
+    );
     await wrapper.get('button.homepage-view__action').trigger('click');
     await vi.waitFor(() => expect(wrapper.text()).toContain('今天也要甜一点'));
 

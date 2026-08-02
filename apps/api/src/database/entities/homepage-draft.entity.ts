@@ -17,7 +17,11 @@ import { HomepagePage } from './homepage-page.entity.js';
 @Index('uniq_homepage_drafts_page_name', ['homepagePageId', 'name'], {
   unique: true,
 })
-@Index('idx_homepage_drafts_page_updated', ['homepagePageId', 'updatedAt', 'id'])
+@Index('idx_homepage_drafts_page_updated', [
+  'homepagePageId',
+  'updatedAt',
+  'id',
+])
 export class HomepageDraft {
   @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
   id!: string;
