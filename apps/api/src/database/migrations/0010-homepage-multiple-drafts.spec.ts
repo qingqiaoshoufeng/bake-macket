@@ -55,6 +55,9 @@ describe('HomepageMultipleDrafts1718000000009', () => {
       'page.`published_draft_id` = draft.`id`',
     );
     expect(attachPublishedDraft).toContain(
+      'page.`published_draft_version` = page.`published_version`',
+    );
+    expect(attachPublishedDraft).not.toContain(
       'page.`published_draft_version` = draft.`version`',
     );
     expect(attachPublishedDraft).toContain(

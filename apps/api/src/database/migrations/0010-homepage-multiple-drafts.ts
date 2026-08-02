@@ -48,7 +48,7 @@ export class HomepageMultipleDrafts1718000000009 implements MigrationInterface {
         ON draft.\`homepage_page_id\` = page.\`id\`
         AND draft.\`name\` = '当前首页'
       SET page.\`published_draft_id\` = draft.\`id\`,
-          page.\`published_draft_version\` = draft.\`version\`
+          page.\`published_draft_version\` = page.\`published_version\`
       WHERE page.\`published_config\` IS NOT NULL`);
 
     await queryRunner.query(`ALTER TABLE \`homepage_pages\`
