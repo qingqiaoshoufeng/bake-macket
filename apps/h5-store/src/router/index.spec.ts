@@ -32,7 +32,7 @@ const expectedViews = [
     path: '/products/product-1',
     routeName: 'product-detail',
     componentName: 'ProductDetailView',
-    meta: {},
+    meta: { showTabbar: true, tabbarKey: 'products' },
   },
   { path: '/cart', routeName: 'cart', componentName: 'CartView', meta: {} },
   {
