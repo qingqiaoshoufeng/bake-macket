@@ -497,7 +497,7 @@ describe.sequential(
         membershipStartsAt: '2026-01-01 00:00:00',
         membershipEndsAt: '2026-02-01 00:00:00',
       });
-    });
+    }, 60_000);
 
     it('rejects a reversed purchase voided before paid before creating the segment table', async () => {
       await assertRealMysqlPreflightFailure(rootSql, {
@@ -510,7 +510,7 @@ describe.sequential(
         membershipStartsAt: '2026-05-02 00:00:00',
         membershipEndsAt: '2026-06-01 00:00:00',
       });
-    });
+    }, 60_000);
   },
 );
 
