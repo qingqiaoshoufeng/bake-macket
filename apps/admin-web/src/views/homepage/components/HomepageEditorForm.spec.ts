@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 import {
   HomepageLinkType,
   HomepageSectionType,
@@ -97,6 +99,17 @@ function mountForm(
 }
 
 describe('HomepageEditorForm', () => {
+  it('keeps the tab row at its content height inside a taller editor track', () => {
+    const source = readFileSync(
+      `${process.cwd()}/src/views/homepage/components/HomepageEditorForm.vue`,
+      'utf8',
+    );
+
+    expect(source).toMatch(
+      /\.homepage-editor-form \{[\s\S]*?grid-template-rows: auto minmax\(0, 1fr\);[\s\S]*?align-content: start/,
+    );
+  });
+
   it('shows one configuration type at a time', async () => {
     const wrapper = mountForm();
 

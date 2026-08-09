@@ -313,7 +313,7 @@ describe('HomepageEditorView', () => {
     expect(mocks.editorLoad).not.toHaveBeenCalled();
   });
 
-  it('renders draft, editor, and preview columns without the old introduction', async () => {
+  it('starts in template selection mode with only list and preview columns', async () => {
     const wrapper = await mountView();
 
     expect(wrapper.find('.admin-page-header').exists()).toBe(false);
@@ -321,32 +321,105 @@ describe('HomepageEditorView', () => {
     expect(wrapper.find('[data-workspace-column="drafts"]').exists()).toBe(
       true,
     );
+    expect(wrapper.find('[data-workspace-column="preview"]').exists()).toBe(
+      true,
+    );
+    expect(wrapper.find('[data-workspace-column="editor"]').exists()).toBe(
+      false,
+    );
+    expect(wrapper.find('.homepage-publish-bar').exists()).toBe(false);
+  });
+
+  it('enters the existing editor from a template edit action', async () => {
+    const wrapper = await mountView();
+    await flushPromises();
+
+    wrapper
+      .findComponent({ name: 'HomepageDraftSidebar' })
+      .vm.$emit('edit', ordinary);
+    await flushPromises();
+
+    expect(wrapper.find('[data-workspace-column="drafts"]').exists()).toBe(
+      false,
+    );
     expect(wrapper.find('[data-workspace-column="editor"]').exists()).toBe(
       true,
     );
     expect(wrapper.find('[data-workspace-column="preview"]').exists()).toBe(
       true,
     );
+    expect(wrapper.find('.homepage-publish-bar').exists()).toBe(true);
   });
 
-  it('keeps a scrollable non-zero editor track in the narrow workspace', () => {
+  it('saves dirty changes before returning to the template list', async () => {
+    const wrapper = await mountView();
+    await flushPromises();
+    wrapper
+      .findComponent({ name: 'HomepageDraftSidebar' })
+      .vm.$emit('edit', ordinary);
+    await flushPromises();
+    mocks.dirtyRef!.value = true;
+
+    await actionButton(wrapper, '返回模板列表')?.trigger('click');
+    await flushPromises();
+
+    expect(mocks.confirm).toHaveBeenCalledWith(
+      expect.stringContaining('尚未保存'),
+      '返回模板列表',
+      expect.objectContaining({
+        confirmButtonText: '保存并返回',
+        cancelButtonText: '放弃修改并返回',
+        distinguishCancelAndClose: true,
+      }),
+    );
+    expect(mocks.saveDraft).toHaveBeenCalledOnce();
+    expect(wrapper.find('[data-workspace-column="drafts"]').exists()).toBe(
+      true,
+    );
+    expect(wrapper.find('[data-workspace-column="editor"]').exists()).toBe(
+      false,
+    );
+  });
+
+  it('reloads the current template when dirty changes are discarded on return', async () => {
+    const wrapper = await mountView();
+    await flushPromises();
+    wrapper
+      .findComponent({ name: 'HomepageDraftSidebar' })
+      .vm.$emit('edit', ordinary);
+    await flushPromises();
+    mocks.dirtyRef!.value = true;
+    mocks.confirm.mockRejectedValueOnce('cancel');
+    mocks.editorLoad.mockClear();
+
+    await actionButton(wrapper, '返回模板列表')?.trigger('click');
+    await flushPromises();
+
+    expect(mocks.editorLoad).toHaveBeenCalledWith('12');
+    expect(wrapper.find('[data-workspace-column="drafts"]').exists()).toBe(
+      true,
+    );
+    expect(wrapper.find('[data-workspace-column="editor"]').exists()).toBe(
+      false,
+    );
+  });
+
+  it('keeps selection and editor workspaces as separate two-column layouts', () => {
     const source = readFileSync(
       `${process.cwd()}/src/views/homepage/HomepageEditorView.vue`,
       'utf8',
     );
 
     expect(source).toMatch(
-      /@media \(max-width: 1400px\) \{[\s\S]*?\.homepage-editor-view__layout \{[\s\S]*?grid-template-columns: minmax\(180px, 0\.32fr\) minmax\(0, 1fr\);[\s\S]*?grid-template-areas:[\s\S]*?'drafts editor'[\s\S]*?'drafts preview'[\s\S]*?grid-template-rows: minmax\(520px, auto\) auto;[\s\S]*?overflow-y: auto/,
+      /\.homepage-editor-view__layout--templates \{[\s\S]*?grid-template-columns: minmax\(240px, 0\.42fr\) minmax\(360px, 1fr\)/,
     );
     expect(source).toMatch(
-      /@media \(max-width: 1400px\) \{[\s\S]*?\.homepage-editor-view__configuration \{[\s\S]*?min-height: 520px;[\s\S]*?overflow: visible/,
+      /\.homepage-editor-view__layout--editing \{[\s\S]*?grid-template-columns: minmax\(500px, 1\.35fr\) minmax\(320px, 0\.78fr\)/,
     );
     expect(source).toMatch(
-      /@media \(max-width: 1400px\) \{[\s\S]*?\.homepage-editor-view__layout > \[data-workspace-column='drafts'\] \{[\s\S]*?position: sticky;[\s\S]*?grid-row: 1 \/ -1/,
+      /\.homepage-editor-view__preview > :deep\(\.homepage-phone-preview\) \{[\s\S]*?width: min\(100%, 390px\);[\s\S]*?height: 100%/,
     );
-    expect(source).toMatch(
-      /@media \(max-width: 1400px\) \{[\s\S]*?\.homepage-editor-view__preview :deep\(\.homepage-phone-preview\) \{[\s\S]*?min-height: 560px/,
-    );
+    expect(source).not.toMatch(/grid-template-areas: 'drafts editor preview'/);
   });
 
   it('loads and selects a clean target draft', async () => {
@@ -704,7 +777,7 @@ describe('HomepageEditorView', () => {
     expect(mocks.editorReconcileMetadata).toHaveBeenCalledWith(renamed);
     expect(mocks.editorLoad).not.toHaveBeenCalled();
     expect(wrapper.findComponent({ name: 'HomepageEditorForm' }).exists()).toBe(
-      true,
+      false,
     );
   });
 
@@ -829,9 +902,10 @@ describe('HomepageEditorView', () => {
   it('opens the create dialog from an empty list state', async () => {
     mocks.activeIdRef!.value = null;
     const wrapper = await mountView();
+    mocks.draftsItemsRef!.value = [];
     await flushPromises();
 
-    expect(wrapper.text()).toContain('还没有首页草稿，请先创建草稿');
+    expect(wrapper.text()).toContain('还没有草稿');
     await actionButton(wrapper, '创建第一个草稿')?.trigger('click');
 
     expect(
@@ -843,6 +917,10 @@ describe('HomepageEditorView', () => {
 
   it('loads page one with the active draft preferred after saving from page two', async () => {
     const wrapper = await mountView();
+    await flushPromises();
+    wrapper
+      .findComponent({ name: 'HomepageDraftSidebar' })
+      .vm.$emit('edit', ordinary);
     await flushPromises();
     mocks.draftsPageRef!.value = 2;
 
@@ -860,8 +938,56 @@ describe('HomepageEditorView', () => {
     expect(mocks.success).toHaveBeenCalledWith('首页草稿已保存');
   });
 
-  it('refreshes page two with the active draft preferred after publishing', async () => {
+  it('applies a selected template only after a second confirmation', async () => {
     const wrapper = await mountView();
+    await flushPromises();
+    mocks.editorLoad.mockClear();
+    mocks.publish.mockClear();
+
+    wrapper
+      .findComponent({ name: 'HomepageDraftSidebar' })
+      .vm.$emit('apply', second);
+    await flushPromises();
+
+    expect(mocks.confirm).toHaveBeenCalledWith(
+      expect.stringContaining('节日首页'),
+      '应用首页模板',
+      expect.objectContaining({
+        type: 'warning',
+        confirmButtonText: '确认应用',
+        cancelButtonText: '取消',
+      }),
+    );
+    expect(mocks.editorLoad).toHaveBeenCalledWith('13');
+    expect(mocks.publish).toHaveBeenCalledOnce();
+    expect(mocks.success).toHaveBeenCalledWith('“节日首页”已应用到 H5');
+    expect(wrapper.find('[data-workspace-column="editor"]').exists()).toBe(
+      false,
+    );
+  });
+
+  it('does not apply a template when the second confirmation is cancelled', async () => {
+    mocks.confirm.mockRejectedValueOnce('cancel');
+    const wrapper = await mountView();
+    await flushPromises();
+    mocks.editorLoad.mockClear();
+    mocks.publish.mockClear();
+
+    wrapper
+      .findComponent({ name: 'HomepageDraftSidebar' })
+      .vm.$emit('apply', second);
+    await flushPromises();
+
+    expect(mocks.editorLoad).not.toHaveBeenCalled();
+    expect(mocks.publish).not.toHaveBeenCalled();
+  });
+
+  it('refreshes page two with the active draft preferred after publishing from the editor', async () => {
+    const wrapper = await mountView();
+    await flushPromises();
+    wrapper
+      .findComponent({ name: 'HomepageDraftSidebar' })
+      .vm.$emit('edit', ordinary);
     await flushPromises();
     mocks.draftsPageRef!.value = 2;
 

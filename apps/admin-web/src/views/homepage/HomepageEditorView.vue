@@ -29,6 +29,7 @@ const editorForm = ref<InstanceType<typeof HomepageEditorForm> | null>(null);
 const createDialogVisible = ref(false);
 const creating = ref(false);
 const switchingDraft = ref(false);
+const workspaceMode = ref<'templates' | 'editing'>('templates');
 const listLoading = computed(() => drafts.loading.value);
 const editorLoading = computed(() => editor.loading.value);
 const hasDraft = computed(
@@ -110,6 +111,62 @@ async function publish(): Promise<void> {
   } catch (error) {
     ElMessage.error(message(error, '首页发布失败'));
     if (editor.issues.value[0]) void locateIssue(editor.issues.value[0]);
+  }
+}
+
+async function editTemplate(item: AdminHomepageDraftSummary): Promise<void> {
+  if (item.id !== drafts.activeId.value) {
+    const loaded = await loadAndSelect(item.id);
+    if (!loaded) return;
+  }
+  workspaceMode.value = 'editing';
+}
+
+async function returnToTemplates(): Promise<void> {
+  const wasDirty = editor.dirty.value;
+  const canReturn = await resolveDirtyTransition({
+    message: '当前模板尚未保存，请选择如何处理后再返回模板列表。',
+    title: '返回模板列表',
+    confirmButtonText: '保存并返回',
+    cancelButtonText: '放弃修改并返回',
+  });
+  if (!canReturn) return;
+  if (wasDirty && editor.dirty.value) {
+    const id = drafts.activeId.value;
+    if (!id) return;
+    try {
+      await editor.load(id);
+    } catch (error) {
+      ElMessage.error(message(error, '首页模板重新加载失败'));
+      return;
+    }
+  }
+  workspaceMode.value = 'templates';
+}
+
+async function applyTemplate(item: AdminHomepageDraftSummary): Promise<void> {
+  try {
+    await ElMessageBox.confirm(
+      `应用“${item.name}”后，H5 首页会立即切换为该模板，是否继续？`,
+      '应用首页模板',
+      {
+        type: 'warning',
+        confirmButtonText: '确认应用',
+        cancelButtonText: '取消',
+      },
+    );
+    if (item.id !== drafts.activeId.value) {
+      const loaded = await loadAndSelect(item.id);
+      if (!loaded) return;
+    }
+    const currentPage = drafts.page.value;
+    const succeeded = await editor.publish();
+    if (!succeeded) return;
+    await refreshSummaries(currentPage, item.id);
+    ElMessage.success(`“${item.name}”已应用到 H5`);
+  } catch (error) {
+    if (error === 'cancel' || error === 'close') return;
+    ElMessage.error(message(error, '首页模板应用失败'));
   }
 }
 
@@ -378,8 +435,12 @@ onBeforeUnmount(() =>
         </ElAlert>
       </div>
 
-      <div class="homepage-editor-view__layout">
+      <div
+        class="homepage-editor-view__layout"
+        :class="`homepage-editor-view__layout--${workspaceMode}`"
+      >
         <HomepageDraftSidebar
+          v-if="workspaceMode === 'templates'"
           data-workspace-column="drafts"
           :items="drafts.items.value"
           :active-id="drafts.activeId.value"
@@ -389,16 +450,26 @@ onBeforeUnmount(() =>
           :total="drafts.total.value"
           @select="selectDraft"
           @create="openCreateDialog"
+          @edit="editTemplate"
+          @apply="applyTemplate"
           @rename="renameDraft"
           @remove="removeDraft"
           @page-change="changePage"
         />
 
         <section
+          v-if="workspaceMode === 'editing'"
           class="homepage-editor-view__configuration"
           data-workspace-column="editor"
           data-editor-scroll
         >
+          <header class="homepage-editor-view__editor-header">
+            <ElButton @click="returnToTemplates">返回模板列表</ElButton>
+            <div>
+              <span>正在编辑</span>
+              <strong>{{ editor.name.value }}</strong>
+            </div>
+          </header>
           <div v-if="editorLoading" class="homepage-editor-view__loading">
             <strong>正在读取首页装修草稿</strong>
             <ElSkeleton :rows="10" animated />
@@ -412,22 +483,6 @@ onBeforeUnmount(() =>
             :issues="editor.issues.value"
             @update:draft="editor.replaceDraft"
           />
-          <div v-else class="homepage-editor-view__empty">
-            <span>
-              {{
-                drafts.error.value
-                  ? '首页草稿暂时无法加载'
-                  : '还没有首页草稿，请先创建草稿'
-              }}
-            </span>
-            <ElButton
-              v-if="!drafts.error.value"
-              type="primary"
-              @click="openCreateDialog"
-            >
-              创建第一个草稿
-            </ElButton>
-          </div>
         </section>
 
         <aside
@@ -436,13 +491,13 @@ onBeforeUnmount(() =>
         >
           <HomepagePhonePreview v-if="hasDraft" :draft="editor.draft.value" />
           <div v-else class="homepage-editor-view__preview-empty">
-            选择或创建草稿后查看手机预览
+            选择或创建模板后查看手机预览
           </div>
         </aside>
       </div>
 
       <HomepagePublishBar
-        v-if="hasDraft"
+        v-if="hasDraft && workspaceMode === 'editing'"
         :name="editor.name.value"
         :status="editor.status.value"
         :dirty="editor.dirty.value"
@@ -501,16 +556,16 @@ onBeforeUnmount(() =>
 .homepage-editor-view__layout {
   display: grid;
   height: 100%;
-  grid-template-columns:
-    minmax(210px, 0.48fr) minmax(500px, 1.35fr)
-    minmax(320px, 0.78fr);
-  grid-template-areas: 'drafts editor preview';
-  gap: 18px;
+  gap: 22px;
   overflow: hidden;
 }
 
-.homepage-editor-view__layout > [data-workspace-column='drafts'] {
-  grid-area: drafts;
+.homepage-editor-view__layout--templates {
+  grid-template-columns: minmax(240px, 0.42fr) minmax(360px, 1fr);
+}
+
+.homepage-editor-view__layout--editing {
+  grid-template-columns: minmax(500px, 1.35fr) minmax(320px, 0.78fr);
 }
 
 .homepage-editor-view__configuration,
@@ -520,8 +575,15 @@ onBeforeUnmount(() =>
 }
 
 .homepage-editor-view__configuration {
-  grid-area: editor;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
   padding-right: 8px;
+  overflow: hidden;
+}
+
+.homepage-editor-view__configuration > :deep(.homepage-editor-form) {
+  min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-color: color-mix(in srgb, var(--admin-mint) 45%, transparent)
@@ -529,10 +591,31 @@ onBeforeUnmount(() =>
   scrollbar-width: thin;
 }
 
+.homepage-editor-view__editor-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.homepage-editor-view__editor-header > div {
+  display: grid;
+  gap: 2px;
+}
+
+.homepage-editor-view__editor-header span {
+  color: var(--admin-muted);
+  font-size: 11px;
+}
+
 .homepage-editor-view__preview {
-  grid-area: preview;
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  display: grid;
+  justify-items: center;
+  overflow: hidden;
+}
+
+.homepage-editor-view__preview > :deep(.homepage-phone-preview) {
+  width: min(100%, 390px);
+  height: 100%;
 }
 
 .homepage-editor-view__loading,
@@ -559,36 +642,15 @@ onBeforeUnmount(() =>
   margin: 0 0 10px;
 }
 
-@media (max-width: 1400px) {
-  .homepage-editor-view__layout {
-    grid-template-columns: minmax(180px, 0.32fr) minmax(0, 1fr);
-    grid-template-areas:
-      'drafts editor'
-      'drafts preview';
-    grid-template-rows: minmax(520px, auto) auto;
-    gap: 12px;
-    overflow-y: auto;
+@media (max-width: 1180px) {
+  .homepage-editor-view__layout--templates {
+    grid-template-columns: minmax(220px, 0.42fr) minmax(320px, 1fr);
+    gap: 14px;
   }
 
-  .homepage-editor-view__layout > [data-workspace-column='drafts'] {
-    position: sticky;
-    top: 0;
-    grid-row: 1 / -1;
-    max-height: 100%;
-  }
-
-  .homepage-editor-view__configuration {
-    min-height: 520px;
-    overflow: visible;
-  }
-
-  .homepage-editor-view__preview {
-    grid-area: preview;
-    overflow: visible;
-  }
-
-  .homepage-editor-view__preview :deep(.homepage-phone-preview) {
-    min-height: 560px;
+  .homepage-editor-view__layout--editing {
+    grid-template-columns: minmax(430px, 1fr) minmax(280px, 0.72fr);
+    gap: 14px;
   }
 }
 </style>

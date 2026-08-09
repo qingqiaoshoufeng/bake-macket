@@ -20,6 +20,8 @@ withDefaults(
 const emit = defineEmits<{
   select: [id: string];
   create: [];
+  edit: [item: AdminHomepageDraftSummary];
+  apply: [item: AdminHomepageDraftSummary];
   rename: [item: AdminHomepageDraftSummary];
   remove: [item: AdminHomepageDraftSummary];
   'page-change': [page: number];
@@ -98,6 +100,26 @@ function formatUpdatedAt(value: string): string {
           更新于 {{ formatUpdatedAt(item.updatedAt) }}
         </span>
         <div class="homepage-draft-sidebar__actions">
+          <ElButton
+            link
+            size="small"
+            data-action="edit"
+            @click.stop="emit('edit', item)"
+          >
+            编辑
+          </ElButton>
+          <ElButton
+            link
+            size="small"
+            type="primary"
+            data-action="apply"
+            :disabled="item.status === HomepageDraftStatus.PUBLISHED"
+            @click.stop="emit('apply', item)"
+          >
+            {{
+              item.status === HomepageDraftStatus.PUBLISHED ? '使用中' : '应用'
+            }}
+          </ElButton>
           <ElButton
             link
             size="small"

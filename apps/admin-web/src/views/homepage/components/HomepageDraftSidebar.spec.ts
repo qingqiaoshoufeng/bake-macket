@@ -86,21 +86,44 @@ describe('HomepageDraftSidebar', () => {
     expect(wrapper.emitted('remove')).toEqual([[items[2]]]);
   });
 
-  it('emits selection, creation, rename, and page changes without business side effects', async () => {
+  it('offers edit and apply actions for each selectable template', async () => {
+    const wrapper = mountSidebar();
+
+    await wrapper
+      .find('[data-draft-id="draft"] [data-action="edit"]')
+      .trigger('click');
+    await wrapper
+      .find('[data-draft-id="draft"] [data-action="apply"]')
+      .trigger('click');
+
+    expect(wrapper.emitted('edit')).toEqual([[items[2]]]);
+    expect(wrapper.emitted('apply')).toEqual([[items[2]]]);
+  });
+
+  it('marks the applied template and prevents applying it again', async () => {
+    const wrapper = mountSidebar();
+    const publishedApply = wrapper.find(
+      '[data-draft-id="published"] [data-action="apply"]',
+    );
+
+    expect(publishedApply.text()).toContain('使用中');
+    expect(publishedApply.attributes('disabled')).toBeDefined();
+    await publishedApply.trigger('click');
+
+    expect(wrapper.emitted('apply')).toBeUndefined();
+  });
+
+  it('emits selection, creation, and page changes without business side effects', async () => {
     const wrapper = mountSidebar();
 
     await wrapper.find('[data-draft-id="published"]').trigger('click');
     await wrapper.find('[data-action="create"]').trigger('click');
-    await wrapper
-      .find('[data-draft-id="draft"] [data-action="rename"]')
-      .trigger('click');
     wrapper
       .findComponent({ name: 'ElPagination' })
       .vm.$emit('current-change', 2);
 
     expect(wrapper.emitted('select')).toEqual([['published']]);
     expect(wrapper.emitted('create')).toHaveLength(1);
-    expect(wrapper.emitted('rename')).toEqual([[items[2]]]);
     expect(wrapper.emitted('page-change')).toEqual([[2]]);
   });
 });

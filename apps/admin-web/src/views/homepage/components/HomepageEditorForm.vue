@@ -207,6 +207,8 @@ async function changeShortcutLayout(layout: HomepageGridLayout): Promise<void> {
 <style scoped>
 .homepage-editor-form {
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  align-content: start;
   gap: 14px;
 }
 
