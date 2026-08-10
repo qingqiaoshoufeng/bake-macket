@@ -174,7 +174,7 @@ export class MembershipService {
         );
         await this.audit.record(
           {
-            adminUserId,
+            actor: { type: 'ADMIN', adminUserId },
             targetEntity: 'membership_levels',
             targetId: created.id,
             action: 'MEMBERSHIP_LEVEL_CREATED',
@@ -212,7 +212,7 @@ export class MembershipService {
         const saved = await this.requireLevel(id, levels);
         await this.audit.record(
           {
-            adminUserId,
+            actor: { type: 'ADMIN', adminUserId },
             targetEntity: 'membership_levels',
             targetId: saved.id,
             action: 'MEMBERSHIP_LEVEL_UPDATED',
@@ -271,7 +271,7 @@ export class MembershipService {
       if (!result.affected) throw this.levelNotFound();
       await this.audit.record(
         {
-          adminUserId,
+          actor: { type: 'ADMIN', adminUserId },
           targetEntity: 'membership_levels',
           targetId: id,
           action: 'MEMBERSHIP_LEVEL_DELETED',

@@ -1,11 +1,18 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { AdminRole } from '@bake-mall/contracts';
+import {
+  Global,
+  INestApplication,
+  Module,
+  ValidationPipe,
+} from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { Test } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
 import { JwtService } from '@nestjs/jwt';
+import { Test } from '@nestjs/testing';
+import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
 import request from 'supertest';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
+import { AuditService } from '../src/audit/audit.service.js';
 import { AuthModule } from '../src/auth/auth.module.js';
 import { JWT_ADMIN_AUDIENCE } from '../src/auth/auth.constants.js';
 import { CatalogModule } from '../src/catalog/catalog.module.js';
@@ -19,6 +26,22 @@ import { Product } from '../src/database/entities/product.entity.js';
 import { Sku } from '../src/database/entities/sku.entity.js';
 import { AdminUser } from '../src/database/entities/admin-user.entity.js';
 import { User } from '../src/database/entities/user.entity.js';
+
+let fakeDataSourceRef: unknown;
+const audit = { record: vi.fn().mockResolvedValue(undefined) };
+
+@Global()
+@Module({
+  providers: [
+    {
+      provide: getDataSourceToken(),
+      useFactory: () => fakeDataSourceRef,
+    },
+    { provide: AuditService, useValue: audit },
+  ],
+  exports: [getDataSourceToken(), AuditService],
+})
+class FakeDatabaseModule {}
 
 function memoryRepository<T extends { id?: string }>() {
   const records: T[] = [];
@@ -120,6 +143,25 @@ describe('Catalog (e2e)', () => {
     const skuRepo = memoryRepository<Sku>();
     const imageRepo = memoryRepository<ProductImage>();
     const auditRepo = memoryRepository<AuditLog>();
+    const userRepo = memoryRepository<User>();
+    const adminRepo = memoryRepository<AdminUser>();
+    const persistedAdmin = await adminRepo.save(
+      adminRepo.create({
+        id: '1',
+        username: 'admin@example.test',
+        role: AdminRole.SUPER_ADMIN,
+        linkedUserId: null,
+        isActive: true,
+        mustChangePassword: false,
+        tokenVersion: 1,
+      }),
+    );
+    fakeDataSourceRef = {
+      entityMetadatas: [],
+      options: { type: 'mysql' },
+      getRepository: (entity: typeof User | typeof AdminUser) =>
+        entity === User ? userRepo : adminRepo,
+    };
     productsWithCategories = {
       ...productRepo,
       find: async (options?: { relations?: { category?: boolean } }) => {
@@ -164,14 +206,17 @@ describe('Catalog (e2e)', () => {
             return { appEnv: value };
           },
         }),
+        FakeDatabaseModule,
         AuthModule,
         CatalogModule,
       ],
     })
       .overrideProvider(getRepositoryToken(User))
-      .useValue(memoryRepository<User>())
+      .useValue(userRepo)
       .overrideProvider(getRepositoryToken(AdminUser))
-      .useValue(memoryRepository<AdminUser>())
+      .useValue(adminRepo)
+      .overrideProvider(getDataSourceToken())
+      .useValue(fakeDataSourceRef)
       .overrideProvider(getRepositoryToken(Category))
       .useValue(categoryRepo)
       .overrideProvider(getRepositoryToken(Product))
@@ -224,7 +269,14 @@ describe('Catalog (e2e)', () => {
     const jwt = app.get(JwtService);
     const config = app.get<ConfigService<AppConfig, true>>(ConfigService);
     adminToken = await jwt.signAsync(
-      { sub: 'admin-1', email: 'admin@example.test', aud: JWT_ADMIN_AUDIENCE },
+      {
+        sub: persistedAdmin.id,
+        aud: JWT_ADMIN_AUDIENCE,
+        role: persistedAdmin.role,
+        tokenVersion: persistedAdmin.tokenVersion,
+        linkedUserId: persistedAdmin.linkedUserId,
+        mustChangePassword: persistedAdmin.mustChangePassword,
+      },
       { secret: config.get('appEnv', { infer: true }).JWT_ADMIN_SECRET },
     );
   });

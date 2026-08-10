@@ -17,6 +17,7 @@ import type {
   SaveProductRequest,
 } from '@bake-mall/contracts';
 
+import { AdminPermissionGuard } from '../auth/admin-permission.guard.js';
 import { JwtAdminGuard } from '../auth/admin-jwt.guard.js';
 import type { AuthenticatedAdmin } from '../auth/auth.types.js';
 import { CurrentAdmin } from '../auth/current-user.decorator.js';
@@ -27,7 +28,7 @@ import { SaveProductDto } from './dto/save-product.dto.js';
 import { CreateSkuDto, UpdateSkuDto } from './dto/sku.dto.js';
 
 @Controller('admin/products')
-@UseGuards(JwtAdminGuard)
+@UseGuards(JwtAdminGuard, AdminPermissionGuard)
 export class AdminProductsController {
   constructor(private readonly catalog: CatalogService) {}
 

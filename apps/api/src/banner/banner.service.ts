@@ -129,7 +129,7 @@ export class BannerService {
       );
       await this.audit.record(
         {
-          adminUserId,
+          actor: { type: 'ADMIN', adminUserId },
           targetEntity: 'banners',
           targetId: banner.id,
           action: 'BANNER_CREATED',
@@ -165,7 +165,7 @@ export class BannerService {
       });
       await this.audit.record(
         {
-          adminUserId,
+          actor: { type: 'ADMIN', adminUserId },
           targetEntity: 'banners',
           targetId: saved.id,
           action: 'BANNER_UPDATED',
@@ -188,7 +188,7 @@ export class BannerService {
       if (!result.affected) throw new NotFoundException('Banner not found');
       await this.audit.record(
         {
-          adminUserId,
+          actor: { type: 'ADMIN', adminUserId },
           targetEntity: 'banners',
           targetId: id,
           action: 'BANNER_DELETED',

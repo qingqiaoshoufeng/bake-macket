@@ -8,6 +8,7 @@ import { CustomerModule } from './customer/customer.module.js';
 import { HomepageModule } from './homepage/homepage.module.js';
 import { OrdersModule } from './orders/orders.module.js';
 import { MembershipModule } from './membership/membership.module.js';
+import { PrintingModule } from './printing/printing.module.js';
 import { UploadModule } from './upload/upload.module.js';
 import { validateEnvironment } from './config/env.schema.js';
 import { DatabaseModule } from './database/database.module.js';
@@ -40,6 +41,7 @@ import { HealthController } from './health/health.controller.js';
     HomepageModule,
     OrdersModule,
     MembershipModule,
+    PrintingModule,
     UploadModule,
   ],
   controllers: [HealthController],

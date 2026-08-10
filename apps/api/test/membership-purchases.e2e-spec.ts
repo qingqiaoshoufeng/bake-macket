@@ -1,9 +1,15 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import {
+  Global,
+  INestApplication,
+  Module,
+  ValidationPipe,
+} from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
+import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
 import {
+  AdminRole,
   MembershipPaymentStatus,
   MembershipPurchaseStatus,
   MembershipTheme,
@@ -38,6 +44,20 @@ import { MembershipModule } from '../src/membership/membership.module.js';
 import { MembershipPurchaseService } from '../src/membership/membership-purchase.service.js';
 import { MembershipService } from '../src/membership/membership.service.js';
 
+let fakeDataSourceRef: unknown;
+
+@Global()
+@Module({
+  providers: [
+    {
+      provide: getDataSourceToken(),
+      useFactory: () => fakeDataSourceRef,
+    },
+  ],
+  exports: [getDataSourceToken()],
+})
+class FakeDatabaseModule {}
+
 const view = {
   id: 'purchase-1',
   purchaseNo: 'MP202607210001',
@@ -60,6 +80,18 @@ describe('Membership purchases (e2e)', () => {
   let app: INestApplication;
   let adminToken: string;
   let userToken: string;
+  const userId = '1';
+  const persistedUser = {
+    id: userId,
+    phone: '13800000000',
+    phoneVerified: true,
+    isActive: true,
+    mergedIntoUserId: null as string | null,
+    tokenVersion: 1,
+  };
+  const userFindOne = vi.fn(async ({ where }: { where: { id?: string } }) =>
+    where?.id === userId ? { ...persistedUser } : null,
+  );
   const purchases = {
     createPurchase: vi.fn().mockResolvedValue(view),
     simulatePayment: vi.fn().mockResolvedValue({
@@ -74,7 +106,7 @@ describe('Membership purchases (e2e)', () => {
     getAdminPurchase: vi.fn().mockResolvedValue({
       purchase: {
         ...view,
-        userId: 'user-1',
+        userId: userId,
         benefits: [],
         paymentChannel: 'SIMULATED',
       },
@@ -87,7 +119,7 @@ describe('Membership purchases (e2e)', () => {
     voidPurchase: vi.fn().mockResolvedValue({
       purchase: {
         ...view,
-        userId: 'user-1',
+        userId: userId,
         benefits: [],
         paymentChannel: 'SIMULATED',
         status: MembershipPurchaseStatus.VOIDED,
@@ -109,6 +141,30 @@ describe('Membership purchases (e2e)', () => {
     process.env.MYSQL_DATABASE = 'bake_mall_test';
     process.env.MYSQL_USER = 'bake_app_test';
 
+    const persistedAdmin = {
+      id: '2',
+      username: 'admin@example.test',
+      role: AdminRole.SUPER_ADMIN,
+      linkedUserId: null,
+      passwordHash: 'test-password-hash',
+      isActive: true,
+      mustChangePassword: false,
+      tokenVersion: 1,
+    } as AdminUser;
+    const adminRepo = {
+      findOne: vi.fn(async ({ where }: { where: { id?: string } }) =>
+        where?.id === persistedAdmin.id ? persistedAdmin : null,
+      ),
+      create: vi.fn(),
+      save: vi.fn(),
+    };
+    const repositories = new Map<unknown, object>([[AdminUser, adminRepo]]);
+    const fakeDataSource = {
+      options: { type: 'mysql' },
+      entityMetadatas: [],
+      getRepository: vi.fn((entity: unknown) => repositories.get(entity) ?? {}),
+    };
+    fakeDataSourceRef = fakeDataSource;
     const moduleRef = await Test.createTestingModule({
       imports: [
         ConfigModule.forRoot({
@@ -123,23 +179,16 @@ describe('Membership purchases (e2e)', () => {
           },
         }),
         AuthModule,
+        FakeDatabaseModule,
         MembershipModule,
       ],
     })
+      .overrideProvider(getDataSourceToken())
+      .useValue(fakeDataSource)
       .overrideProvider(getRepositoryToken(User))
-      .useValue({
-        findOneBy: vi.fn().mockResolvedValue({
-          id: 'user-1',
-          phone: '13800000000',
-          phoneVerified: true,
-        }),
-      })
+      .useValue({ findOne: userFindOne })
       .overrideProvider(getRepositoryToken(AdminUser))
-      .useValue({
-        findOne: vi.fn().mockResolvedValue(null),
-        create: vi.fn(),
-        save: vi.fn(),
-      })
+      .useValue(adminRepo)
       .overrideProvider(getRepositoryToken(AuditLog))
       .useValue({})
       .overrideProvider(getRepositoryToken(MembershipLevel))
@@ -191,11 +240,23 @@ describe('Membership purchases (e2e)', () => {
       .get<ConfigService<AppConfig, true>>(ConfigService)
       .get('appEnv', { infer: true });
     adminToken = await jwt.signAsync(
-      { sub: 'admin-1', email: 'admin@example.test', aud: JWT_ADMIN_AUDIENCE },
+      {
+        sub: '2',
+        aud: JWT_ADMIN_AUDIENCE,
+        role: AdminRole.SUPER_ADMIN,
+        tokenVersion: 1,
+        linkedUserId: null,
+        mustChangePassword: false,
+      },
       { secret: env.JWT_ADMIN_SECRET },
     );
     userToken = await jwt.signAsync(
-      { sub: 'user-1', phone: '13800000000', aud: JWT_USER_AUDIENCE },
+      {
+        sub: userId,
+        phone: '13800000000',
+        aud: JWT_USER_AUDIENCE,
+        tokenVersion: 1,
+      },
       { secret: env.JWT_USER_SECRET },
     );
   });
@@ -216,11 +277,34 @@ describe('Membership purchases (e2e)', () => {
       .send({ levelId: 'level-gold' })
       .expect(201)
       .expect(view);
+    expect(userFindOne).toHaveBeenCalledWith({ where: { id: userId } });
     expect(purchases.createPurchase).toHaveBeenCalledWith(
-      'user-1',
+      userId,
       'purchase-key-1',
       { levelId: 'level-gold' },
     );
+  });
+
+  it('rejects a persisted placeholder phone before calling purchase service', async () => {
+    persistedUser.phoneVerified = false;
+    try {
+      await request(app.getHttpServer())
+        .post('/api/v1/me/membership/purchases')
+        .set('Authorization', `Bearer ${userToken}`)
+        .set('Idempotency-Key', 'placeholder-purchase-key')
+        .send({ levelId: 'level-gold' })
+        .expect(403)
+        .expect(({ body }) => {
+          expect(body.code).toBe('PHONE_REQUIRED');
+        });
+      expect(purchases.createPurchase).not.toHaveBeenCalledWith(
+        userId,
+        'placeholder-purchase-key',
+        expect.anything(),
+      );
+    } finally {
+      persistedUser.phoneVerified = true;
+    }
   });
 
   it('requires an idempotency key before simulating payment', async () => {
@@ -235,7 +319,7 @@ describe('Membership purchases (e2e)', () => {
       .set('Idempotency-Key', 'payment-key-1')
       .expect(201);
     expect(purchases.simulatePayment).toHaveBeenCalledWith(
-      'user-1',
+      userId,
       'purchase-1',
       'payment-key-1',
     );
@@ -262,10 +346,7 @@ describe('Membership purchases (e2e)', () => {
           MembershipPaymentStatus.REVERSED,
         );
       });
-    expect(purchases.voidPurchase).toHaveBeenCalledWith(
-      'purchase-1',
-      'admin-1',
-    );
+    expect(purchases.voidPurchase).toHaveBeenCalledWith('purchase-1', '2');
   });
 
   it('returns the full Admin purchase detail with chain, grant, entries and voidability', async () => {

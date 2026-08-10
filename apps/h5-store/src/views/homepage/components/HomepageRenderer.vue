@@ -1,8 +1,5 @@
 <script setup lang="ts">
-import type {
-  HomepageLink,
-  PublicHomepageConfig,
-} from '@bake-mall/contracts';
+import type { HomepageLink, PublicHomepageConfig } from '@bake-mall/contracts';
 
 import HomepageCarousel from './HomepageCarousel.vue';
 import HomepageCustomerService from './HomepageCustomerService.vue';
@@ -10,7 +7,7 @@ import HomepageImageBlock from './HomepageImageBlock.vue';
 import HomepageShortcutGrid from './HomepageShortcutGrid.vue';
 
 defineProps<{
-  readonly config: PublicHomepageConfig;
+  readonly config: PublicHomepageConfig | null;
 }>();
 
 const emit = defineEmits<{
@@ -19,8 +16,11 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <div class="homepage-renderer">
-    <HomepageCarousel :section="config.hero" @navigate="emit('navigate', $event)" />
+  <div v-if="config" class="homepage-renderer">
+    <HomepageCarousel
+      :section="config.hero"
+      @navigate="emit('navigate', $event)"
+    />
     <div class="homepage-renderer__content">
       <HomepageCustomerService :section="config.customerService" />
       <HomepageShortcutGrid
@@ -43,8 +43,7 @@ const emit = defineEmits<{
 .homepage-renderer__content {
   display: grid;
   gap: var(--mall-space-8);
-  padding: var(--mall-space-6) var(--mall-page-gutter)
-    calc(var(--mall-tabbar-height) + var(--mall-space-8) + env(safe-area-inset-bottom));
+  padding: var(--mall-space-6) var(--mall-page-gutter) var(--mall-space-8);
 }
 
 .homepage-renderer__blocks {

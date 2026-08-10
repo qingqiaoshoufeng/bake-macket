@@ -4,6 +4,7 @@ import { createPinia, setActivePinia } from 'pinia';
 import { createRouter, createMemoryHistory } from 'vue-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import App from '../App.vue';
 import { catalogFeatureApi } from './catalog/api/index.js';
 import ProductDetailView from './ProductDetailView.vue';
 
@@ -48,7 +49,11 @@ async function mountDetail(path = '/products/product-1') {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [
-      { path: '/products/:id', component: ProductDetailView },
+      {
+        path: '/products/:id',
+        component: ProductDetailView,
+        meta: { showTabbar: true, tabbarKey: 'products' },
+      },
       { path: '/login', component: { template: '<div />' } },
       { path: '/cart', component: { template: '<div />' } },
     ],
@@ -57,7 +62,7 @@ async function mountDetail(path = '/products/product-1') {
   await router.isReady();
   return {
     router,
-    wrapper: mount(ProductDetailView, { global: { plugins: [pinia, router] } }),
+    wrapper: mount(App, { global: { plugins: [pinia, router] } }),
   };
 }
 
@@ -79,7 +84,7 @@ describe('ProductDetailView', () => {
     ).toBe('商城主导航');
     await wrapper.get('[data-testid="choose-sku"]').trigger('click');
     expect(wrapper.find('[data-testid="sku-sheet"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="store-tabbar"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="store-tabbar"]').exists()).toBe(true);
     expect(
       (wrapper.get('[data-testid="sku-sku-live"]').element as HTMLButtonElement)
         .disabled,

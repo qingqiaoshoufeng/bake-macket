@@ -27,6 +27,8 @@ export interface AppEnv {
   JWT_USER_SECRET: string;
   /** Secret used to sign merchant back-office JWTs (audience `mall-admin`). */
   JWT_ADMIN_SECRET: string;
+  /** Long-lived HMAC secret for durable administrator operation request hashes. */
+  ADMIN_OPERATION_IDEMPOTENCY_SECRET: string;
   /**
    * Lifetime for issued JWTs in seconds. Defaults to 24h. Both user and admin
    * sessions share the same lifetime for simplicity.
@@ -36,6 +38,16 @@ export interface AppEnv {
   SIMULATED_PAYMENT_ENABLED: boolean;
   ORDER_QUOTE_TOKEN_SECRET: string;
   ORDER_QUOTE_TTL_SECONDS: number;
+
+  /** WeChat Mini Program credentials. Empty values keep local fake login usable. */
+  WECHAT_APP_ID: string;
+  WECHAT_APP_SECRET: string;
+
+  /** Xpyun credentials remain server-only; production must provide real values. */
+  XPYUN_USER: string;
+  XPYUN_USER_KEY: string;
+  XPYUN_BASE_URL: string;
+  XPYUN_TIMEOUT_MS: number;
 
   /**
    * Optional initial administrator provisioned from environment variables on
@@ -75,8 +87,12 @@ export const FALLBACK_USER_SECRET =
   'dev-only-user-jwt-secret-do-not-use-in-prod';
 export const FALLBACK_ADMIN_SECRET =
   'dev-only-admin-jwt-secret-do-not-use-in-prod';
+export const FALLBACK_ADMIN_OPERATION_IDEMPOTENCY_SECRET =
+  'dev-only-admin-operation-idempotency-secret-do-not-use-in-prod';
 const FALLBACK_ORDER_QUOTE_TOKEN_SECRET =
   'dev-only-order-quote-secret-must-be-at-least-32';
+export const FALLBACK_XPYUN_USER = 'local-xpyun-user';
+export const FALLBACK_XPYUN_USER_KEY = 'local-xpyun-user-key';
 
 export const envSchema = Joi.object<AppEnv, true>({
   NODE_ENV: Joi.string()
@@ -97,6 +113,9 @@ export const envSchema = Joi.object<AppEnv, true>({
 
   JWT_USER_SECRET: Joi.string().min(16).default(FALLBACK_USER_SECRET),
   JWT_ADMIN_SECRET: Joi.string().min(16).default(FALLBACK_ADMIN_SECRET),
+  ADMIN_OPERATION_IDEMPOTENCY_SECRET: Joi.string()
+    .min(32)
+    .default(FALLBACK_ADMIN_OPERATION_IDEMPOTENCY_SECRET),
   JWT_EXPIRES_IN_SECONDS: Joi.number()
     .integer()
     .positive()
@@ -113,6 +132,42 @@ export const envSchema = Joi.object<AppEnv, true>({
       then: Joi.string().invalid(FALLBACK_ORDER_QUOTE_TOKEN_SECRET).required(),
     }),
   ORDER_QUOTE_TTL_SECONDS: Joi.number().integer().positive().default(300),
+  WECHAT_APP_ID: Joi.string().trim().allow('').default(''),
+  WECHAT_APP_SECRET: Joi.string().trim().allow('').default(''),
+  XPYUN_USER: Joi.string().trim().allow('').default(''),
+  XPYUN_USER_KEY: Joi.string().trim().allow('').default(''),
+  XPYUN_BASE_URL: Joi.string()
+    .custom((rawValue: string, helpers) => {
+      try {
+        const url = new URL(rawValue);
+        const usesHttps = url.protocol === 'https:';
+        const usesLoopbackHttp =
+          url.protocol === 'http:' &&
+          ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname);
+        const containsAttachedData =
+          url.username !== '' ||
+          url.password !== '' ||
+          url.search !== '' ||
+          url.hash !== '';
+        return usesHttps || usesLoopbackHttp
+          ? containsAttachedData
+            ? helpers.error('any.invalid')
+            : url.origin + (url.pathname === '/' ? '' : url.pathname)
+          : helpers.error('any.invalid');
+      } catch {
+        return helpers.error('any.invalid');
+      }
+    })
+    .default('https://open.xpyun.net')
+    .when('NODE_ENV', {
+      is: 'production',
+      then: Joi.string().valid('https://open.xpyun.net'),
+    }),
+  XPYUN_TIMEOUT_MS: Joi.number()
+    .integer()
+    .positive()
+    .max(60_000)
+    .default(10_000),
 
   ADMIN_EMAIL: Joi.string().email().optional(),
   ADMIN_PASSWORD: Joi.string().min(8).optional(),
@@ -160,6 +215,7 @@ const productionRequiredFields: ReadonlyArray<keyof AppEnv> = [
   'DATABASE_URL',
   'JWT_USER_SECRET',
   'JWT_ADMIN_SECRET',
+  'ADMIN_OPERATION_IDEMPOTENCY_SECRET',
   'ADMIN_EMAIL',
   'ADMIN_PASSWORD',
   'OBJECT_STORAGE_ENDPOINT',
@@ -169,6 +225,10 @@ const productionRequiredFields: ReadonlyArray<keyof AppEnv> = [
   'OBJECT_STORAGE_ACCESS_KEY',
   'OBJECT_STORAGE_SECRET_KEY',
   'OBJECT_STORAGE_FORCE_PATH_STYLE',
+  'WECHAT_APP_ID',
+  'WECHAT_APP_SECRET',
+  'XPYUN_USER',
+  'XPYUN_USER_KEY',
 ];
 
 export function validateEnvironment(raw: Record<string, unknown>): AppEnv {
@@ -183,7 +243,11 @@ export function validateEnvironment(raw: Record<string, unknown>): AppEnv {
   if (value.NODE_ENV === 'production') {
     const missing = productionRequiredFields.filter((key) => {
       const rawValue = raw[key];
-      return rawValue === undefined || rawValue === null || rawValue === '';
+      return (
+        rawValue === undefined ||
+        rawValue === null ||
+        (typeof rawValue === 'string' && rawValue.trim() === '')
+      );
     });
     const usesLocalAddress = [
       value.DATABASE_URL,
@@ -198,11 +262,17 @@ export function validateEnvironment(raw: Record<string, unknown>): AppEnv {
     const usesDevelopmentFallback =
       value.JWT_USER_SECRET === FALLBACK_USER_SECRET ||
       value.JWT_ADMIN_SECRET === FALLBACK_ADMIN_SECRET ||
+      value.ADMIN_OPERATION_IDEMPOTENCY_SECRET ===
+        FALLBACK_ADMIN_OPERATION_IDEMPOTENCY_SECRET ||
       value.JWT_USER_SECRET === value.JWT_ADMIN_SECRET ||
+      value.ADMIN_OPERATION_IDEMPOTENCY_SECRET === value.JWT_USER_SECRET ||
+      value.ADMIN_OPERATION_IDEMPOTENCY_SECRET === value.JWT_ADMIN_SECRET ||
       value.ADMIN_EMAIL === 'admin-local@example.com' ||
       value.ADMIN_PASSWORD === 'admin-password' ||
       value.OBJECT_STORAGE_ACCESS_KEY === 'minioadmin' ||
       value.OBJECT_STORAGE_SECRET_KEY === 'minioadmin' ||
+      value.XPYUN_USER === FALLBACK_XPYUN_USER ||
+      value.XPYUN_USER_KEY === FALLBACK_XPYUN_USER_KEY ||
       usesLocalAddress;
 
     if (missing.length > 0 || usesPlaceholder || usesDevelopmentFallback) {

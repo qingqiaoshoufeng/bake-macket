@@ -1,0 +1,140 @@
+import type {
+  BindCloudPrinterRequest,
+  BindCloudPrinterResult,
+  CloudPrinterListQuery,
+  CloudPrinterListResult,
+  ConfirmCloudPrinterCompensationDeletionRequest,
+  ConfirmCloudPrinterCompensationDeletionResult,
+  ConfirmCloudPrinterRequest,
+  ConfirmCloudPrinterResult,
+  RefreshCloudPrinterOnlineStatusRequest,
+  RefreshCloudPrinterOnlineStatusResult,
+  RenameCloudPrinterRequest,
+  RenameCloudPrinterResult,
+  RequeryCloudPrinterVendorRelationRequest,
+  RequeryCloudPrinterVendorRelationResult,
+  ResendCloudPrinterVerificationRequest,
+  ResendCloudPrinterVerificationResult,
+} from '@bake-mall/contracts';
+
+import type { BakeMallAppData } from '../../app.js';
+import {
+  createMiniappApiClient,
+  type MiniappApiRequestOptions,
+} from '../../utils/api-client.js';
+
+function headers(idempotencyKey: string): Readonly<Record<string, string>> {
+  return { 'Idempotency-Key': idempotencyKey };
+}
+
+type ApiRequest = NonNullable<
+  Parameters<typeof createMiniappApiClient>[0]['request']
+>;
+
+export function createPrintingDevicesApi(
+  app: BakeMallAppData,
+  request?: ApiRequest,
+) {
+  const client = createMiniappApiClient({
+    adminSession: app.adminSession,
+    customerSession: app.customerSession,
+    ...(request ? { request } : {}),
+  });
+  function writeOptions(idempotencyKey: string): MiniappApiRequestOptions {
+    return {
+      audience: 'admin',
+      header: headers(idempotencyKey),
+    };
+  }
+
+  return {
+    list(query: CloudPrinterListQuery): Promise<CloudPrinterListResult> {
+      return client.get('/admin/cloud-printers', {
+        audience: 'admin',
+        query: {
+          page: query.page,
+          pageSize: query.pageSize,
+          ...(query.includeUnbound === undefined
+            ? {}
+            : { includeUnbound: String(query.includeUnbound) }),
+        },
+      });
+    },
+    bind(
+      body: BindCloudPrinterRequest,
+      idempotencyKey: string,
+    ): Promise<BindCloudPrinterResult> {
+      return client.post(
+        '/admin/cloud-printers/bind',
+        body,
+        writeOptions(idempotencyKey),
+      );
+    },
+    confirm(
+      printerId: string,
+      body: ConfirmCloudPrinterRequest,
+      idempotencyKey: string,
+    ): Promise<ConfirmCloudPrinterResult> {
+      return client.post(
+        `/admin/cloud-printers/${printerId}/verification/confirm`,
+        body,
+        writeOptions(idempotencyKey),
+      );
+    },
+    resend(
+      printerId: string,
+      body: ResendCloudPrinterVerificationRequest,
+      idempotencyKey: string,
+    ): Promise<ResendCloudPrinterVerificationResult> {
+      return client.post(
+        `/admin/cloud-printers/${printerId}/verification/resend`,
+        body,
+        writeOptions(idempotencyKey),
+      );
+    },
+    refresh(
+      printerId: string,
+      body: RefreshCloudPrinterOnlineStatusRequest,
+      idempotencyKey: string,
+    ): Promise<RefreshCloudPrinterOnlineStatusResult> {
+      return client.post(
+        `/admin/cloud-printers/${printerId}/online-status/refresh`,
+        body,
+        writeOptions(idempotencyKey),
+      );
+    },
+    requery(
+      printerId: string,
+      body: RequeryCloudPrinterVendorRelationRequest,
+      idempotencyKey: string,
+    ): Promise<RequeryCloudPrinterVendorRelationResult> {
+      return client.post(
+        `/admin/cloud-printers/${printerId}/vendor-relation/requery`,
+        body,
+        writeOptions(idempotencyKey),
+      );
+    },
+    confirmDeletion(
+      printerId: string,
+      body: ConfirmCloudPrinterCompensationDeletionRequest,
+      idempotencyKey: string,
+    ): Promise<ConfirmCloudPrinterCompensationDeletionResult> {
+      return client.post(
+        `/admin/cloud-printers/${printerId}/compensation-delete/confirm`,
+        body,
+        writeOptions(idempotencyKey),
+      );
+    },
+    rename(
+      printerId: string,
+      body: RenameCloudPrinterRequest,
+      idempotencyKey: string,
+    ): Promise<RenameCloudPrinterResult> {
+      return client.patch(
+        `/admin/cloud-printers/${printerId}/display-name`,
+        body,
+        writeOptions(idempotencyKey),
+      );
+    },
+  } as const;
+}

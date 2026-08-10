@@ -1,8 +1,13 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import {
+  Global,
+  INestApplication,
+  Module,
+  ValidationPipe,
+} from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
+import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
 import { FulfillmentType } from '@bake-mall/contracts';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -32,9 +37,36 @@ import { MembershipPricingService } from '../src/membership/membership-pricing.s
 import { MembershipPurchaseService } from '../src/membership/membership-purchase.service.js';
 import { MembershipService } from '../src/membership/membership.service.js';
 
+let fakeDataSourceRef: unknown;
+
+@Global()
+@Module({
+  providers: [
+    {
+      provide: getDataSourceToken(),
+      useFactory: () => fakeDataSourceRef,
+    },
+  ],
+  exports: [getDataSourceToken()],
+})
+class FakeDatabaseModule {}
+
 describe('Order quote (e2e)', () => {
   let app: INestApplication;
   let userToken: string;
+  const userId = '1';
+  const userFindOne = vi.fn(async ({ where }: { where: { id?: string } }) =>
+    where?.id === userId
+      ? {
+          id: userId,
+          phone: '13800000000',
+          phoneVerified: true,
+          isActive: true,
+          mergedIntoUserId: null,
+          tokenVersion: 1,
+        }
+      : null,
+  );
   const pricing = {
     quote: vi.fn().mockResolvedValue({
       lines: [],
@@ -59,6 +91,18 @@ describe('Order quote (e2e)', () => {
     process.env.MYSQL_HOST = '127.0.0.1';
     process.env.MYSQL_DATABASE = 'bake_mall_test';
     process.env.MYSQL_USER = 'bake_app_test';
+    const userRepo = { findOne: userFindOne };
+    const adminRepo = {
+      findOne: vi.fn().mockResolvedValue(null),
+      create: vi.fn(),
+      save: vi.fn(),
+    };
+    fakeDataSourceRef = {
+      entityMetadatas: [],
+      options: { type: 'mysql' },
+      getRepository: (entity: typeof User | typeof AdminUser) =>
+        entity === User ? userRepo : adminRepo,
+    };
     const moduleRef = await Test.createTestingModule({
       imports: [
         ConfigModule.forRoot({
@@ -72,24 +116,17 @@ describe('Order quote (e2e)', () => {
             return { appEnv: value };
           },
         }),
+        FakeDatabaseModule,
         AuthModule,
         MembershipModule,
       ],
     })
       .overrideProvider(getRepositoryToken(User))
-      .useValue({
-        findOneBy: vi.fn().mockResolvedValue({
-          id: 'user-1',
-          phone: '13800000000',
-          phoneVerified: true,
-        }),
-      })
+      .useValue(userRepo)
       .overrideProvider(getRepositoryToken(AdminUser))
-      .useValue({
-        findOne: vi.fn().mockResolvedValue(null),
-        create: vi.fn(),
-        save: vi.fn(),
-      })
+      .useValue(adminRepo)
+      .overrideProvider(getDataSourceToken())
+      .useValue(fakeDataSourceRef)
       .overrideProvider(getRepositoryToken(AuditLog))
       .useValue({})
       .overrideProvider(getRepositoryToken(CartItem))
@@ -142,7 +179,12 @@ describe('Order quote (e2e)', () => {
       .get<ConfigService<AppConfig, true>>(ConfigService)
       .get('appEnv', { infer: true });
     userToken = await jwt.signAsync(
-      { sub: 'user-1', phone: '13800000000', aud: JWT_USER_AUDIENCE },
+      {
+        sub: userId,
+        phone: '13800000000',
+        aud: JWT_USER_AUDIENCE,
+        tokenVersion: 1,
+      },
       { secret: env.JWT_USER_SECRET },
     );
   });
@@ -167,7 +209,8 @@ describe('Order quote (e2e)', () => {
       .send({ cartItemIds: ['cart-1'], requestedCreditCents: 300 })
       .expect(201)
       .expect(({ body }) => expect(body.quoteToken).toBe('quote-token'));
-    expect(pricing.quote).toHaveBeenCalledWith('user-1', {
+    expect(userFindOne).toHaveBeenCalledWith({ where: { id: userId } });
+    expect(pricing.quote).toHaveBeenCalledWith(userId, {
       cartItemIds: ['cart-1'],
       requestedCreditCents: 300,
     });

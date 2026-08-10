@@ -28,11 +28,7 @@ import {
   MembershipPurchaseOrder,
 } from '../src/database/entities/membership-purchase-order.entity.js';
 import { User } from '../src/database/entities/user.entity.js';
-import { InitialSchema1718000000000 } from '../src/database/migrations/0001-initial-schema.js';
-import { ProductSortOrder1718000000001 } from '../src/database/migrations/0002-product-sort-order.js';
-import { Task12AdminMediaAndOrderIndexes1718000000002 } from '../src/database/migrations/0003-task12-admin-media-and-order-indexes.js';
-import { SkuStockVersion1718000000003 } from '../src/database/migrations/0004-sku-stock-version.js';
-import { MembershipAndOrderPricing1718000000004 } from '../src/database/migrations/0005-membership-and-order-pricing.js';
+import { DATABASE_MIGRATIONS } from '../src/database/migrations/index.js';
 import { MembershipService } from '../src/membership/membership.service.js';
 import {
   createDockerRootSqlExecutor,
@@ -48,9 +44,9 @@ function levelRequest(
   overrides: Partial<SaveMembershipLevelRequest> = {},
 ): SaveMembershipLevelRequest {
   return {
-    code: 'GOLD',
+    code: 'LEVELS_BASE',
     name: '鎏金会员',
-    rank: 20,
+    rank: 110,
     priceCents: 50_000,
     grantCreditCents: 60_000,
     discountBasisPoints: 9_500,
@@ -173,7 +169,7 @@ describe.sequential('MembershipService real MySQL level management', () => {
       dataSource = new DataSource({
         type: 'mysql',
         host: process.env.TEST_MYSQL_HOST ?? '127.0.0.1',
-        port: Number(process.env.TEST_MYSQL_PORT ?? 3306),
+        port: Number(process.env.TEST_MYSQL_PORT ?? 44306),
         database: DATABASE_NAME,
         username: APP_USER,
         password: process.env.TEST_MYSQL_APP_PASSWORD ?? 'bake_app_password',
@@ -181,14 +177,9 @@ describe.sequential('MembershipService real MySQL level management', () => {
         timezone: 'Z',
         synchronize: false,
         entities: Object.values(entities),
-        migrations: [
-          InitialSchema1718000000000,
-          ProductSortOrder1718000000001,
-          Task12AdminMediaAndOrderIndexes1718000000002,
-          SkuStockVersion1718000000003,
-          MembershipAndOrderPricing1718000000004,
-        ],
+        migrations: [...DATABASE_MIGRATIONS],
         migrationsTableName: 'migrations',
+        migrationsTransactionMode: 'each',
       });
       await dataSource.initialize();
       await dataSource.runMigrations();
@@ -242,14 +233,14 @@ describe.sequential('MembershipService real MySQL level management', () => {
       targetId: created.id,
       action: 'MEMBERSHIP_LEVEL_CREATED',
     });
-    expect(level).toMatchObject({ code: 'GOLD', version: 1 });
+    expect(level).toMatchObject({ code: 'LEVELS_BASE', version: 1 });
     expect(audit).toMatchObject({ adminUserId: admin.id });
   });
 
   it('rolls back level creation when the real audit insert violates its FK', async () => {
     await expect(
       service.createLevel(
-        levelRequest({ code: 'CREATE_ROLLBACK', rank: 30 }),
+        levelRequest({ code: 'CREATE_ROLLBACK', rank: 120 }),
         '999999999999',
       ),
     ).rejects.toBeDefined();
@@ -263,8 +254,8 @@ describe.sequential('MembershipService real MySQL level management', () => {
   it('rolls back fields and version when a real update audit insert fails', async () => {
     const before = await dataSource
       ?.getRepository(MembershipLevel)
-      .findOneByOrFail({ code: 'GOLD' });
-    if (!before) throw new Error('GOLD fixture is missing');
+      .findOneByOrFail({ code: 'LEVELS_BASE' });
+    if (!before) throw new Error('LEVELS_BASE fixture is missing');
     await expect(
       service.updateLevel(
         before.id,
@@ -282,7 +273,7 @@ describe.sequential('MembershipService real MySQL level management', () => {
     const created = await service.createLevel(
       levelRequest({
         code: 'DELETE_ROLLBACK',
-        rank: 40,
+        rank: 130,
         status: MembershipLevelStatus.INACTIVE,
       }),
       admin.id,
@@ -299,7 +290,7 @@ describe.sequential('MembershipService real MySQL level management', () => {
     if (!dataSource) throw new Error('Temporary data source is unavailable');
     const existing = await dataSource
       .getRepository(MembershipLevel)
-      .findOneByOrFail({ code: 'GOLD' });
+      .findOneByOrFail({ code: 'LEVELS_BASE' });
     const bothReadInitialVersion = createBarrier(2);
     const barrierDataSource = dataSourceWithTransactionBarrier(
       dataSource,
@@ -363,8 +354,8 @@ describe.sequential('MembershipService real MySQL level management', () => {
   });
 
   it.each([
-    ['code', levelRequest({ rank: 50 })],
-    ['rank', levelRequest({ code: 'PLATINUM' })],
+    ['code', levelRequest({ rank: 140 })],
+    ['rank', levelRequest({ code: 'LEVELS_DUPLICATE_RANK' })],
   ] as const)(
     'translates a real duplicate %s constraint into a business conflict',
     async (field, duplicate) => {
@@ -385,7 +376,7 @@ describe.sequential('MembershipService real MySQL level management', () => {
     const soldLevel = await service.createLevel(
       levelRequest({
         code: 'SOLD',
-        rank: 60,
+        rank: 150,
         status: MembershipLevelStatus.INACTIVE,
       }),
       admin.id,
@@ -412,7 +403,7 @@ describe.sequential('MembershipService real MySQL level management', () => {
     const racedLevel = await service.createLevel(
       levelRequest({
         code: 'FK_RACE',
-        rank: 70,
+        rank: 160,
         status: MembershipLevelStatus.INACTIVE,
       }),
       admin.id,

@@ -1,0 +1,40 @@
+<view class="users-page">
+  <view class="users-card">
+    <view class="users-search">
+      <input
+        class="users-input"
+        value="{{query}}"
+        placeholder="搜索手机号或用户 ID"
+        bindinput="onQueryInput"
+        confirm-type="search"
+        bindconfirm="onSearch"
+      />
+      <button size="mini" loading="{{loading}}" disabled="{{loading}}" bindtap="onSearch">搜索</button>
+    </view>
+
+    <view wx:if="{{canCreate}}" class="users-create">
+      <input
+        class="users-input"
+        type="number"
+        maxlength="11"
+        value="{{createPhone}}"
+        placeholder="输入手机号添加用户"
+        bindinput="onCreatePhoneInput"
+      />
+      <button size="mini" loading="{{creating}}" disabled="{{creating}}" bindtap="onCreate">添加</button>
+    </view>
+  </view>
+
+  <view wx:if="{{error}}" class="users-error">
+    <text>{{error}}</text>
+    <button size="mini" bindtap="onRetry">重试</button>
+  </view>
+
+  <user-list users="{{users}}" />
+
+  <view class="users-pagination">
+    <button size="mini" disabled="{{loading || page <= 1}}" bindtap="onPreviousPage">上一页</button>
+    <text>第 {{page}} 页，共 {{total}} 条</text>
+    <button size="mini" disabled="{{loading || page * pageSize >= total}}" bindtap="onNextPage">下一页</button>
+  </view>
+</view>

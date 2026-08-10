@@ -6,12 +6,16 @@ import { CartItem } from '../database/entities/cart-item.entity.js';
 import { Product } from '../database/entities/product.entity.js';
 import { Sku } from '../database/entities/sku.entity.js';
 import { User } from '../database/entities/user.entity.js';
+import { UsersModule } from '../users/users.module.js';
 import { AddressService } from './address.service.js';
 import { CartService } from './cart.service.js';
 import { MeController } from './me.controller.js';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([User, Address, CartItem, Product, Sku])],
+  imports: [
+    UsersModule,
+    TypeOrmModule.forFeature([User, Address, CartItem, Product, Sku]),
+  ],
   controllers: [MeController],
   providers: [AddressService, CartService],
   exports: [AddressService, CartService],

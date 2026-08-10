@@ -1,9 +1,13 @@
 <script setup lang="ts">
 import { ElButton, ElForm, ElFormItem, ElInput } from 'element-plus';
 
+import type { AdminLoginKind } from '../type/index.js';
+
 withDefaults(
   defineProps<{
+    readonly kind: AdminLoginKind;
     readonly email: string;
+    readonly phone: string;
     readonly password: string;
     readonly submitting: boolean;
     readonly showDevHint?: boolean;
@@ -13,7 +17,9 @@ withDefaults(
 
 const emit = defineEmits<{
   'update:email': [value: string];
+  'update:phone': [value: string];
   'update:password': [value: string];
+  'select-kind': [value: AdminLoginKind];
   submit: [];
 }>();
 </script>
@@ -31,8 +37,27 @@ const emit = defineEmits<{
       </div>
     </header>
 
+    <div class="admin-login-card__kinds" aria-label="登录身份">
+      <ElButton
+        :type="kind === 'SUPER_ADMIN' ? 'primary' : 'default'"
+        :plain="kind !== 'SUPER_ADMIN'"
+        data-testid="admin-login-kind-super-admin"
+        @click="emit('select-kind', 'SUPER_ADMIN')"
+      >
+        超级管理员
+      </ElButton>
+      <ElButton
+        :type="kind === 'OPERATOR' ? 'primary' : 'default'"
+        :plain="kind !== 'OPERATOR'"
+        data-testid="admin-login-kind-operator"
+        @click="emit('select-kind', 'OPERATOR')"
+      >
+        操作员
+      </ElButton>
+    </div>
+
     <ElForm class="admin-login-card__form" @submit.prevent="emit('submit')">
-      <ElFormItem label="管理员邮箱">
+      <ElFormItem v-if="kind === 'SUPER_ADMIN'" label="管理员邮箱">
         <ElInput
           :model-value="email"
           type="email"
@@ -40,6 +65,17 @@ const emit = defineEmits<{
           placeholder="请输入管理员邮箱"
           data-testid="admin-email"
           @update:model-value="emit('update:email', $event)"
+        />
+      </ElFormItem>
+      <ElFormItem v-else label="操作员手机号">
+        <ElInput
+          :model-value="phone"
+          type="tel"
+          inputmode="numeric"
+          autocomplete="username"
+          placeholder="请输入操作员手机号"
+          data-testid="admin-phone"
+          @update:model-value="emit('update:phone', $event)"
         />
       </ElFormItem>
       <ElFormItem label="登录密码">
@@ -84,7 +120,7 @@ const emit = defineEmits<{
 .admin-login-card {
   display: grid;
   align-content: center;
-  gap: 30px;
+  gap: 26px;
   width: min(100%, 520px);
   min-height: min(680px, calc(100vh - 96px));
   padding: clamp(30px, 5vw, 54px);
@@ -137,6 +173,21 @@ const emit = defineEmits<{
   color: var(--admin-muted);
   font-size: 14px;
   line-height: 1.7;
+}
+
+.admin-login-card__kinds {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 5px;
+  background: var(--admin-surface-soft);
+  border-radius: 15px;
+}
+
+.admin-login-card__kinds :deep(.el-button) {
+  width: 100%;
+  margin: 0;
+  border-radius: 11px;
 }
 
 .admin-login-card__form {

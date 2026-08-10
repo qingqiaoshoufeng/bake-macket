@@ -3,6 +3,8 @@ import {
   CreateDateColumn,
   Entity,
   Index,
+  JoinColumn,
+  ManyToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
@@ -16,6 +18,9 @@ import {
  */
 @Entity({ name: 'users' })
 @Index('uniq_users_phone', ['phone'], { unique: true })
+@Index('uniq_users_wechat_openid', ['wechatOpenid'], { unique: true })
+@Index('uniq_users_wechat_unionid', ['wechatUnionid'], { unique: true })
+@Index('idx_users_merged_into', ['mergedIntoUserId'])
 export class User {
   @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
   id!: string;
@@ -47,6 +52,28 @@ export class User {
 
   @Column({ name: 'phone_verified', type: 'boolean', default: false })
   phoneVerified!: boolean;
+
+  @Column({ name: 'is_active', type: 'boolean', default: true })
+  isActive!: boolean;
+
+  @Column({
+    name: 'merged_into_user_id',
+    type: 'bigint',
+    unsigned: true,
+    nullable: true,
+  })
+  mergedIntoUserId!: string | null;
+
+  @ManyToOne(() => User, {
+    nullable: true,
+    onDelete: 'RESTRICT',
+    onUpdate: 'CASCADE',
+  })
+  @JoinColumn({ name: 'merged_into_user_id' })
+  mergedIntoUser!: User | null;
+
+  @Column({ name: 'token_version', type: 'int', unsigned: true, default: 1 })
+  tokenVersion!: number;
 
   @CreateDateColumn({ name: 'created_at', type: 'datetime', precision: 0 })
   createdAt!: Date;

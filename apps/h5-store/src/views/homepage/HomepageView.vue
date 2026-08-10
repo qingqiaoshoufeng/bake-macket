@@ -16,7 +16,7 @@ async function load(): Promise<void> {
   try {
     await homepage.load();
   } catch {
-    // 错误态在页面内显示并提供显式重试。
+    // The state panel renders the load error and provides the retry action.
   }
 }
 
@@ -30,8 +30,13 @@ onMounted(load);
 
 <template>
   <StorePage full-bleed with-tabbar class="homepage-view">
+    <HomepageRenderer
+      v-if="homepage.data.value"
+      :config="homepage.data.value.config"
+      @navigate="navigate"
+    />
     <StoreStatePanel
-      v-if="homepage.loading.value && !homepage.loaded.value"
+      v-else-if="homepage.loading.value && !homepage.loaded.value"
       class="homepage-view__state"
       state="loading"
       title="正在准备首页"
@@ -51,7 +56,7 @@ onMounted(load);
       </template>
     </StoreStatePanel>
     <StoreStatePanel
-      v-else-if="!homepage.data.value"
+      v-else
       class="homepage-view__state"
       state="empty"
       title="首页正在准备中"
@@ -67,11 +72,6 @@ onMounted(load);
         </button>
       </template>
     </StoreStatePanel>
-    <HomepageRenderer
-      v-else
-      :config="homepage.data.value.config"
-      @navigate="navigate"
-    />
   </StorePage>
 </template>
 

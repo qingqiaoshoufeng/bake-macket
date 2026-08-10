@@ -15,6 +15,7 @@ const emit = defineEmits<{
   (event: 'submit'): void;
   (event: 'prefill'): void;
   (event: 'test-wechat'): void;
+  (event: 'request-phone-credential'): void;
 }>();
 function inputValue(event: Event): string {
   return (event.target as HTMLInputElement).value;
@@ -54,6 +55,14 @@ function inputValue(event: Event): string {
         :aria-disabled="submitting"
       >
         {{ submitting ? '登录中…' : '登录' }}
+      </button>
+      <button
+        type="button"
+        class="login__miniapp-phone"
+        data-testid="miniapp-phone-auth"
+        @click="emit('request-phone-credential')"
+      >
+        使用微信手机号授权
       </button>
     </form>
     <section v-if="showDevHint" class="login__dev">
@@ -176,6 +185,17 @@ function inputValue(event: Event): string {
 .login__submit:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+.login__miniapp-phone {
+  min-height: 44px;
+  border: 1px solid var(--mall-primary);
+  border-radius: var(--mall-radius-card);
+  background: var(--mall-surface-soft);
+  color: var(--mall-primary-strong);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
 }
 .login__dev {
   display: grid;

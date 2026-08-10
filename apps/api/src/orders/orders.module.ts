@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { AuditModule } from '../audit/audit.module.js';
+import { AuthModule } from '../auth/auth.module.js';
 import { MemberAccount } from '../database/entities/member-account.entity.js';
 import { MemberCreditAllocation } from '../database/entities/member-credit-allocation.entity.js';
 import { MemberCreditEntry } from '../database/entities/member-credit-entry.entity.js';
@@ -48,6 +49,7 @@ import { OrdersService } from './orders.service.js';
       MemberCreditAllocation,
     ]),
     AuditModule,
+    AuthModule,
     IdempotencyModule,
     MembershipModule,
   ],

@@ -1,0 +1,100 @@
+.printers-page {
+  min-height: 100vh;
+  box-sizing: border-box;
+  padding: 32rpx;
+  background: #fffaf3;
+}
+
+.printers-toolbar,
+.printers-notice,
+.printers-error,
+.printers-pagination {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.printers-toolbar,
+.printers-notice,
+.printers-error {
+  padding: 24rpx;
+  border: 1rpx solid #f0dcd3;
+  border-radius: 20rpx;
+  background: #ffffff;
+}
+
+.printers-toolbar,
+.printers-error,
+.printers-pagination {
+  justify-content: space-between;
+}
+
+.printers-title,
+.dialog-title {
+  display: block;
+  color: #5a4038;
+  font-size: 32rpx;
+  font-weight: 600;
+}
+
+.printers-copy {
+  display: block;
+  margin-top: 8rpx;
+  color: #806d65;
+  font-size: 24rpx;
+}
+
+.printers-notice,
+.printers-error,
+printer-list,
+.printers-pagination {
+  margin-top: 24rpx;
+}
+
+.printers-notice {
+  flex-wrap: wrap;
+  color: #8a5d42;
+}
+
+.printers-error {
+  color: #a34f46;
+}
+
+.printers-pagination {
+  color: #755f57;
+  font-size: 24rpx;
+}
+
+.dialog-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40rpx;
+  background: rgba(75, 54, 47, 0.35);
+}
+
+.dialog-card {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 32rpx;
+  border-radius: 24rpx;
+  background: #ffffff;
+}
+
+.dialog-card input {
+  margin-top: 20rpx;
+  padding: 18rpx 20rpx;
+  border-radius: 14rpx;
+  background: #fff6ef;
+}
+
+.dialog-card button {
+  margin-top: 20rpx;
+}
+
+.dialog-cancel {
+  color: #806d65;
+}

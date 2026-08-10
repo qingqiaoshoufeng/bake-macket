@@ -275,7 +275,7 @@ describe('BannerService admin contract', () => {
     );
     expect(audit.record).toHaveBeenCalledWith(
       expect.objectContaining({
-        adminUserId: 'admin-1',
+        actor: { type: 'ADMIN', adminUserId: 'admin-1' },
         targetEntity: 'banners',
         targetId: 'banner-1',
         action: 'BANNER_CREATED',
@@ -319,7 +319,7 @@ describe('BannerService admin contract', () => {
 
     expect(audit.record).toHaveBeenCalledWith(
       {
-        adminUserId: 'admin-1',
+        actor: { type: 'ADMIN', adminUserId: 'admin-1' },
         targetEntity: 'banners',
         targetId: 'banner-1',
         action: 'BANNER_DELETED',

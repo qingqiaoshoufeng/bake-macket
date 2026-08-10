@@ -1,0 +1,24 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "allowJs": false,
+    "checkJs": false,
+    "noEmit": true,
+    "types": ["miniprogram-api-typings"],
+    "baseUrl": ".",
+    "paths": {
+      "@bake-mall/contracts": ["../../packages/shared-contracts/src/index.ts"]
+    }
+  },
+  "include": [
+    "app.ts",
+    "config/**/*.d.ts",
+    "admin/**/*.ts",
+    "pages/**/*.ts",
+    "utils/**/*.ts",
+    "types/**/*.d.ts"
+  ],
+  "exclude": ["**/*.spec.ts", "node_modules"]
+}

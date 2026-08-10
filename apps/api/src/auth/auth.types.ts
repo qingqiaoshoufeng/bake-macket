@@ -1,14 +1,14 @@
 import { JWT_ADMIN_AUDIENCE, JWT_USER_AUDIENCE } from './auth.constants.js';
 
 /**
- * Shape attached to `request.user` by {@link JwtUserGuard}. Only the minimum
- * identity needed by downstream handlers (creating orders, binding phone, …)
- * is carried in the token and forwarded to the controller via
- * {@link CurrentUser}.
+ * Shape attached to `request.user` by {@link JwtUserGuard}. The guard builds
+ * this principal from the persisted user row after validating the token, so
+ * downstream handlers never authorize against stale token identity fields.
  */
 export type AuthenticatedUser = {
   id: string;
   phone: string | null;
+  phoneVerified: boolean;
 };
 
 /**
@@ -18,7 +18,11 @@ export type AuthenticatedUser = {
  */
 export type AuthenticatedAdmin = {
   id: string;
-  email: string;
+  username: string | null;
+  role: import('@bake-mall/contracts').AdminRole;
+  linkedUserId: string | null;
+  mustChangePassword: boolean;
+  permissions: readonly import('@bake-mall/contracts').AdminPermission[];
 };
 
 /**
@@ -29,6 +33,7 @@ export type UserJwtPayload = {
   sub: string;
   aud: typeof JWT_USER_AUDIENCE;
   phone: string | null;
+  tokenVersion: number;
 };
 
 /**
@@ -38,7 +43,10 @@ export type UserJwtPayload = {
 export type AdminJwtPayload = {
   sub: string;
   aud: typeof JWT_ADMIN_AUDIENCE;
-  email: string;
+  role: import('@bake-mall/contracts').AdminRole;
+  tokenVersion: number;
+  linkedUserId: string | null;
+  mustChangePassword: boolean;
 };
 
 /**

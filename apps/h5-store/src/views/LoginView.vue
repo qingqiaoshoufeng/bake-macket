@@ -42,6 +42,7 @@ defineExpose({ phone: login.data.phone, code: login.data.code });
       @submit="submit"
       @prefill="login.methods.prefill"
       @test-wechat="login.methods.testWechatCode"
+      @request-phone-credential="login.methods.requestPhoneCredential"
     />
   </StorePage>
 </template>

@@ -10,8 +10,10 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
+import { DataSource } from 'typeorm';
 import {
   AdminOrderExportView,
+  AdminRole,
   ApiErrorCode,
   BooleanFilter,
   FulfillmentType,
@@ -34,6 +36,7 @@ import {
   JWT_ADMIN_AUDIENCE,
   JWT_USER_AUDIENCE,
 } from '../src/auth/auth.constants.js';
+import { AdminUser } from '../src/database/entities/admin-user.entity.js';
 import { AdminOrderExportService } from '../src/orders/admin-order-export.service.js';
 import { AdminOrderQueryService } from '../src/orders/admin-order-query.service.js';
 import { AdminOrdersController } from '../src/orders/admin-orders.controller.js';
@@ -44,6 +47,20 @@ const USER_SECRET = 'admin-order-export-user-secret';
 const XLSX_MIME =
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 const FILE_BUFFER = Buffer.from('mock-xlsx-buffer');
+const persistedAdmin = {
+  id: '42',
+  username: 'admin@example.test',
+  role: AdminRole.SUPER_ADMIN,
+  linkedUserId: null,
+  isActive: true,
+  mustChangePassword: false,
+  tokenVersion: 1,
+} as AdminUser;
+const adminRepo = {
+  findOne: vi.fn(async ({ where }: { where: { id?: string } }) =>
+    where.id === persistedAdmin.id ? persistedAdmin : null,
+  ),
+};
 
 const orders = {
   listAll: vi.fn(),
@@ -85,6 +102,10 @@ describe('Admin order supply and export controller (e2e)', () => {
             },
           },
         },
+        {
+          provide: DataSource,
+          useValue: { getRepository: () => adminRepo },
+        },
         { provide: OrdersService, useValue: orders },
         { provide: AdminOrderQueryService, useValue: orderQueries },
         { provide: AdminOrderExportService, useValue: orderExports },
@@ -106,9 +127,12 @@ describe('Admin order supply and export controller (e2e)', () => {
 
     adminAuthorization = `Bearer ${await jwt.signAsync(
       {
-        sub: 'admin-42',
-        email: 'admin@example.test',
+        sub: persistedAdmin.id,
         aud: JWT_ADMIN_AUDIENCE,
+        role: persistedAdmin.role,
+        tokenVersion: persistedAdmin.tokenVersion,
+        linkedUserId: persistedAdmin.linkedUserId,
+        mustChangePassword: persistedAdmin.mustChangePassword,
       },
       { secret: ADMIN_SECRET },
     )}`;
@@ -250,7 +274,7 @@ describe('Admin order supply and export controller (e2e)', () => {
 
     expect(response.body).toEqual(FILE_BUFFER);
     expect(audit.record).toHaveBeenCalledWith({
-      adminUserId: 'admin-42',
+      actor: { type: 'ADMIN', adminUserId: persistedAdmin.id },
       targetEntity: 'ORDER_EXPORT',
       targetId: AdminOrderExportView.ORDER,
       action: 'EXPORT',

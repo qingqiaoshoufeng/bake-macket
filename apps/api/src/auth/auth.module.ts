@@ -3,13 +3,25 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
+import { AuditModule } from '../audit/audit.module.js';
 import { type AppConfig } from '../config/env.schema.js';
+import { AdminLoginVerificationBucket } from '../database/entities/admin-login-verification-bucket.entity.js';
 import { AdminUser } from '../database/entities/admin-user.entity.js';
 import { User } from '../database/entities/user.entity.js';
+import { WechatCredentialUse } from '../database/entities/wechat-credential-use.entity.js';
+import { AdminUsersController } from '../users/admin-users.controller.js';
+import { AdminUsersService } from '../users/admin-users.service.js';
+import { UsersModule } from '../users/users.module.js';
 import { AdminAuthController } from './admin-auth.controller.js';
 import { AdminAuthService } from './admin-auth.service.js';
+import { AdminPermissionGuard } from './admin-permission.guard.js';
+import { AdminVerificationService } from './admin-verification.service.js';
+import { JwtAdminGuard } from './admin-jwt.guard.js';
+import { JwtUserGuard } from './user-jwt.guard.js';
 import { AuthController } from './auth.controller.js';
 import { UserAuthService } from './user-auth.service.js';
+import { WechatAuthAdapter } from './wechat-auth.adapter.js';
+import { WechatAuthService } from './wechat-auth.service.js';
 
 /**
  * Auth module wires two isolated JWT signing strategies under a single
@@ -27,7 +39,14 @@ import { UserAuthService } from './user-auth.service.js';
  */
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, AdminUser]),
+    UsersModule,
+    AuditModule,
+    TypeOrmModule.forFeature([
+      User,
+      AdminUser,
+      AdminLoginVerificationBucket,
+      WechatCredentialUse,
+    ]),
     JwtModule.registerAsync({
       global: true,
       imports: [ConfigModule],
@@ -48,8 +67,28 @@ import { UserAuthService } from './user-auth.service.js';
       },
     }),
   ],
-  controllers: [AuthController, AdminAuthController],
-  providers: [UserAuthService, AdminAuthService],
-  exports: [UserAuthService, AdminAuthService, JwtModule],
+  controllers: [AuthController, AdminAuthController, AdminUsersController],
+  providers: [
+    UserAuthService,
+    WechatAuthAdapter,
+    WechatAuthService,
+    AdminUsersService,
+    AdminAuthService,
+    AdminVerificationService,
+    JwtUserGuard,
+    JwtAdminGuard,
+    AdminPermissionGuard,
+  ],
+  exports: [
+    UserAuthService,
+    WechatAuthService,
+    AdminAuthService,
+    AdminVerificationService,
+    JwtUserGuard,
+    JwtAdminGuard,
+    AdminPermissionGuard,
+    JwtModule,
+    AuditModule,
+  ],
 })
 export class AuthModule {}

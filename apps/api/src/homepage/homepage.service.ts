@@ -77,7 +77,9 @@ const isHomepageLink = (value: unknown): value is HomepageLink => {
   );
 };
 
-function assertDraftStructure(value: unknown): asserts value is HomepageDraftConfig {
+function assertDraftStructure(
+  value: unknown,
+): asserts value is HomepageDraftConfig {
   if (!isRecord(value) || value.schemaVersion !== 1) {
     throw new BadRequestException('首页草稿版本或根结构无效');
   }
@@ -167,7 +169,10 @@ function assertDraftStructure(value: unknown): asserts value is HomepageDraftCon
     ...shortcutGrid.items.map(({ id }) => id),
     ...imageBlocks.map(({ id }) => id),
   ];
-  if (ids.some((id) => !isNonEmptyText(id)) || new Set(ids).size !== ids.length) {
+  if (
+    ids.some((id) => !isNonEmptyText(id)) ||
+    new Set(ids).size !== ids.length
+  ) {
     throw new BadRequestException('首页配置 ID 不能为空或重复');
   }
 }
@@ -190,12 +195,27 @@ const collectDraftIssues = (
   config: HomepageDraftConfig,
 ): HomepageValidationIssue[] => [
   ...(config.hero.slides.length === 0
-    ? [issue('HERO_EMPTY', '请至少配置一张首屏轮播图', config.hero.id, 'slides')]
+    ? [
+        issue(
+          'HERO_EMPTY',
+          '请至少配置一张首屏轮播图',
+          config.hero.id,
+          'slides',
+        ),
+      ]
     : []),
   ...config.hero.slides.flatMap((slide) =>
     slide.image
       ? []
-      : [issue('HERO_IMAGE_REQUIRED', '请上传轮播图片', config.hero.id, 'image', slide.id)],
+      : [
+          issue(
+            'HERO_IMAGE_REQUIRED',
+            '请上传轮播图片',
+            config.hero.id,
+            'image',
+            slide.id,
+          ),
+        ],
   ),
   ...(!config.customerService.wechatQrCode
     ? [
@@ -208,7 +228,14 @@ const collectDraftIssues = (
       ]
     : []),
   ...(!isNonEmptyText(config.customerService.phone)
-    ? [issue('CUSTOMER_PHONE_REQUIRED', '请填写客服电话', config.customerService.id, 'phone')]
+    ? [
+        issue(
+          'CUSTOMER_PHONE_REQUIRED',
+          '请填写客服电话',
+          config.customerService.id,
+          'phone',
+        ),
+      ]
     : []),
   ...(!isNonEmptyText(config.customerService.serviceHours)
     ? [
@@ -232,10 +259,26 @@ const collectDraftIssues = (
     : []),
   ...config.shortcutGrid.items.flatMap((item) => [
     ...(!isNonEmptyText(item.label)
-      ? [issue('SHORTCUT_LABEL_REQUIRED', '请填写宫格名称', config.shortcutGrid.id, 'label', item.id)]
+      ? [
+          issue(
+            'SHORTCUT_LABEL_REQUIRED',
+            '请填写宫格名称',
+            config.shortcutGrid.id,
+            'label',
+            item.id,
+          ),
+        ]
       : []),
     ...(!item.image
-      ? [issue('SHORTCUT_IMAGE_REQUIRED', '请上传宫格图片', config.shortcutGrid.id, 'image', item.id)]
+      ? [
+          issue(
+            'SHORTCUT_IMAGE_REQUIRED',
+            '请上传宫格图片',
+            config.shortcutGrid.id,
+            'image',
+            item.id,
+          ),
+        ]
       : []),
   ]),
   ...config.imageBlocks.flatMap((block) =>
@@ -304,7 +347,9 @@ const collectChangedSectionIds = (
     [before.customerService, after.customerService],
     [before.shortcutGrid, after.shortcutGrid],
   ]
-    .filter(([previous, next]) => JSON.stringify(previous) !== JSON.stringify(next))
+    .filter(
+      ([previous, next]) => JSON.stringify(previous) !== JSON.stringify(next),
+    )
     .map(([, next]) => next.id)
     .concat(
       JSON.stringify(before.imageBlocks) === JSON.stringify(after.imageBlocks)
@@ -317,7 +362,8 @@ const toIso = (date: Date | null): string | undefined => date?.toISOString();
 
 const toPublishedConfig = (
   config: HomepageDraftConfig,
-): HomepagePublishedConfig => structuredClone(config) as HomepagePublishedConfig;
+): HomepagePublishedConfig =>
+  structuredClone(config) as HomepagePublishedConfig;
 
 const toPublicConfig = (
   config: HomepagePublishedConfig,
@@ -423,7 +469,7 @@ export class HomepageService {
       const saved = await this.requirePage(pages);
       await this.audit.record(
         {
-          adminUserId,
+          actor: { type: 'ADMIN', adminUserId },
           targetEntity: 'homepage_pages',
           targetId: saved.id,
           action: 'HOMEPAGE_DRAFT_SAVED',
@@ -447,7 +493,8 @@ export class HomepageService {
     return this.dataSource.transaction(async (manager) => {
       const pages = manager.getRepository(HomepagePage);
       const page = await this.requirePage(pages, manager);
-      if (page.version !== request.version) this.throwVersionConflict(page.version);
+      if (page.version !== request.version)
+        this.throwVersionConflict(page.version);
       const issues = [
         ...collectDraftIssues(page.draftConfig),
         ...(await this.collectTargetIssues(page.draftConfig, manager)),
@@ -474,7 +521,7 @@ export class HomepageService {
       const saved = await pages.save(page);
       await this.audit.record(
         {
-          adminUserId,
+          actor: { type: 'ADMIN', adminUserId },
           targetEntity: 'homepage_pages',
           targetId: saved.id,
           action: 'HOMEPAGE_PUBLISHED',

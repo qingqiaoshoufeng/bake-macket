@@ -6,6 +6,7 @@ import { Global, Module } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
 import {
+  AdminRole,
   ApiErrorCode,
   FulfillmentType,
   OrderStatus,
@@ -217,7 +218,27 @@ class FakeDatabaseModule {}
  * provides.
  */
 function buildFakeDataSource(stubs: Record<string, any>) {
+  const moduleOnlyRepository = memoryRepository();
+  const repositories = new Map<unknown, ReturnType<typeof memoryRepository>>([
+    [User, stubs.users],
+    [AdminUser, stubs.adminUsers],
+    [Order, stubs.orders],
+    [OrderItem, stubs.orderItems],
+    [CartItem, stubs.cartItems],
+    [Sku, stubs.skus],
+    [Address, stubs.addresses],
+    [IdempotencyRecord, stubs.idempotency],
+    [AuditLog, stubs.audit],
+    [Product, stubs.products],
+    [Category, stubs.categories],
+    [MemberAccount, stubs.memberAccounts],
+    [UserMembership, stubs.memberships],
+  ]);
   return {
+    entityMetadatas: [],
+    options: { type: 'mysql' },
+    getRepository: (entity: unknown) =>
+      repositories.get(entity) ?? moduleOnlyRepository,
     transaction: async <T>(
       callback: (manager: unknown) => Promise<T>,
     ): Promise<T> => {
@@ -242,8 +263,24 @@ function buildFakeDataSource(stubs: Record<string, any>) {
       const idempotencyInsertCount = stubs.idempotency.records.length;
       const auditInsertCount = stubs.audit.records.length;
       const cartInsertCount = stubs.cartItems.records.length;
+      const memberAccountInsertCount = stubs.memberAccounts.records.length;
 
       const manager = {
+        query: async (_sql: string, parameters: unknown[]) => {
+          const userId = String(parameters[0]);
+          const existing = stubs.memberAccounts.records.some(
+            (account: MemberAccount) => account.userId === userId,
+          );
+          if (!existing) {
+            await stubs.memberAccounts.save({
+              userId,
+              activeMembershipId: null,
+              availableCreditCents: 0,
+              version: 1,
+            });
+          }
+          return { affectedRows: 1 };
+        },
         getRepository: (entity: { name: string }) => {
           const map: Record<string, ReturnType<typeof memoryRepository>> = {
             User: stubs.users,
@@ -315,6 +352,7 @@ function buildFakeDataSource(stubs: Record<string, any>) {
         stubs.idempotency.records.length = idempotencyInsertCount;
         stubs.audit.records.length = auditInsertCount;
         stubs.cartItems.records.length = cartInsertCount;
+        stubs.memberAccounts.records.length = memberAccountInsertCount;
         void skuInsertSnapshots;
         void cartInsertSnapshots;
         throw err;
@@ -372,16 +410,19 @@ describe('Orders domain (e2e)', () => {
     };
 
     await stubs.users.save({
-      id: 'user-1',
+      id: '1',
       phone: '13800000000',
       phoneVerified: true,
+      isActive: true,
+      mergedIntoUserId: null,
+      tokenVersion: 1,
       nickname: 'Cake Fan',
       avatarUrl: null,
       wechatOpenid: null,
       wechatUnionid: null,
     } as User);
     await stubs.users.save({
-      id: 'user-2',
+      id: '2',
       phone: '13900000000',
       phoneVerified: true,
       nickname: 'Pie Lover',
@@ -428,7 +469,7 @@ describe('Orders domain (e2e)', () => {
     } as unknown as Sku);
     await stubs.addresses.save({
       id: 'address-1',
-      userId: 'user-1',
+      userId: '1',
       recipient: 'Alice',
       phone: '13800000000',
       province: 'Zhejiang',
@@ -438,10 +479,14 @@ describe('Orders domain (e2e)', () => {
       isDefault: true,
     } as Address);
     await stubs.adminUsers.save({
-      id: 'admin-1',
+      id: '1',
       username: 'admin@example.test',
+      role: AdminRole.SUPER_ADMIN,
+      linkedUserId: null,
       passwordHash: 'irrelevant',
       isActive: true,
+      mustChangePassword: false,
+      tokenVersion: 1,
     } as AdminUser);
 
     fakeDataSource = buildFakeDataSource(stubs);
@@ -524,16 +569,24 @@ describe('Orders domain (e2e)', () => {
     const config = app.get<ConfigService<AppConfig, true>>(ConfigService);
     userHeaders = {
       Authorization: `Bearer ${await jwt.signAsync(
-        { sub: 'user-1', phone: '13800000000', aud: JWT_USER_AUDIENCE },
+        {
+          sub: '1',
+          phone: '13800000000',
+          aud: JWT_USER_AUDIENCE,
+          tokenVersion: 1,
+        },
         { secret: config.get('appEnv', { infer: true }).JWT_USER_SECRET },
       )}`,
     };
     adminHeaders = {
       Authorization: `Bearer ${await jwt.signAsync(
         {
-          sub: 'admin-1',
-          email: 'admin@example.test',
+          sub: '1',
           aud: JWT_ADMIN_AUDIENCE,
+          role: AdminRole.SUPER_ADMIN,
+          tokenVersion: 1,
+          linkedUserId: null,
+          mustChangePassword: false,
         },
         { secret: config.get('appEnv', { infer: true }).JWT_ADMIN_SECRET },
       )}`,
@@ -589,12 +642,12 @@ describe('Orders domain (e2e)', () => {
     return {
       requestedCreditCents: 0,
       quoteToken: quoteTokens.issue({
-        userId: 'user-1',
+        userId: '1',
         cart,
         requestedCreditCents: 0,
         membershipId: null,
         membershipVersion: null,
-        accountVersion: null,
+        accountVersion: 1,
         pricingVersion: 1,
       }).token,
     };
@@ -642,7 +695,7 @@ describe('Orders domain (e2e)', () => {
 
   it('rejects missing quote intent with 400 before opening a transaction', async () => {
     stubs.cartItems.records.length = 0;
-    const cart = await seedCart('user-1', [{ skuId: 'sku-1', quantity: 1 }]);
+    const cart = await seedCart('1', [{ skuId: 'sku-1', quantity: 1 }]);
     const transaction = vi.spyOn(fakeDataSource, 'transaction');
 
     const { requestedCreditCents, quoteToken, ...requestWithoutQuote } =
@@ -664,7 +717,7 @@ describe('Orders domain (e2e)', () => {
 
   it('rejects explicit null quote fields with 400 before opening a transaction', async () => {
     stubs.cartItems.records.length = 0;
-    const cart = await seedCart('user-1', [{ skuId: 'sku-1', quantity: 1 }]);
+    const cart = await seedCart('1', [{ skuId: 'sku-1', quantity: 1 }]);
     const transaction = vi.spyOn(fakeDataSource, 'transaction');
 
     await request(app.getHttpServer())
@@ -686,7 +739,7 @@ describe('Orders domain (e2e)', () => {
   it('rolls back every SKU decrement when one cart item has insufficient stock', async () => {
     setStock('sku-1', 1);
     setStock('sku-2', 1);
-    const cart = await seedCart('user-1', [
+    const cart = await seedCart('1', [
       { skuId: 'sku-1', quantity: 1 },
       { skuId: 'sku-2', quantity: 2 },
     ]);
@@ -714,7 +767,7 @@ describe('Orders domain (e2e)', () => {
     setStock('sku-1', 5);
     setStock('sku-2', 5);
     stubs.cartItems.records.length = 0;
-    const cart = await seedCart('user-1', [{ skuId: 'sku-1', quantity: 2 }]);
+    const cart = await seedCart('1', [{ skuId: 'sku-1', quantity: 2 }]);
     const cartIds = cart.map(
       (c: CartItem) => (c as CartItem & { id: string }).id,
     );
@@ -744,7 +797,7 @@ describe('Orders domain (e2e)', () => {
   it('rejects NEW→COMPLETED with 422 INVALID_ORDER_TRANSITION but accepts PROCESSING→COMPLETED', async () => {
     setStock('sku-1', 5);
     stubs.cartItems.records.length = 0;
-    const cart = await seedCart('user-1', [{ skuId: 'sku-1', quantity: 1 }]);
+    const cart = await seedCart('1', [{ skuId: 'sku-1', quantity: 1 }]);
     const cartIds = cart.map(
       (c: CartItem) => (c as CartItem & { id: string }).id,
     );
@@ -801,7 +854,7 @@ describe('Orders domain (e2e)', () => {
     // against the order itself must 404 because the route does not exist.
     setStock('sku-1', 5);
     stubs.cartItems.records.length = 0;
-    const cart = await seedCart('user-1', [{ skuId: 'sku-1', quantity: 1 }]);
+    const cart = await seedCart('1', [{ skuId: 'sku-1', quantity: 1 }]);
     const cartIds = cart.map(
       (c: CartItem) => (c as CartItem & { id: string }).id,
     );
@@ -830,7 +883,7 @@ describe('Orders domain (e2e)', () => {
     setStock('sku-1', 5);
     stubs.cartItems.records.length = 0;
     const auditBefore = stubs.audit.records.length;
-    const cart = await seedCart('user-1', [{ skuId: 'sku-1', quantity: 1 }]);
+    const cart = await seedCart('1', [{ skuId: 'sku-1', quantity: 1 }]);
     const cartIds = cart.map(
       (c: CartItem) => (c as CartItem & { id: string }).id,
     );
@@ -879,7 +932,7 @@ describe('Orders domain (e2e)', () => {
     setStock('sku-1', 10);
     setStock('sku-2', 10);
     stubs.cartItems.records.length = 0;
-    const cart = await seedCart('user-1', [
+    const cart = await seedCart('1', [
       { skuId: 'sku-1', quantity: 1 },
       { skuId: 'sku-2', quantity: 2 },
     ]);
@@ -942,9 +995,7 @@ describe('Orders domain (e2e)', () => {
     // Re-seed the cart for the DELIVERY flow since the pickup order cleared
     // the source items.
     stubs.cartItems.records.length = 0;
-    const deliveryCart = await seedCart('user-1', [
-      { skuId: 'sku-1', quantity: 1 },
-    ]);
+    const deliveryCart = await seedCart('1', [{ skuId: 'sku-1', quantity: 1 }]);
     const deliveryCartIds = deliveryCart.map((c) => (c as { id: string }).id);
 
     const delivery = await request(app.getHttpServer())
@@ -963,9 +1014,12 @@ describe('Orders domain (e2e)', () => {
 
   it('rejects an order without a verified phone', async () => {
     await stubs.users.save({
-      id: 'user-3',
+      id: '3',
       phone: null,
       phoneVerified: false,
+      isActive: true,
+      mergedIntoUserId: null,
+      tokenVersion: 1,
       nickname: 'No phone',
       avatarUrl: null,
       wechatOpenid: null,
@@ -975,13 +1029,18 @@ describe('Orders domain (e2e)', () => {
     const config = app.get<ConfigService<AppConfig, true>>(ConfigService);
     const headers = {
       Authorization: `Bearer ${await jwt.signAsync(
-        { sub: 'user-3', phone: null, aud: JWT_USER_AUDIENCE },
+        {
+          sub: '3',
+          phone: null,
+          aud: JWT_USER_AUDIENCE,
+          tokenVersion: 1,
+        },
         { secret: config.get('appEnv', { infer: true }).JWT_USER_SECRET },
       )}`,
     };
-    await seedCart('user-3', [{ skuId: 'sku-1', quantity: 1 }]);
+    await seedCart('3', [{ skuId: 'sku-1', quantity: 1 }]);
     const cartIds = stubs.cartItems.records
-      .filter((c: any) => c.userId === 'user-3')
+      .filter((c: any) => c.userId === '3')
       .map((c: any) => c.id);
     const response = await request(app.getHttpServer())
       .post('/api/v1/orders')

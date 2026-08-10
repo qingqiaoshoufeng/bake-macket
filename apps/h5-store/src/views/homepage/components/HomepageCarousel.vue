@@ -1,8 +1,5 @@
 <script setup lang="ts">
-import type {
-  HomepageHeroSection,
-  HomepageLink,
-} from '@bake-mall/contracts';
+import type { HomepageHeroSection, HomepageLink } from '@bake-mall/contracts';
 import { Swipe, SwipeItem } from 'vant';
 import { computed, ref } from 'vue';
 
@@ -15,9 +12,13 @@ const emit = defineEmits<{
 }>();
 
 const failedImages = ref<ReadonlySet<string>>(new Set());
-const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const reducedMotion = window.matchMedia(
+  '(prefers-reduced-motion: reduce)',
+).matches;
 const autoplay = computed(() =>
-  reducedMotion || props.section.slides.length <= 1 ? 0 : props.section.autoplayMs,
+  reducedMotion || props.section.slides.length <= 1
+    ? 0
+    : props.section.autoplayMs,
 );
 
 function markImageFailed(slideId: string): void {
@@ -26,7 +27,14 @@ function markImageFailed(slideId: string): void {
 </script>
 
 <template>
-  <section v-if="section.enabled" class="homepage-carousel" aria-label="首页轮播">
+  <section
+    v-if="
+      section.enabled &&
+      section.slides.some(({ image }) => image.imageUrl.trim().length > 0)
+    "
+    class="homepage-carousel"
+    aria-label="首页轮播"
+  >
     <Swipe
       :autoplay="autoplay"
       :show-indicators="section.slides.length > 1"
@@ -45,7 +53,9 @@ function markImageFailed(slideId: string): void {
             :alt="slide.altText || slide.title"
             @error="markImageFailed(slide.id)"
           />
-          <span v-else class="homepage-carousel__fallback">图片暂时无法显示</span>
+          <span v-else class="homepage-carousel__fallback"
+            >图片暂时无法显示</span
+          >
           <span class="homepage-carousel__shade" aria-hidden="true" />
           <span
             v-if="slide.title || slide.subtitle"

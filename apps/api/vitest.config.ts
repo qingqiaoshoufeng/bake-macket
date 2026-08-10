@@ -24,7 +24,11 @@ export default defineConfig({
   test: {
     globals: false,
     environment: 'node',
-    include: ['test/**/*.e2e-spec.ts', 'src/**/*.spec.ts'],
+    include: [
+      'test/**/*.e2e-spec.ts',
+      'test/fakes/**/*.spec.ts',
+      'src/**/*.spec.ts',
+    ],
     testTimeout: 30000,
   },
   resolve: {

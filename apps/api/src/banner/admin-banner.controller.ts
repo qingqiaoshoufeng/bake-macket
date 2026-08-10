@@ -18,6 +18,7 @@ import type {
   SaveBannerRequest,
 } from '@bake-mall/contracts';
 
+import { AdminPermissionGuard } from '../auth/admin-permission.guard.js';
 import { JwtAdminGuard } from '../auth/admin-jwt.guard.js';
 import type { AuthenticatedAdmin } from '../auth/auth.types.js';
 import { CurrentAdmin } from '../auth/current-user.decorator.js';
@@ -26,7 +27,7 @@ import { AdminBannerListQueryDto } from './dto/admin-banner-list-query.dto.js';
 import { SaveBannerDto } from './dto.js';
 
 @Controller('admin/banners')
-@UseGuards(JwtAdminGuard)
+@UseGuards(JwtAdminGuard, AdminPermissionGuard)
 export class AdminBannerController {
   constructor(private readonly banners: BannerService) {}
 

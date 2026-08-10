@@ -1,6 +1,12 @@
 import { readFileSync } from 'node:fs';
 
-import { mount } from '@vue/test-utils';
+import {
+  AdminRole,
+  OPERATOR_PERMISSIONS,
+  SUPER_ADMIN_PERMISSIONS,
+  type AdminSessionView,
+} from '@bake-mall/contracts';
+import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { h } from 'vue';
 import { createMemoryHistory, createRouter, RouterView } from 'vue-router';
@@ -44,6 +50,14 @@ function createTestRouter() {
               layoutMode: 'workspace',
             },
           },
+          {
+            path: 'admin-password',
+            component: {
+              template:
+                '<div data-testid="admin-password-child">修改密码内容</div>',
+            },
+            meta: { requiresAdminAuth: true, title: '修改密码' },
+          },
         ],
       },
     ],
@@ -55,10 +69,32 @@ function createTestRouter() {
   return router;
 }
 
-async function mountAdminLayoutAt(path: string) {
+const superAdminSession: AdminSessionView = {
+  accessToken: 'admin-token',
+  expiresAt: '2026-08-06T12:00:00.000Z',
+  role: AdminRole.SUPER_ADMIN,
+  permissions: SUPER_ADMIN_PERMISSIONS,
+  mustChangePassword: false,
+};
+
+const operatorSession: AdminSessionView = {
+  accessToken: 'operator-token',
+  expiresAt: '2026-08-06T12:00:00.000Z',
+  role: AdminRole.OPERATOR,
+  permissions: OPERATOR_PERMISSIONS,
+  mustChangePassword: false,
+};
+
+async function mountAdminLayoutAt(
+  path: string,
+  session: AdminSessionView = superAdminSession,
+) {
   const pinia = createPinia();
   setActivePinia(pinia);
-  useAdminAuthStore(pinia).accessToken = 'admin-token';
+  useAdminAuthStore(pinia).applySession(session, {
+    identifier:
+      session.role === AdminRole.OPERATOR ? '13800000000' : 'admin@example.com',
+  });
   const router = createTestRouter();
   await router.push(path);
   await router.isReady();
@@ -77,6 +113,41 @@ async function mountAdminLayoutAtEditor() {
 }
 
 describe('AdminLayout', () => {
+  it('shows only permission-backed navigation for operators', async () => {
+    const { wrapper } = await mountAdminLayoutAt(
+      '/membership-purchases',
+      operatorSession,
+    );
+
+    expect(wrapper.findAll('.el-menu-item').map((item) => item.text())).toEqual(
+      ['订单', '用户', '打印设备', '打印记录'],
+    );
+    expect(wrapper.text()).toContain('13800000000');
+    expect(wrapper.text()).not.toContain('商品');
+  });
+
+  it('keeps the complete navigation visible for SUPER_ADMIN', async () => {
+    const { wrapper } = await mountAdminLayoutAtEditor();
+
+    expect(wrapper.findAll('.el-menu-item')).toHaveLength(11);
+    expect(wrapper.text()).toContain('商品');
+    expect(wrapper.text()).toContain('用户');
+    expect(wrapper.text()).toContain('打印设备');
+    expect(wrapper.text()).toContain('会员卡配置');
+  });
+
+  it('provides a discoverable password-change action for complete sessions', async () => {
+    const { router, wrapper } = await mountAdminLayoutAt(
+      '/membership-purchases',
+      operatorSession,
+    );
+
+    await wrapper.get('[data-testid="admin-change-password"]').trigger('click');
+    await flushPromises();
+
+    expect(router.currentRoute.value.fullPath).toBe('/admin-password');
+  });
+
   it('renders the matched editor title and highlights products', async () => {
     const { wrapper } = await mountAdminLayoutAtEditor();
 

@@ -10,13 +10,14 @@ import {
   UseGuards,
 } from '@nestjs/common';
 
+import { AdminPermissionGuard } from '../auth/admin-permission.guard.js';
 import { JwtAdminGuard } from '../auth/admin-jwt.guard.js';
 import { CatalogService } from './catalog.service.js';
 import { AdminCategoryListQueryDto } from './dto/admin-category-list-query.dto.js';
 import { CreateCategoryDto, UpdateCategoryDto } from './dto/category.dto.js';
 
 @Controller('admin/categories')
-@UseGuards(JwtAdminGuard)
+@UseGuards(JwtAdminGuard, AdminPermissionGuard)
 export class AdminCategoriesController {
   constructor(private readonly catalog: CatalogService) {}
 

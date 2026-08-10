@@ -1,0 +1,20 @@
+export type PrinterEncoding = 'GB18030' | 'GBK';
+
+export type PrinterConnection = {
+  write(bytes: ByteArray): Promise<number>;
+  close(): Promise<void>;
+};
+
+export type ConnectPrinter = (
+  host: string,
+  port: number,
+  connectTimeoutMs: number,
+  writeTimeoutMs: number,
+) => Promise<PrinterConnection>;
+
+export type EncodePrinterText = (
+  text: string,
+  encoding: PrinterEncoding,
+) => ByteArray;
+
+export type EncodeCutCommand = (hex: string) => ByteArray;

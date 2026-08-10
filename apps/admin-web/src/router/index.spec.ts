@@ -1,5 +1,13 @@
+import {
+  AdminPermission,
+  AdminRole,
+  OPERATOR_PERMISSIONS,
+  SUPER_ADMIN_PERMISSIONS,
+  type AdminSessionView,
+} from '@bake-mall/contracts';
 import { flushPromises, mount } from '@vue/test-utils';
-import { describe, expect, it } from 'vitest';
+import { createPinia, setActivePinia } from 'pinia';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { createMemoryHistory, createRouter } from 'vue-router';
 
 import CategoriesView from '../views/CategoriesView.vue';
@@ -15,7 +23,10 @@ import MembershipCardsView from '../views/membership-cards/MembershipCardsView.v
 import MembershipPurchasesView from '../views/membership-purchases/MembershipPurchasesView.vue';
 import OrdersView from '../views/orders/OrdersView.vue';
 import ProductEditorView from '../views/products/ProductEditorView.vue';
+import PrintingDevicesView from '../views/printing-devices/PrintingDevicesView.vue';
+import UsersView from '../views/users/UsersView.vue';
 import ProductsView from '../views/products/ProductsView.vue';
+import { useAdminAuthStore } from '../stores/admin-auth.js';
 import { router } from './index.js';
 
 type LazyViewModule = {
@@ -26,13 +37,21 @@ type ExpectedLayoutMode = 'workspace' | 'document';
 
 type LazyViewLoader = () => Promise<LazyViewModule>;
 
+async function resolveView(component: unknown): Promise<unknown> {
+  return typeof component === 'function'
+    ? (await (component as LazyViewLoader)()).default
+    : component;
+}
+
 const layoutCases = [
   ['/categories', 'workspace'],
   ['/products', 'workspace'],
   ['/banners', 'workspace'],
   ['/orders', 'workspace'],
+  ['/users', 'workspace'],
   ['/membership-cards', 'workspace'],
   ['/membership-purchases', 'workspace'],
+  ['/printing/devices', 'workspace'],
   ['/dashboard', 'document'],
   ['/products/new', 'document'],
   ['/products/product-1/edit', 'document'],
@@ -40,6 +59,117 @@ const layoutCases = [
   ['/membership-cards/level-1/edit', 'document'],
   ['/missing', 'document'],
 ] as const satisfies readonly (readonly [string, ExpectedLayoutMode])[];
+
+const operatorSession: AdminSessionView = {
+  accessToken: 'operator-token',
+  expiresAt: '2026-08-06T12:00:00.000Z',
+  role: AdminRole.OPERATOR,
+  permissions: OPERATOR_PERMISSIONS,
+  mustChangePassword: false,
+};
+
+const restrictedOperatorSession: AdminSessionView = {
+  accessToken: 'restricted-token',
+  expiresAt: '2026-08-06T12:00:00.000Z',
+  role: AdminRole.OPERATOR,
+  permissions: [],
+  mustChangePassword: true,
+};
+
+const superAdminSession: AdminSessionView = {
+  accessToken: 'super-token',
+  expiresAt: '2026-08-06T12:00:00.000Z',
+  role: AdminRole.SUPER_ADMIN,
+  permissions: SUPER_ADMIN_PERMISSIONS,
+  mustChangePassword: false,
+};
+
+beforeEach(async () => {
+  setActivePinia(createPinia());
+  window.sessionStorage.clear();
+  await router.replace('/login');
+});
+
+describe('admin permission routing', () => {
+  it('assigns required shared permissions to operator routes', () => {
+    expect(router.resolve('/orders').meta.requiredPermission).toBe(
+      AdminPermission.ORDER_READ,
+    );
+    expect(router.resolve('/users').meta.requiredPermission).toBe(
+      AdminPermission.USER_READ,
+    );
+    expect(router.resolve('/printing/devices').meta.requiredPermission).toBe(
+      AdminPermission.PRINT_DEVICE_MANAGE,
+    );
+    expect(router.resolve('/printing/batches').meta.requiredPermission).toBe(
+      AdminPermission.PRINT_HISTORY_READ,
+    );
+  });
+
+  it.each(['/', '/dashboard'])(
+    'redirects an operator from %s to orders',
+    async (path) => {
+      useAdminAuthStore().applySession(operatorSession, {
+        identifier: '13800000000',
+      });
+
+      await router.push(path);
+
+      expect(router.currentRoute.value.fullPath).toBe('/orders');
+    },
+  );
+
+  it('redirects an operator without permission to orders without looping', async () => {
+    useAdminAuthStore().applySession(operatorSession, {
+      identifier: '13800000000',
+    });
+
+    await router.push('/products');
+    expect(router.currentRoute.value.fullPath).toBe('/orders');
+    await router.push('/orders');
+    expect(router.currentRoute.value.fullPath).toBe('/orders');
+  });
+
+  it('forces must-change sessions to admin-password', async () => {
+    useAdminAuthStore().applySession(restrictedOperatorSession, {
+      identifier: '13800000000',
+    });
+
+    await router.push('/orders');
+
+    expect(router.currentRoute.value.fullPath).toBe('/admin-password');
+  });
+
+  it('allows a complete session to visit ordinary password change', async () => {
+    useAdminAuthStore().applySession(operatorSession, {
+      identifier: '13800000000',
+    });
+
+    await router.push('/admin-password');
+
+    expect(router.currentRoute.value.fullPath).toBe('/admin-password');
+  });
+
+  it('allows an OPERATOR with PRINT_DEVICE_MANAGE to visit printing devices', async () => {
+    useAdminAuthStore().applySession(operatorSession, {
+      identifier: '13800000000',
+    });
+
+    await router.push('/printing/devices');
+
+    expect(router.currentRoute.value.fullPath).toBe('/printing/devices');
+  });
+
+  it('keeps the complete route set available to SUPER_ADMIN', async () => {
+    useAdminAuthStore().applySession(superAdminSession, {
+      identifier: 'admin@example.com',
+    });
+
+    await router.push('/products');
+
+    expect(router.currentRoute.value.fullPath).toBe('/products');
+  });
+});
 
 describe('admin route layout modes', () => {
   it.each(layoutCases)('resolves %s with %s layout', (path, layoutMode) => {
@@ -54,10 +184,7 @@ describe('admin category route', () => {
       .matched.find((record) => record.name === 'admin-categories');
     const component = categoryRecord?.components?.default;
 
-    expect(typeof component).toBe('function');
-
-    const loaded = await (component as LazyViewLoader)();
-    expect(loaded.default).toBe(CategoriesView);
+    expect(await resolveView(component)).toBe(CategoriesView);
   });
 });
 
@@ -70,11 +197,8 @@ describe('admin Banner route', () => {
     const component = routeRecord?.components?.default;
 
     expect(resolved.meta.requiresAdminAuth).toBe(true);
-    expect(resolved.meta.title).toBe('Banner 管理');
-    expect(typeof component).toBe('function');
-
-    const loaded = await (component as LazyViewLoader)();
-    expect(loaded.default).toBe(BannersView);
+    expect(resolved.meta.title).toBe('商品页 Banner');
+    expect(await resolveView(component)).toBe(BannersView);
   });
 });
 
@@ -88,10 +212,46 @@ describe('admin order route', () => {
 
     expect(resolved.meta.requiresAdminAuth).toBe(true);
     expect(resolved.meta.title).toBe('订单管理');
-    expect(typeof component).toBe('function');
+    expect(await resolveView(component)).toBe(OrdersView);
+  });
+});
 
-    const loaded = await (component as LazyViewLoader)();
-    expect(loaded.default).toBe(OrdersView);
+describe('admin users route', () => {
+  it('lazy-loads the protected real user management view', async () => {
+    const resolved = router.resolve('/users');
+    const routeRecord = resolved.matched.find(
+      (record) => record.name === 'admin-users',
+    );
+    const component = routeRecord?.components?.default;
+
+    expect(resolved.meta.requiresAdminAuth).toBe(true);
+    expect(resolved.meta.requiredPermission).toBe(AdminPermission.USER_READ);
+    expect(resolved.meta.title).toBe('用户管理');
+    expect(await resolveView(component)).toBe(UsersView);
+  });
+});
+
+describe('admin printing devices route', () => {
+  it('lazy-loads the protected real printing device management view without replacing future printing routes', async () => {
+    const devices = router.resolve('/printing/devices');
+    const devicesRecord = devices.matched.find(
+      (record) => record.name === 'admin-printing-devices',
+    );
+    const batches = router.resolve('/printing/batches');
+
+    expect(devices.meta.requiresAdminAuth).toBe(true);
+    expect(devices.meta.requiredPermission).toBe(
+      AdminPermission.PRINT_DEVICE_MANAGE,
+    );
+    expect(devices.meta.title).toBe('打印设备');
+    expect(devices.meta.layoutMode).toBe('workspace');
+    expect(await resolveView(devicesRecord?.components?.default)).toBe(
+      PrintingDevicesView,
+    );
+    expect(batches.name).toBe('admin-printing-batches');
+    expect(batches.meta.requiredPermission).toBe(
+      AdminPermission.PRINT_HISTORY_READ,
+    );
   });
 });
 
@@ -126,8 +286,7 @@ describe('admin membership card routes', () => {
 
       expect(resolved.meta.requiresAdminAuth).toBe(true);
       expect(resolved.meta.title).toBe(title);
-      expect(typeof component).toBe('function');
-      expect((await (component as LazyViewLoader)()).default).toBe(view);
+      expect(await resolveView(component)).toBe(view);
     },
   );
 });
@@ -142,10 +301,7 @@ describe('admin membership purchase route', () => {
 
     expect(resolved.meta.requiresAdminAuth).toBe(true);
     expect(resolved.meta.title).toBe('购卡记录');
-    expect(typeof component).toBe('function');
-    expect((await (component as LazyViewLoader)()).default).toBe(
-      MembershipPurchasesView,
-    );
+    expect(await resolveView(component)).toBe(MembershipPurchasesView);
   });
 });
 
@@ -171,10 +327,7 @@ describe('admin product routes', () => {
       expect(resolved.name).toBe(name);
       expect(resolved.meta.requiresAdminAuth).toBe(true);
       expect(resolved.meta.title).toBe(title);
-      expect(typeof component).toBe('function');
-
-      const loaded = await (component as LazyViewLoader)();
-      expect(loaded.default).toBe(view);
+      expect(await resolveView(component)).toBe(view);
     },
   );
 });

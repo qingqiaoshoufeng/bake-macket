@@ -6,7 +6,8 @@ import { createMemoryHistory, createRouter } from 'vue-router';
 
 import {
   DEVELOPMENT_LOGIN_HINT,
-  installMiniappBridge,
+  miniappMessageHub,
+  requestMiniappPhoneCredential,
 } from '../bridge/miniapp.js';
 import LoginView from './LoginView.vue';
 import { useAuthStore } from '../stores/auth.js';
@@ -25,7 +26,11 @@ vi.mock('../bridge/miniapp.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../bridge/miniapp.js')>();
   return {
     ...actual,
-    installMiniappBridge: vi.fn(() => vi.fn()),
+    miniappMessageHub: {
+      publish: vi.fn(),
+      subscribe: vi.fn(() => vi.fn()),
+    },
+    requestMiniappPhoneCredential: vi.fn(async () => true),
   };
 });
 
@@ -60,14 +65,14 @@ afterEach(() => {
 });
 
 describe('LoginView', () => {
-  it('removes the miniapp message listener when the view unmounts', async () => {
-    const teardown = vi.fn();
-    vi.mocked(installMiniappBridge).mockReturnValueOnce(teardown);
+  it('subscribes to the global in-memory hub and unsubscribes on unmount', async () => {
+    const unsubscribe = vi.fn();
+    vi.mocked(miniappMessageHub.subscribe).mockReturnValueOnce(unsubscribe);
     const { wrapper } = await mountLogin();
 
-    expect(installMiniappBridge).toHaveBeenCalledOnce();
+    expect(miniappMessageHub.subscribe).toHaveBeenCalledOnce();
     wrapper.unmount();
-    expect(teardown).toHaveBeenCalledOnce();
+    expect(unsubscribe).toHaveBeenCalledOnce();
   });
 
   it('renders the shared development credentials', async () => {
@@ -139,6 +144,42 @@ describe('LoginView', () => {
     );
     expect((getCode(wrapper).element as HTMLInputElement).value).toBe(
       DEVELOPMENT_LOGIN_HINT.code,
+    );
+  });
+
+  it('publishes the development WECHAT_CODE directly through the in-memory hub', async () => {
+    const { wrapper } = await mountLogin();
+
+    const devButtons = wrapper.findAll('.login__dev button');
+    await devButtons[1]?.trigger('click');
+
+    expect(miniappMessageHub.publish).toHaveBeenCalledWith({
+      source: 'bake-miniapp',
+      type: 'WECHAT_CODE',
+      code: 'dev-wechat-code',
+    });
+  });
+
+  it('shows a user-facing miniapp phone button and awaits native authorization navigation', async () => {
+    const { wrapper } = await mountLogin();
+
+    const button = wrapper.get('button[data-testid="miniapp-phone-auth"]');
+    expect(button.text()).toContain('微信手机号');
+    await button.trigger('click');
+
+    expect(requestMiniappPhoneCredential).toHaveBeenCalledOnce();
+  });
+
+  it('reports a failed native navigation instead of treating API presence as success', async () => {
+    vi.mocked(requestMiniappPhoneCredential).mockResolvedValueOnce(false);
+    const { showToast } = await import('vant');
+    const { wrapper } = await mountLogin();
+
+    await wrapper
+      .get('button[data-testid="miniapp-phone-auth"]')
+      .trigger('click');
+    await vi.waitFor(() =>
+      expect(showToast).toHaveBeenCalledWith('请在微信小程序中使用手机号授权'),
     );
   });
 });

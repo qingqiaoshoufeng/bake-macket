@@ -1,63 +1,48 @@
+import { AdminRole } from '@bake-mall/contracts';
 import {
   Controller,
-  ForbiddenException,
   Get,
   INestApplication,
+  Post,
   UseGuards,
-  ValidationPipe,
 } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConfigModule } from '@nestjs/config';
+import { JwtModule, JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import bcrypt from 'bcrypt';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import request from 'supertest';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, it, vi } from 'vitest';
 
-import { AdminAuthController } from '../src/auth/admin-auth.controller.js';
-import { AdminAuthService } from '../src/auth/admin-auth.service.js';
-import { AuthController } from '../src/auth/auth.controller.js';
-import { AuthModule } from '../src/auth/auth.module.js';
 import { JwtAdminGuard } from '../src/auth/admin-jwt.guard.js';
-import { UserAuthService } from '../src/auth/user-auth.service.js';
+import {
+  JWT_ADMIN_AUDIENCE,
+  JWT_USER_AUDIENCE,
+} from '../src/auth/auth.constants.js';
+import { JwtUserGuard } from '../src/auth/user-jwt.guard.js';
+import { envSchema } from '../src/config/env.schema.js';
 import { AdminUser } from '../src/database/entities/admin-user.entity.js';
 import { User } from '../src/database/entities/user.entity.js';
-import { envSchema, type AppConfig } from '../src/config/env.schema.js';
 
-/**
- * Cross-cutting e2e spec verifying that user and admin JWTs are strictly
- * isolated: a user audience token must never unlock an admin endpoint, and
- * vice versa. The spec boots a minimal Nest application that wires the real
- * {@link AuthModule} (so the guards, services, and JWT signing are the
- * production code paths) while stubbing the TypeORM repositories.
- */
+const mockUserRepo = (): Partial<Repository<User>> => ({ findOne: vi.fn() });
+const mockAdminRepo = (): Partial<Repository<AdminUser>> => ({
+  findOne: vi.fn(),
+});
 
-// Cast the repository mock through `unknown as any` to keep the type checker
-// happy — the only consumers in this spec are the auth services which only
-// call `findOne` and `save`, and we don't exercise the full TypeORM surface.
-const mockUserRepo = (): Partial<Repository<User>> => {
-  const repo: Record<string, unknown> = {
-    findOne: vi.fn(),
-    save: vi.fn(),
-    create: vi.fn((input?: Partial<User>) => input as User),
-  };
-  return repo as unknown as Partial<Repository<User>>;
-};
-
-const mockAdminRepo = (): Partial<Repository<AdminUser>> => {
-  const repo: Record<string, unknown> = {
-    findOne: vi.fn(),
-    save: vi.fn(),
-    create: vi.fn((input?: Partial<AdminUser>) => input as AdminUser),
-  };
-  return repo as unknown as Partial<Repository<AdminUser>>;
-};
-
-@Controller('admin/categories')
+@Controller('admin/isolation-probe')
 @UseGuards(JwtAdminGuard)
-class AdminCategoriesProbeController {
+class AdminProbeController {
   @Get()
-  list(): { ok: true } {
+  probe() {
+    return { ok: true };
+  }
+}
+
+@Controller('user/isolation-probe')
+@UseGuards(JwtUserGuard)
+class UserProbeController {
+  @Post()
+  probe() {
     return { ok: true };
   }
 }
@@ -68,68 +53,43 @@ describe('Auth isolation (e2e)', () => {
   let adminToken: string;
   let userRepo: Partial<Repository<User>>;
   let adminRepo: Partial<Repository<AdminUser>>;
+  let persistedUser: User;
+  let persistedAdmin: AdminUser;
 
   beforeAll(async () => {
     process.env.NODE_ENV = 'development';
     process.env.JWT_USER_SECRET = 'user-secret-for-isolation-test-suite';
     process.env.JWT_ADMIN_SECRET = 'admin-secret-for-isolation-test-suite';
-    process.env.ADMIN_EMAIL = 'isolation-admin@example.com';
-    process.env.ADMIN_PASSWORD = 'correct-horse-battery-staple';
-    // The Joi schema requires a database configuration even though this
-    // spec stubs the repositories — supply a dummy value to satisfy
-    // validation. The data source is never opened by AuthModule.
     process.env.MYSQL_HOST = '127.0.0.1';
     process.env.MYSQL_DATABASE = 'bake_mall_test';
     process.env.MYSQL_USER = 'bake_app_test';
 
+    persistedUser = {
+      id: '1',
+      phone: '13800000000',
+      phoneVerified: true,
+      isActive: true,
+      mergedIntoUserId: null,
+      tokenVersion: 1,
+    } as User;
+    persistedAdmin = {
+      id: '42',
+      username: 'isolation-admin@example.com',
+      role: AdminRole.SUPER_ADMIN,
+      linkedUserId: null,
+      isActive: true,
+      mustChangePassword: false,
+      tokenVersion: 1,
+    } as AdminUser;
     userRepo = mockUserRepo();
     adminRepo = mockAdminRepo();
-
     (userRepo.findOne as ReturnType<typeof vi.fn>).mockImplementation(
-      async ({ where }: { where: { phone?: string; id?: string } }) => {
-        if (where?.phone === '13800000000') {
-          return {
-            id: '1',
-            phone: '13800000000',
-            phoneVerified: true,
-          } as User;
-        }
-        if (where?.id === '1') {
-          return {
-            id: '1',
-            phone: '13800000000',
-            phoneVerified: true,
-          } as User;
-        }
-        return null;
-      },
-    );
-    (userRepo.save as ReturnType<typeof vi.fn>).mockImplementation(
-      async (input: User) => input,
-    );
-
-    const passwordHash = await bcrypt.hash(
-      process.env.ADMIN_PASSWORD as string,
-      4,
+      async ({ where }: { where: { id?: string } }) =>
+        where.id === persistedUser.id ? persistedUser : null,
     );
     (adminRepo.findOne as ReturnType<typeof vi.fn>).mockImplementation(
-      async ({ where }: { where: { username?: string } }) => {
-        if (where?.username === process.env.ADMIN_EMAIL) {
-          return {
-            id: '42',
-            email: process.env.ADMIN_EMAIL,
-            username: process.env.ADMIN_EMAIL,
-            passwordHash,
-            isActive: true,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          } as unknown as AdminUser;
-        }
-        return null;
-      },
-    );
-    (adminRepo.save as ReturnType<typeof vi.fn>).mockImplementation(
-      async (input: AdminUser) => input,
+      async ({ where }: { where: { id?: string } }) =>
+        where.id === persistedAdmin.id ? persistedAdmin : null,
     );
 
     const moduleRef = await Test.createTestingModule({
@@ -141,59 +101,60 @@ describe('Auth isolation (e2e)', () => {
               abortEarly: false,
               stripUnknown: true,
             });
-            if (error) {
-              throw new Error(error.message);
-            }
+            if (error) throw new Error(error.message);
             return { appEnv: value };
           },
         }),
-        AuthModule,
+        JwtModule.register({ global: true }),
       ],
-      controllers: [AdminCategoriesProbeController],
-    })
-      .overrideProvider(getRepositoryToken(User))
-      .useValue(userRepo)
-      .overrideProvider(getRepositoryToken(AdminUser))
-      .useValue(adminRepo)
-      .compile();
+      controllers: [AdminProbeController, UserProbeController],
+      providers: [
+        JwtAdminGuard,
+        JwtUserGuard,
+        { provide: getRepositoryToken(User), useValue: userRepo },
+        {
+          provide: DataSource,
+          useValue: {
+            getRepository: (entity: typeof User | typeof AdminUser) =>
+              entity === User ? userRepo : adminRepo,
+          },
+        },
+      ],
+    }).compile();
 
     app = moduleRef.createNestApplication();
-    app.setGlobalPrefix('api/v1', { exclude: ['api/v1/health'] });
-    app.useGlobalPipes(
-      new ValidationPipe({
-        transform: true,
-        whitelist: true,
-        forbidNonWhitelisted: true,
-      }),
-    );
-
+    app.setGlobalPrefix('api/v1');
     await app.init();
 
-    const config = app.get<ConfigService<AppConfig, true>>(ConfigService);
-    const userAuth = app.get(UserAuthService);
-    const adminAuth = app.get(AdminAuthService);
+    const jwt = app.get(JwtService);
+    userToken = jwt.sign(
+      {
+        sub: persistedUser.id,
+        aud: JWT_USER_AUDIENCE,
+        phone: persistedUser.phone,
+        tokenVersion: persistedUser.tokenVersion,
+      },
+      { secret: process.env.JWT_USER_SECRET, expiresIn: 3600 },
+    );
+    adminToken = jwt.sign(
+      {
+        sub: persistedAdmin.id,
+        aud: JWT_ADMIN_AUDIENCE,
+        role: persistedAdmin.role,
+        tokenVersion: persistedAdmin.tokenVersion,
+        linkedUserId: null,
+        mustChangePassword: false,
+      },
+      { secret: process.env.JWT_ADMIN_SECRET, expiresIn: 3600 },
+    );
+  });
 
-    const env = config.get('appEnv', { infer: true });
-    expect(env.JWT_USER_SECRET).not.toBe(env.JWT_ADMIN_SECRET);
-
-    userToken = (
-      await userAuth.loginWithDevelopmentCode('13800000000', '123456')
-    ).accessToken;
-    adminToken = (
-      await adminAuth.loginWithCredentials(
-        process.env.ADMIN_EMAIL as string,
-        process.env.ADMIN_PASSWORD as string,
-      )
-    ).accessToken;
-
-    expect(userToken).toBeTypeOf('string');
-    expect(adminToken).toBeTypeOf('string');
-    expect(userToken).not.toBe(adminToken);
-
-    // Sanity-check fixtures so a regression in the wiring surfaces here.
-    expect(AuthController).toBeDefined();
-    expect(AdminAuthController).toBeDefined();
-    void ForbiddenException;
+  beforeEach(() => {
+    persistedUser.isActive = true;
+    persistedUser.mergedIntoUserId = null;
+    persistedUser.tokenVersion = 1;
+    persistedAdmin.isActive = true;
+    persistedAdmin.tokenVersion = 1;
   });
 
   afterAll(async () => {
@@ -202,20 +163,52 @@ describe('Auth isolation (e2e)', () => {
 
   it('rejects a user JWT on an admin endpoint', async () => {
     await request(app.getHttpServer())
-      .get('/api/v1/admin/categories')
+      .get('/api/v1/admin/isolation-probe')
       .set('Authorization', `Bearer ${userToken}`)
       .expect(401);
   });
 
   it('rejects an admin JWT on a user endpoint', async () => {
     await request(app.getHttpServer())
-      .post('/api/v1/auth/bind-phone')
+      .post('/api/v1/user/isolation-probe')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ phone: '13900000000', code: '123456' })
       .expect(401);
   });
 
-  it('accepts the user JWT format expected by JwtUserGuard', async () => {
-    expect(userToken.split('.').length).toBe(3);
+  it('invalidates user and admin JWTs after persisted version changes', async () => {
+    persistedUser.tokenVersion += 1;
+    persistedAdmin.tokenVersion += 1;
+    await request(app.getHttpServer())
+      .post('/api/v1/user/isolation-probe')
+      .set('Authorization', `Bearer ${userToken}`)
+      .expect(401);
+    await request(app.getHttpServer())
+      .get('/api/v1/admin/isolation-probe')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(401);
+  });
+
+  it('rejects inactive persisted principals', async () => {
+    persistedUser.isActive = false;
+    persistedAdmin.isActive = false;
+    await request(app.getHttpServer())
+      .post('/api/v1/user/isolation-probe')
+      .set('Authorization', `Bearer ${userToken}`)
+      .expect(401);
+    await request(app.getHttpServer())
+      .get('/api/v1/admin/isolation-probe')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(401);
+  });
+
+  it('accepts each token only for its own audience', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/user/isolation-probe')
+      .set('Authorization', `Bearer ${userToken}`)
+      .expect(201);
+    await request(app.getHttpServer())
+      .get('/api/v1/admin/isolation-probe')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
   });
 });

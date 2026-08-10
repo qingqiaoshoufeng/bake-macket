@@ -187,16 +187,25 @@ export class OrdersService {
       const userRepo = manager.getRepository(User);
       const membershipRepo = manager.getRepository(UserMembership);
 
+      const lockedUser = await userRepo.findOne({
+        where: { id: userId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!lockedUser) throw new NotFoundException('User not found');
+      if (!lockedUser.phone || !lockedUser.phoneVerified) {
+        throw new ForbiddenException({
+          code: ApiErrorCode.PHONE_REQUIRED,
+          message:
+            'A verified phone number is required before placing an order.',
+        });
+      }
+
       const racedReplay = await this.idempotencyService.reserve(
         manager,
         idempotencyInput,
       );
       if (racedReplay) return racedReplay;
 
-      await userRepo.findOne({
-        where: { id: userId },
-        lock: { mode: 'pessimistic_write' },
-      });
       const lockedAccount = await this.credit.lockOrCreateAccount(
         manager,
         userId,
@@ -467,7 +476,7 @@ export class OrdersService {
       const noRestock = nextStatus === OrderStatus.CANCELLED;
       await this.audit.record(
         {
-          adminUserId,
+          actor: { type: 'ADMIN', adminUserId },
           targetEntity: 'orders',
           targetId: savedOrder.id,
           action: noRestock ? 'ORDER_CANCELLED' : 'ORDER_STATUS_CHANGED',

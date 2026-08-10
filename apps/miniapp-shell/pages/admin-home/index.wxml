@@ -1,0 +1,19 @@
+<view class="admin-page">
+  <view class="admin-hero">
+    <text class="admin-hero__eyebrow">BAKE MALL</text>
+    <text class="admin-hero__title">门店管理</text>
+    <text class="admin-hero__copy">当前账号仅展示已获许可的管理功能。</text>
+  </view>
+
+  <view class="admin-navigation">
+    <button
+      wx:for="{{navigation}}"
+      wx:key="route"
+      class="admin-navigation__item"
+      data-route="{{item.route}}"
+      bindtap="onNavigate"
+    >{{item.label}}</button>
+  </view>
+
+  <button class="admin-page__exit" bindtap="onExit">退出管理模式</button>
+</view>

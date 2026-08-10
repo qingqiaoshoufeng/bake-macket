@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { AuditModule } from '../audit/audit.module.js';
+import { AuthModule } from '../auth/auth.module.js';
 import { type AppConfig } from '../config/env.schema.js';
 import { CartItem } from '../database/entities/cart-item.entity.js';
 import { MemberAccount } from '../database/entities/member-account.entity.js';
@@ -55,6 +56,7 @@ import { PublicMembershipController } from './public-membership.controller.js';
       User,
     ]),
     AuditModule,
+    AuthModule,
   ],
   controllers: [
     AdminMembershipController,

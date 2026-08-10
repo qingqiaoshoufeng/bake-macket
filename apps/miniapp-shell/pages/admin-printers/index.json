@@ -1,0 +1,6 @@
+{
+  "navigationBarTitleText": "打印机管理",
+  "usingComponents": {
+    "printer-list": "../../admin/components/printer-list/index"
+  }
+}

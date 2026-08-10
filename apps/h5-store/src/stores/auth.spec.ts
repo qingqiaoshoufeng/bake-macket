@@ -6,6 +6,7 @@ import {
   OrderStatus,
   type AddressView,
   type CartItemView,
+  type CustomerAuthSessionView,
   type OrderView,
 } from '@bake-mall/contracts';
 
@@ -228,6 +229,49 @@ describe('useAuthStore', () => {
 
     expect(cart.items).toHaveLength(1);
     expect(cart.hydrated).toBe(true);
+  });
+
+  it('原子应用并持久化完整顾客 session', () => {
+    const store = useAuthStore();
+    const session = {
+      accessToken: 'canonical-token',
+      expiresAt: '2026-08-07T00:00:00.000Z',
+      profile: {
+        id: 'canonical-user',
+        nickname: '微信顾客',
+        avatarUrl: undefined,
+        phone: '138****0000',
+        phoneVerified: true,
+      },
+    } satisfies CustomerAuthSessionView;
+
+    store.applyCustomerSession(session);
+
+    expect(store.$state).toEqual({
+      accessToken: session.accessToken,
+      expiresAt: session.expiresAt,
+      profile: session.profile,
+    });
+    expect(window.localStorage.getItem('bake_user_token')).toBe(
+      session.accessToken,
+    );
+    expect(window.localStorage.getItem('bake_user_expires_at')).toBe(
+      session.expiresAt,
+    );
+    expect(window.localStorage.getItem('bake_user_profile')).toBe(
+      JSON.stringify(session.profile),
+    );
+
+    store.clearSession();
+
+    expect(store.$state).toEqual({
+      accessToken: null,
+      expiresAt: null,
+      profile: null,
+    });
+    expect(window.localStorage.getItem('bake_user_token')).toBeNull();
+    expect(window.localStorage.getItem('bake_user_expires_at')).toBeNull();
+    expect(window.localStorage.getItem('bake_user_profile')).toBeNull();
   });
 
   it('persists the session state applied by the login feature hook', () => {

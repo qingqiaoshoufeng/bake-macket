@@ -1,0 +1,35 @@
+{
+  "name": "@bake-mall/merchant-terminal",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "pnpm build:check",
+    "build:check": "vue-tsc -p tsconfig.json --noEmit",
+    "build:app-resources": "uni build -p app-android",
+    "package:android": "node scripts/package-android.mjs",
+    "test": "vitest run && node --test scripts/fake-printer-server.test.mjs scripts/package-android.test.mjs scripts/verify-android.test.mjs",
+    "test:hardware": "vitest run --config vitest.hardware.config.ts",
+    "typecheck": "vue-tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "verify:android": "node scripts/verify-android.mjs"
+  },
+  "dependencies": {
+    "@dcloudio/uni-app": "3.0.0-alpha-5020320260731001",
+    "@dcloudio/uni-app-plus": "3.0.0-alpha-5020320260731001",
+    "@dcloudio/uni-components": "3.0.0-alpha-5020320260731001",
+    "vue": "3.4.21"
+  },
+  "devDependencies": {
+    "@dcloudio/types": "3.4.31",
+    "@dcloudio/uni-cli-shared": "3.0.0-alpha-5020320260731001",
+    "@dcloudio/uni-uts-v1": "3.0.0-alpha-5020320260731001",
+    "@dcloudio/vite-plugin-uni": "3.0.0-alpha-5020320260731001",
+    "@types/node": "^22.13.0",
+    "@vue/tsconfig": "^0.7.0",
+    "typescript": "^5.8.2",
+    "vite": "5.2.8",
+    "vitest": "^3.2.4",
+    "vue-tsc": "^2.1.10"
+  }
+}

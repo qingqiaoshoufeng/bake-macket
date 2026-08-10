@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "pnpm services:up && pnpm --filter @bake-mall/contracts build && pnpm --filter @bake-mall/api migration:run && pnpm -r --parallel --stream dev",
-    "build": "pnpm -r build",
+    "build": "pnpm -r --filter=!@bake-mall/miniapp-shell build && pnpm --filter @bake-mall/miniapp-shell build:check",
     "lint": "eslint \"*.mjs\" scripts && pnpm -r --workspace-concurrency=1 --filter=!@bake-mall/h5-store lint",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
@@ -19,9 +19,12 @@
     "services:ps": "node scripts/compose.mjs ps",
     "services:down": "node scripts/compose.mjs down",
     "test:compose-project-name": "node scripts/compose-project-name.test.mjs",
-    "test:dev-config": "node scripts/dev-config.test.mjs"
+    "test:dev-config": "node scripts/dev-config.test.mjs",
+    "test:e2e-runner": "node --test scripts/e2e-runner.test.mjs tests/e2e/url-helper.test.mjs scripts/nginx-smoke.test.mjs",
+    "test:e2e": "node scripts/e2e-runner.mjs"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@eslint/js": "^9.21.0",
     "eslint": "^9.21.0",
     "eslint-config-prettier": "^10.1.8",

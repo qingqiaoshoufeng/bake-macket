@@ -1,0 +1,46 @@
+.user-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+}
+
+.user-list__empty,
+.user-card {
+  border: 1rpx solid #f1dfd1;
+  border-radius: 20rpx;
+  background: #ffffff;
+}
+
+.user-list__empty {
+  padding: 56rpx 24rpx;
+  color: #8a7c70;
+  text-align: center;
+}
+
+.user-card {
+  padding: 24rpx;
+  box-shadow: 0 10rpx 24rpx rgba(138, 102, 77, 0.08);
+}
+
+.user-card__primary,
+.user-card__meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 16rpx;
+}
+
+.user-card__name {
+  color: #4f493f;
+  font-weight: 600;
+}
+
+.user-card__phone,
+.user-card__meta {
+  color: #8a7c70;
+}
+
+.user-card__meta {
+  margin-top: 16rpx;
+  flex-wrap: wrap;
+  font-size: 24rpx;
+}

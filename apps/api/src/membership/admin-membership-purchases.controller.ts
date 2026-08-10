@@ -15,6 +15,7 @@ import type {
   AdminMembershipPurchaseListResult,
 } from '@bake-mall/contracts';
 
+import { AdminPermissionGuard } from '../auth/admin-permission.guard.js';
 import { JwtAdminGuard } from '../auth/admin-jwt.guard.js';
 import type { AuthenticatedAdmin } from '../auth/auth.types.js';
 import { CurrentAdmin } from '../auth/current-user.decorator.js';
@@ -22,7 +23,7 @@ import { AdminMembershipPurchaseQueryDto } from './dto/admin-membership-purchase
 import { MembershipPurchaseService } from './membership-purchase.service.js';
 
 @Controller('admin/membership-purchases')
-@UseGuards(JwtAdminGuard)
+@UseGuards(JwtAdminGuard, AdminPermissionGuard)
 export class AdminMembershipPurchasesController {
   constructor(private readonly purchases: MembershipPurchaseService) {}
 

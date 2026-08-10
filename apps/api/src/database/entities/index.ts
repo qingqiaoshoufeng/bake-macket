@@ -1,9 +1,12 @@
 export * from './address.entity.js';
+export { AdminLoginVerificationBucket } from './admin-login-verification-bucket.entity.js';
+export { AdminOperationIdempotency } from './admin-operation-idempotency.entity.js';
 export * from './admin-user.entity.js';
-export * from './audit-log.entity.js';
+export { AuditLog } from './audit-log.entity.js';
 export * from './banner.entity.js';
 export * from './cart-item.entity.js';
 export * from './category.entity.js';
+export { CloudPrinter } from './cloud-printer.entity.js';
 export * from './homepage-page.entity.js';
 export * from './idempotency-record.entity.js';
 export { MemberAccount } from './member-account.entity.js';
@@ -20,3 +23,4 @@ export * from './product.entity.js';
 export * from './sku.entity.js';
 export * from './user-membership.entity.js';
 export * from './user.entity.js';
+export { WechatCredentialUse } from './wechat-credential-use.entity.js';

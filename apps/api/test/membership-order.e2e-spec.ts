@@ -20,13 +20,7 @@ import { MembershipPurchaseOrder } from '../src/database/entities/membership-pur
 import { Product } from '../src/database/entities/product.entity.js';
 import { Sku } from '../src/database/entities/sku.entity.js';
 import { User } from '../src/database/entities/user.entity.js';
-import { InitialSchema1718000000000 } from '../src/database/migrations/0001-initial-schema.js';
-import { ProductSortOrder1718000000001 } from '../src/database/migrations/0002-product-sort-order.js';
-import { Task12AdminMediaAndOrderIndexes1718000000002 } from '../src/database/migrations/0003-task12-admin-media-and-order-indexes.js';
-import { SkuStockVersion1718000000003 } from '../src/database/migrations/0004-sku-stock-version.js';
-import { MembershipAndOrderPricing1718000000004 } from '../src/database/migrations/0005-membership-and-order-pricing.js';
-import { MembershipEntitlementSegments1718000000005 } from '../src/database/migrations/0006-membership-entitlement-segments.js';
-import { OrderItemSourceIds1718000000007 } from '../src/database/migrations/0008-order-item-source-ids.js';
+import { DATABASE_MIGRATIONS } from '../src/database/migrations/index.js';
 import { IdempotencyService } from '../src/idempotency/idempotency.service.js';
 import { MembershipCreditService } from '../src/membership/membership-credit.service.js';
 import { MembershipEntitlementService } from '../src/membership/membership-entitlement.service.js';
@@ -75,7 +69,7 @@ describe.sequential('membership purchase to order lifecycle (MySQL)', () => {
       database = new DataSource({
         type: 'mysql',
         host: process.env.TEST_MYSQL_HOST ?? '127.0.0.1',
-        port: Number(process.env.TEST_MYSQL_PORT ?? 3306),
+        port: Number(process.env.TEST_MYSQL_PORT ?? 44306),
         database: DATABASE_NAME,
         username: APP_USER,
         password: process.env.TEST_MYSQL_APP_PASSWORD ?? 'bake_app_password',
@@ -83,16 +77,9 @@ describe.sequential('membership purchase to order lifecycle (MySQL)', () => {
         timezone: 'Z',
         synchronize: false,
         entities: Object.values(entities),
-        migrations: [
-          InitialSchema1718000000000,
-          ProductSortOrder1718000000001,
-          Task12AdminMediaAndOrderIndexes1718000000002,
-          SkuStockVersion1718000000003,
-          MembershipAndOrderPricing1718000000004,
-          MembershipEntitlementSegments1718000000005,
-          OrderItemSourceIds1718000000007,
-        ],
+        migrations: [...DATABASE_MIGRATIONS],
         migrationsTableName: 'migrations',
+        migrationsTransactionMode: 'each',
       });
       await database.initialize();
       await database.runMigrations();
@@ -138,7 +125,7 @@ describe.sequential('membership purchase to order lifecycle (MySQL)', () => {
         name: '订单链路会员',
         subtitle: null,
         description: null,
-        rank: 10,
+        rank: 110,
         priceCents: 9_900,
         grantCreditCents: 2_000,
         discountBasisPoints: 9_000,

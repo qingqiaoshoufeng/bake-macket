@@ -12,7 +12,7 @@ import { Repository } from 'typeorm';
 
 import { type AppConfig } from '../config/env.schema.js';
 import { User } from '../database/entities/user.entity.js';
-import { JWT_ADMIN_AUDIENCE, JWT_USER_AUDIENCE } from './auth.constants.js';
+import { JWT_USER_AUDIENCE } from './auth.constants.js';
 import { type AuthenticatedUser, type UserJwtPayload } from './auth.types.js';
 
 /**
@@ -55,17 +55,31 @@ export class JwtUserGuard implements CanActivate {
     if (
       !payload ||
       payload.aud !== JWT_USER_AUDIENCE ||
-      payload.aud === (JWT_ADMIN_AUDIENCE as string)
+      typeof payload.sub !== 'string' ||
+      !/^[1-9]\d*$/.test(payload.sub) ||
+      !Number.isSafeInteger(payload.tokenVersion) ||
+      payload.tokenVersion < 1
     ) {
       throw new UnauthorizedException('Invalid or expired token');
     }
-    const user = await this.users.findOneBy({ id: payload.sub });
-    if (!user) {
+    let user: User | null;
+    try {
+      user = await this.users.findOne({ where: { id: payload.sub } });
+    } catch (cause) {
+      throw new UnauthorizedException('Invalid or expired token', { cause });
+    }
+    if (
+      !user ||
+      !user.isActive ||
+      user.mergedIntoUserId !== null ||
+      user.tokenVersion !== payload.tokenVersion
+    ) {
       throw new UnauthorizedException('Invalid or expired token');
     }
     const principal: AuthenticatedUser = {
       id: user.id,
       phone: user.phone,
+      phoneVerified: user.phoneVerified,
     };
     (request as Request & { user?: AuthenticatedUser }).user = principal;
     return true;

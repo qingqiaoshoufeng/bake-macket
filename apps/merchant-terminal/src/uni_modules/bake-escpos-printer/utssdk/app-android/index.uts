@@ -1,0 +1,151 @@
+import InetSocketAddress from 'java.net.InetSocketAddress';
+import Socket from 'java.net.Socket';
+import Charset from 'java.nio.charset.Charset';
+
+import type {
+  ConnectPrinter,
+  EncodeCutCommand,
+  EncodePrinterText,
+  PrinterConnection,
+} from '../../interface.uts';
+
+class PrinterWriteError extends Error {
+  bytesWritten: number;
+
+  constructor(message: string, bytesWritten: number) {
+    super(message);
+    this.name = 'PrinterWriteError';
+    this.bytesWritten = bytesWritten;
+  }
+}
+
+class AndroidPrinterConnection implements PrinterConnection {
+  private socket: Socket;
+  private writeTimeoutMs: number;
+
+  constructor(socket: Socket, writeTimeoutMs: number) {
+    this.socket = socket;
+    this.writeTimeoutMs = writeTimeoutMs;
+  }
+
+  private scheduleWriteTimeout(onTimeout: () => void): number {
+    return setTimeout(onTimeout, this.writeTimeoutMs);
+  }
+
+  private cancelWriteTimeout(timeoutId: number): void {
+    clearTimeout(timeoutId);
+  }
+
+  write(bytes: ByteArray): Promise<number> {
+    return new Promise<number>((resolve, reject) => {
+      UTSAndroid.getDispatcher('io').async((_context) => {
+        let bytesWritten = 0;
+        let timedOut = false;
+        const timeoutId = this.scheduleWriteTimeout(() => {
+          timedOut = true;
+          try {
+            this.socket.close();
+          } catch (_error) {
+            // Closing is best-effort; the blocked writer reports the result.
+          }
+        });
+
+        try {
+          const output = this.socket.getOutputStream();
+
+          while (bytesWritten < bytes.size) {
+            output.write(bytes, bytesWritten, 1);
+            bytesWritten += 1;
+          }
+          output.flush();
+          resolve(bytesWritten);
+        } catch (error) {
+          reject(
+            new PrinterWriteError(
+              timedOut
+                ? 'Printer write timed out'
+                : `Printer write failed: ${String(error)}`,
+              bytesWritten,
+            ),
+          );
+        } finally {
+          this.cancelWriteTimeout(timeoutId);
+        }
+      });
+    });
+  }
+
+  close(): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      UTSAndroid.getDispatcher('io').async((_context) => {
+        try {
+          this.socket.close();
+          resolve();
+        } catch (error) {
+          reject(error);
+        }
+      });
+    });
+  }
+}
+
+export const connectPrinter: ConnectPrinter = function (
+  host,
+  port,
+  connectTimeoutMs,
+  writeTimeoutMs,
+) {
+  if (
+    host.trim().length == 0 ||
+    port < 1 ||
+    port > 65535 ||
+    connectTimeoutMs < 1 ||
+    writeTimeoutMs < 1
+  ) {
+    return Promise.reject(new Error('Invalid printer connection settings'));
+  }
+
+  return new Promise<PrinterConnection>((resolve, reject) => {
+    UTSAndroid.getDispatcher('io').async((_context) => {
+      const socket = new Socket();
+      try {
+        socket.connect(new InetSocketAddress(host, port), connectTimeoutMs);
+        resolve(new AndroidPrinterConnection(socket, writeTimeoutMs));
+      } catch (error) {
+        try {
+          socket.close();
+        } catch (_closeError) {
+          // Connection cleanup is best-effort; preserve the original failure.
+        }
+        reject(error);
+      }
+    });
+  });
+};
+
+export const encodePrinterText: EncodePrinterText = function (text, encoding) {
+  if (encoding != 'GB18030' && encoding != 'GBK') {
+    throw new Error('Printer encoding is not allowed');
+  }
+  return text.toByteArray(Charset.forName(encoding));
+};
+
+export const encodeCutCommand: EncodeCutCommand = function (hex) {
+  if (!/^1d56(?:(?:00|01|30|31)|(?:41|42)[0-9a-f]{2})$/i.test(hex)) {
+    throw new Error('Printer cut command is not allowed');
+  }
+
+  const bytes = ByteArray(hex.length / 2);
+  let index = 0;
+  while (index < bytes.size) {
+    const byteHex = hex.substring(index * 2, index * 2 + 2);
+    const value = parseInt(byteHex, 16);
+    if (Number.isNaN(value)) {
+      throw new Error('Printer hex contains invalid bytes');
+    }
+    bytes[index] = value.toByte();
+    index += 1;
+  }
+
+  return bytes;
+};

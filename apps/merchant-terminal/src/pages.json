@@ -1,0 +1,16 @@
+{
+  "pages": [
+    {
+      "path": "pages/diagnostics/DiagnosticsPage",
+      "style": {
+        "navigationBarTitleText": "打印机诊断"
+      }
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "烘焙商城商家终端",
+    "navigationBarBackgroundColor": "#fff8f2",
+    "backgroundColor": "#fff8f2"
+  }
+}
