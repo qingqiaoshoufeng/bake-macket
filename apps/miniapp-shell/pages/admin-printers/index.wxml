@@ -108,7 +108,9 @@
       </block>
 
       <block wx:elif="{{dialog.kind === 'recovery'}}">
-        <text class="dialog-title">恢复设备状态</text>
+        <text class="dialog-title">
+          {{dialog.recoveryAction === 'unbind' ? '确认解绑打印机' : '恢复设备状态'}}
+        </text>
         <input
           password
           value="{{forms.recoveryPassword}}"

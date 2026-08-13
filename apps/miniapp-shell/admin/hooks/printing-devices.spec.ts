@@ -115,6 +115,7 @@ function apiHarness(): PrintingDevicesApi {
     refresh: vi.fn(),
     requery: vi.fn(),
     confirmDeletion: vi.fn(),
+    unbind: vi.fn(),
     rename: vi.fn(),
   };
 }
@@ -239,6 +240,20 @@ describe('printing device idempotency and storage', () => {
         return vi.mocked(api.confirmDeletion);
       },
       success: { printer: activePrinter },
+    },
+    {
+      operation: 'unbind' as const,
+      resourceId: printer.id,
+      prime(controller: ReturnType<typeof controllerHarness>['controller']) {
+        controller.setRecoveryPassword('secret');
+      },
+      start(controller: ReturnType<typeof controllerHarness>['controller']) {
+        return controller.unbind(printer.id);
+      },
+      api(api: PrintingDevicesApi) {
+        return vi.mocked(api.unbind);
+      },
+      success: { printer: { ...activePrinter, status: CloudPrinterStatus.UNBOUND } },
     },
     {
       operation: 'rename' as const,
@@ -741,7 +756,7 @@ describe('challenge, fencing, actions, and validation', () => {
     );
   });
 
-  it('uses the approved action matrix and exposes no unbind action', () => {
+  it('uses the approved action matrix and exposes unbind only for ACTIVE', () => {
     const harness = controllerHarness();
     expect(harness.controller.actionsFor(printer)).toEqual([
       'verify',
@@ -750,6 +765,7 @@ describe('challenge, fencing, actions, and validation', () => {
     ]);
     expect(harness.controller.actionsFor(activePrinter)).toEqual([
       'refresh',
+      'unbind',
       'rename',
     ]);
     expect(
@@ -765,7 +781,7 @@ describe('challenge, fencing, actions, and validation', () => {
         status: CloudPrinterStatus.ERROR,
         bindingStage: PrinterBindingStage.UNBIND_DELETE,
       }),
-    ).toEqual(['rename']);
+    ).toEqual(['delete-confirm', 'rename']);
     expect(
       harness.controller.actionsFor({
         ...printer,
@@ -773,9 +789,7 @@ describe('challenge, fencing, actions, and validation', () => {
         bindingStage: PrinterBindingStage.UNBIND_DELETE,
       }),
     ).toEqual(['rename']);
-    expect(
-      JSON.stringify(harness.controller.actionsFor(printer)),
-    ).not.toContain('unbind');
+    expect(harness.controller.actionsFor(printer)).not.toContain('unbind');
   });
 
   it('validates trimmed Unicode rename at 1-64 codepoints without password', async () => {

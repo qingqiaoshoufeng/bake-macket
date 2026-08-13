@@ -45,6 +45,19 @@ docker run --rm --env-file /secure/path/api.env bake-mall-api:latest \
 
 迁移入口执行 `initialize → runMigrations → finally destroy`，失败退出非零。先备份 MySQL；禁止 `synchronize` 或 API 启动时隐式迁移。
 
+## 云打印 payload 180 天清理
+
+打印小票 payload 可能包含收件人姓名、掩码手机号、地址、备注和商品明细。生产环境必须由外部 cron 或 Kubernetes CronJob 每日调用 API 镜像中的清理入口，应用本身不得增加后台打印消费者：
+
+```bash
+docker run --rm --env-file /secure/path/api.env bake-mall-api:latest \
+  npm run printing:retention -- --cutoff-days 180 --batch-size 500
+```
+
+命令按 `created_at,id` 稳定扫描一个有限批次，只输出 `scanned` 与 `redacted` 计数。若 `scanned` 等于 `batch-size`，调度器应继续启动下一次有限批次，直到 `scanned` 小于批次上限；失败时保持非零退出并由平台告警、重试。清理覆盖所有打印状态，包括 `UNKNOWN` 与 `MANUAL_REVIEW`，但保留订单/设备/管理员内部 ID、状态、整数分汇总、原 `payloadHash` 和审计链。
+
+数据库备份、只读副本、导出、日志归档和故障快照必须采用同样的 180 天 PII 上限；不能仅清理主库后无限期保留旧 payload。恢复历史备份到隔离环境后，应在开放任何访问前立即执行相同 cutoff 清理，并记录清理时间、`scanned`/`redacted` 计数及备份销毁时间。不得把原 payload、完整手机号、地址、完整打印机 SN、操作密码、签名或 UserKEY 写入调度日志。
+
 ### 0010 身份迁移紧急回滚
 
 这是**破坏性 emergency rollback**，会删除 0010 引入的身份字段、约束、固定容量 `admin_login_verification_buckets` 表及 `wechat_credential_uses` 表。仅当数据库备份已经完成，并通过下述只读检查确认没有新身份域数据时使用。常规发布、临时故障处理或仍需保留新身份数据时不得执行。

@@ -89,9 +89,11 @@ const timestampOf = (name: string): number => {
 };
 
 describe('DATABASE_MIGRATIONS 注册表完整性', () => {
-  it('统一注册十一项迁移，并以云打印机迁移作为当前尾项', () => {
-    expect(DATABASE_MIGRATIONS).toHaveLength(11);
-    expect(DATABASE_MIGRATIONS.at(-1)?.name).toBe('CloudPrinters1718000000010');
+  it('统一注册十三项迁移，并以打印 UNKNOWN 元数据兼容迁移作为当前尾项', () => {
+    expect(DATABASE_MIGRATIONS).toHaveLength(13);
+    expect(DATABASE_MIGRATIONS.at(-1)?.name).toBe(
+      'PrintJobUnknownMetadata1718000000012',
+    );
   });
 
   it('与磁盘上的迁移实现文件按四位编号和导出类一一对应', () => {

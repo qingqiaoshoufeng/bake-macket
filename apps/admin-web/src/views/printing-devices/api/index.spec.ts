@@ -6,6 +6,7 @@ import type {
   RenameCloudPrinterRequest,
   RequeryCloudPrinterVendorRelationRequest,
   ResendCloudPrinterVerificationRequest,
+  UnbindCloudPrinterRequest,
 } from '@bake-mall/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -30,6 +31,9 @@ const requeryBody: RequeryCloudPrinterVendorRelationRequest = {
   operationPassword: 'secret',
 };
 const deleteBody: ConfirmCloudPrinterCompensationDeletionRequest = {
+  operationPassword: 'secret',
+};
+const unbindBody: UnbindCloudPrinterRequest = {
   operationPassword: 'secret',
 };
 const renameBody: RenameCloudPrinterRequest = { displayName: '前台打印机' };
@@ -74,6 +78,7 @@ describe('printingDevicesApi', () => {
     await printingDevicesApi.refresh('1001', refreshBody, key);
     await printingDevicesApi.requery('1001', requeryBody, key);
     await printingDevicesApi.confirmDeletion('1001', deleteBody, key);
+    await printingDevicesApi.unbind('1001', unbindBody, key);
     await printingDevicesApi.rename('1001', renameBody, key);
 
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
@@ -83,9 +88,11 @@ describe('printingDevicesApi', () => {
       '/api/v1/admin/cloud-printers/1001/online-status/refresh',
       '/api/v1/admin/cloud-printers/1001/vendor-relation/requery',
       '/api/v1/admin/cloud-printers/1001/compensation-delete/confirm',
+      '/api/v1/admin/cloud-printers/1001/unbind',
       '/api/v1/admin/cloud-printers/1001/display-name',
     ]);
     expect(fetchMock.mock.calls.map(([, init]) => init?.method)).toEqual([
+      'POST',
       'POST',
       'POST',
       'POST',
@@ -108,6 +115,7 @@ describe('printingDevicesApi', () => {
       refreshBody,
       requeryBody,
       deleteBody,
+      unbindBody,
       renameBody,
     ]);
   });

@@ -11,10 +11,13 @@ import { AuditService } from '../audit/audit.service.js';
 import { AdminVerificationService } from '../auth/admin-verification.service.js';
 import { AdminOperationIdempotency } from '../database/entities/admin-operation-idempotency.entity.js';
 import { AdminCloudPrintersController } from './admin-cloud-printers.controller.js';
+import { AdminPrintJobsController } from './admin-print-jobs.controller.js';
 import { AdminOperationIdempotencyService } from './admin-operation-idempotency.service.js';
 import { CloudPrinterReconciliationScheduler } from './cloud-printer-reconciliation.scheduler.js';
 import { CloudPrinterReconciliationService } from './cloud-printer-reconciliation.service.js';
 import { CloudPrinterService } from './cloud-printer.service.js';
+import { PrintBatchService } from './print-batch.service.js';
+import { PrintJobService } from './print-job.service.js';
 import { PrintingModule } from './printing.module.js';
 import { XpyunAdapter } from './xpyun/xpyun.adapter.js';
 import { XPYUN_VENDOR_PORT } from './xpyun/xpyun.types.js';
@@ -109,6 +112,11 @@ describe('Printing dependency injection', () => {
     expect(moduleRef.get(AdminCloudPrintersController)).toBeInstanceOf(
       AdminCloudPrintersController,
     );
+    expect(moduleRef.get(AdminPrintJobsController)).toBeInstanceOf(
+      AdminPrintJobsController,
+    );
+    expect(moduleRef.get(PrintJobService)).toBeInstanceOf(PrintJobService);
+    expect(moduleRef.get(PrintBatchService)).toBeInstanceOf(PrintBatchService);
 
     await moduleRef.init();
     expect(repository.find).not.toHaveBeenCalled();

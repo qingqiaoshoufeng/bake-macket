@@ -1,0 +1,25 @@
+<view class="order-list">
+  <view
+    wx:for="{{orders}}"
+    wx:key="id"
+    class="order-card {{item.selected ? 'order-card--selected' : ''}}"
+    data-order-id="{{item.id}}"
+    bindtap="onToggle"
+  >
+    <view class="order-card__header">
+      <text class="order-card__number">{{item.orderNo}}</text>
+      <text class="order-card__status">{{item.statusLabel}}</text>
+    </view>
+    <view class="order-card__meta">
+      <text>{{item.fulfillmentLabel}}</text>
+      <text>{{item.totalQuantity}} 件</text>
+      <text>{{item.payableText}}</text>
+    </view>
+    <view class="order-card__footer">
+      <text>{{item.contactName}}</text>
+      <text>{{item.createdAt}}</text>
+      <text class="order-card__choice">{{item.selected ? '已选择' : '点击选择'}}</text>
+    </view>
+  </view>
+  <view wx:if="{{orders.length === 0}}" class="order-list__empty">暂无可打印订单</view>
+</view>

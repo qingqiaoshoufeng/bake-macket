@@ -22,6 +22,7 @@ import {
   type RequeryCloudPrinterVendorRelationResult,
   type ConfirmCloudPrinterCompensationDeletionResult,
   type ResendCloudPrinterVerificationResult,
+  type UnbindCloudPrinterResult,
 } from '@bake-mall/contracts';
 import {
   BadRequestException,
@@ -46,6 +47,7 @@ import { ConfirmCloudPrinterCompensationDeletionDto } from './dto/confirm-cloud-
 import { RenameCloudPrinterDto } from './dto/rename-cloud-printer.dto.js';
 import { RequeryCloudPrinterVendorRelationDto } from './dto/requery-cloud-printer-vendor-relation.dto.js';
 import { ResendCloudPrinterCodeDto } from './dto/resend-cloud-printer-code.dto.js';
+import { UnbindCloudPrinterDto } from './dto/unbind-cloud-printer.dto.js';
 
 const IDEMPOTENCY_KEY_HEADER = 'idempotency-key';
 
@@ -167,6 +169,22 @@ export class AdminCloudPrintersController {
     @Body() body: ConfirmCloudPrinterCompensationDeletionDto,
   ): Promise<ConfirmCloudPrinterCompensationDeletionResult> {
     return this.reconciliation.confirmDeletion(
+      admin,
+      printerId,
+      body,
+      requireIdempotencyKey(idempotencyKey),
+    );
+  }
+
+  @Post(':id/unbind')
+  @RequireAdminPermissions(AdminPermission.PRINT_DEVICE_MANAGE)
+  unbind(
+    @CurrentAdmin() admin: AuthenticatedAdmin,
+    @Param('id', CanonicalUnsignedBigIntIdPipe) printerId: string,
+    @Headers(IDEMPOTENCY_KEY_HEADER) idempotencyKey: string | undefined,
+    @Body() body: UnbindCloudPrinterDto,
+  ): Promise<UnbindCloudPrinterResult> {
+    return this.cloudPrinters.unbind(
       admin,
       printerId,
       body,

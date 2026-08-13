@@ -5,10 +5,16 @@ export const ADMIN_ROUTES = Object.freeze({
   password: '/pages/admin-password/index',
   phone: '/pages/phone-auth/index?flow=admin',
   printers: '/pages/admin-printers/index',
+  printing: '/pages/admin-printing/index',
   users: '/pages/admin-users/index',
 });
 
 export const ADMIN_NAVIGATION = Object.freeze([
+  {
+    label: '订单打印',
+    permission: AdminPermission.PRINT_EXECUTE,
+    route: ADMIN_ROUTES.printing,
+  },
   {
     label: '打印机管理',
     permission: AdminPermission.PRINT_DEVICE_MANAGE,

@@ -15,6 +15,8 @@ import type {
   RequeryCloudPrinterVendorRelationResult,
   ResendCloudPrinterVerificationRequest,
   ResendCloudPrinterVerificationResult,
+  UnbindCloudPrinterRequest,
+  UnbindCloudPrinterResult,
 } from '@bake-mall/contracts';
 
 import { apiClient } from '../../../api/http.js';
@@ -100,6 +102,17 @@ export const printingDevicesApi = {
   ): Promise<ConfirmCloudPrinterCompensationDeletionResult> {
     return apiClient.post(
       `/admin/cloud-printers/${printerId}/compensation-delete/confirm`,
+      body,
+      idempotencyHeaders(idempotencyKey),
+    );
+  },
+  unbind(
+    printerId: string,
+    body: UnbindCloudPrinterRequest,
+    idempotencyKey: string,
+  ): Promise<UnbindCloudPrinterResult> {
+    return apiClient.post(
+      `/admin/cloud-printers/${printerId}/unbind`,
       body,
       idempotencyHeaders(idempotencyKey),
     );

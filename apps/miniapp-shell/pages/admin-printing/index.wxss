@@ -1,0 +1,98 @@
+.printing-page {
+  min-height: 100vh;
+  box-sizing: border-box;
+  padding: 28rpx;
+  background: #fffaf3;
+}
+
+.printing-card,
+.printing-error,
+.printing-result {
+  padding: 24rpx;
+  border: 1rpx solid #f0ded0;
+  border-radius: 20rpx;
+  background: #ffffff;
+}
+
+.printing-card__title,
+.printing-heading__title,
+.printing-result__title {
+  display: block;
+  font-weight: 700;
+  color: #533b32;
+}
+
+.printer-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-top: 18rpx;
+}
+
+.printer-option {
+  margin: 0;
+  color: #755f57;
+  background: #fff6ef;
+}
+
+.printer-option--selected {
+  color: #ffffff;
+  background: #d97854;
+}
+
+.printing-empty,
+.printing-heading__copy {
+  display: block;
+  margin-top: 12rpx;
+  color: #8e776e;
+  font-size: 24rpx;
+}
+
+.printing-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 20rpx;
+  color: #a34f46;
+}
+
+.printing-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 28rpx 0 20rpx;
+}
+
+.printing-result {
+  display: grid;
+  gap: 10rpx;
+  margin-top: 24rpx;
+  color: #755f57;
+}
+
+.printing-job {
+  display: grid;
+  gap: 12rpx;
+  margin-top: 12rpx;
+  padding-top: 16rpx;
+  border-top: 1rpx solid #f0ded0;
+}
+
+.printing-job__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10rpx;
+}
+
+.printing-job__actions button {
+  margin: 0;
+}
+
+.printing-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 28rpx;
+  color: #755f57;
+  font-size: 24rpx;
+}

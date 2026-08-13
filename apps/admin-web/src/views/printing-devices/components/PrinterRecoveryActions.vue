@@ -5,7 +5,7 @@ import type { RecoveryPrinterForm } from '../type/index.js';
 
 const props = defineProps<{
   readonly visible: boolean;
-  readonly action: 'resend' | 'requery' | 'delete-confirm';
+  readonly action: 'resend' | 'requery' | 'delete-confirm' | 'unbind';
   readonly printerName: string;
   readonly form: RecoveryPrinterForm;
   readonly submitting: boolean;
@@ -20,6 +20,7 @@ const labels = {
   resend: '重发纸面验证码',
   requery: '重新查询厂商关系',
   'delete-confirm': '确认补偿删除',
+  unbind: '确认解绑打印机',
 } as const;
 
 function updatePassword(operationPassword: string): void {

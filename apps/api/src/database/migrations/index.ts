@@ -9,6 +9,8 @@ import { OrderItemSourceIds1718000000007 } from './0008-order-item-source-ids.js
 import { HomepagePages1718000000008 } from './0009-homepage-pages.js';
 import { UserAdminIdentity1718000000009 } from './0010-user-admin-identity.js';
 import { CloudPrinters1718000000010 } from './0011-cloud-printers.js';
+import { CloudPrintJobs1718000000011 } from './0012-cloud-print-jobs.js';
+import { PrintJobUnknownMetadata1718000000012 } from './0013-print-job-unknown-metadata.js';
 
 export const DATABASE_MIGRATIONS = [
   InitialSchema1718000000000,
@@ -22,6 +24,8 @@ export const DATABASE_MIGRATIONS = [
   HomepagePages1718000000008,
   UserAdminIdentity1718000000009,
   CloudPrinters1718000000010,
+  CloudPrintJobs1718000000011,
+  PrintJobUnknownMetadata1718000000012,
 ] as const;
 
 type MigrationClass = (typeof DATABASE_MIGRATIONS)[number];

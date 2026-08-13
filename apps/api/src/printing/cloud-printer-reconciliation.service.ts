@@ -79,6 +79,7 @@ type RequeryIntent = Readonly<{
   claim: OwnerClaim;
   printer: CloudPrinter;
   bindingOperationIdAtClaim: RecoveryCycle;
+  queryOnlyDeletion: boolean;
 }>;
 
 type UnknownRecoveryIntent = Readonly<{
@@ -344,6 +345,7 @@ export class CloudPrinterReconciliationService {
             claim,
             printer,
             bindingOperationIdAtClaim: printer.bindingOperationId ?? null,
+            queryOnlyDeletion: false,
           } satisfies RequeryIntent,
         };
       });
@@ -486,6 +488,8 @@ export class CloudPrinterReconciliationService {
             claim,
             printer,
             bindingOperationIdAtClaim: printer.bindingOperationId ?? null,
+            queryOnlyDeletion:
+              printer.bindingStage === PrinterBindingStage.UNBIND_DELETE,
           } satisfies RequeryIntent,
         };
       });
@@ -513,6 +517,19 @@ export class CloudPrinterReconciliationService {
       }
 
       if (!intent) throw this.failureException('RECOVERY_REQUIRED');
+      if (intent.queryOnlyDeletion) {
+        const evidence = await this.queryRelation(intent.printer.serialNumber);
+        const completion = await this.dataSource.transaction((manager) =>
+          this.finishQueriedUnbindDeletion(
+            manager,
+            principal.id,
+            intent,
+            evidence,
+            request.operationPassword,
+          ),
+        );
+        return this.unwrap(completion);
+      }
       let deletion:
         | Readonly<{ kind: 'ACCEPTED'; vendorCode: string | null }>
         | Readonly<{
@@ -900,6 +917,84 @@ export class CloudPrinterReconciliationService {
       : { kind: 'FAILED', code: 'RECOVERY_REQUIRED' };
   }
 
+  private async finishQueriedUnbindDeletion(
+    manager: EntityManager,
+    adminId: string,
+    intent: RequeryIntent,
+    evidence: RelationEvidence,
+    operationPassword: string,
+  ): Promise<Completion<ConfirmCloudPrinterCompensationDeletionResult>> {
+    const repository = manager.getRepository(CloudPrinter);
+    const printer = await repository.findOne({
+      where: { id: intent.printer.id },
+      lock: { mode: 'pessimistic_write' },
+    });
+    if (!printer) return { kind: 'UNKNOWN' };
+    if (
+      (printer.bindingOperationId ?? null) !== intent.bindingOperationIdAtClaim ||
+      printer.bindingStage !== PrinterBindingStage.UNBIND_DELETE
+    ) {
+      return this.supersedeOwnedRecovery(
+        manager,
+        { type: 'ADMIN', adminUserId: adminId },
+        intent,
+        printer,
+        operationPassword,
+      );
+    }
+
+    printer.lastStatusCheckedAt = this.now();
+    printer.lastVendorErrorCode = evidence.vendorCode;
+    if (evidence.kind === 'UNBOUND') {
+      printer.status = CloudPrinterStatus.UNBOUND;
+      printer.bindingStage = PrinterBindingStage.NONE;
+      printer.vendorRelationState = VendorRelationState.CONFIRMED_UNBOUND;
+      printer.unboundAt = this.now();
+      printer.lastOnlineStatus = CloudPrinterOnlineStatus.UNKNOWN;
+      clearChallenge(printer);
+    } else if (evidence.kind === 'BOUND') {
+      printer.status = CloudPrinterStatus.ACTIVE;
+      printer.bindingStage = PrinterBindingStage.NONE;
+      printer.vendorRelationState = VendorRelationState.CONFIRMED_BOUND;
+      printer.unboundAt = null;
+      printer.lastOnlineStatus = evidence.onlineStatus;
+      printer.lastVendorErrorCode = null;
+    } else {
+      printer.status = CloudPrinterStatus.ERROR;
+      printer.vendorRelationState = VendorRelationState.UNKNOWN;
+    }
+    const saved = await repository.save(printer);
+    const result = { printer: toSnapshotView(saved) };
+    if (evidence.kind === 'UNKNOWN') {
+      await this.idempotencyService.markUnknown(manager, {
+        owner: intent.claim.owner,
+        resourceType: 'CLOUD_PRINTER',
+        resourceId: saved.id,
+        responseSnapshot: recoveryUnknownSnapshot(
+          saved.id,
+          intent.bindingOperationIdAtClaim,
+        ),
+        sensitiveValues: [saved.serialNumber, operationPassword],
+      });
+      return { kind: 'UNKNOWN' };
+    }
+    await this.idempotencyService.complete(manager, {
+      owner: intent.claim.owner,
+      resourceType: 'CLOUD_PRINTER',
+      resourceId: saved.id,
+      responseSnapshot: result,
+      sensitiveValues: [saved.serialNumber, operationPassword],
+    });
+    await this.recordAudit(
+      manager,
+      { type: 'ADMIN', adminUserId: adminId },
+      saved.id,
+      'CLOUD_PRINTER_UNBIND_DELETION_QUERIED',
+      { result: evidence.kind, status: saved.status },
+    );
+    return { kind: 'SUCCESS', result };
+  }
+
   private async finishDeletion(
     manager: EntityManager,
     adminId: string,
@@ -1168,7 +1263,8 @@ export class CloudPrinterReconciliationService {
   private canConfirmDeletion(printer: CloudPrinter): boolean {
     return (
       printer.status === CloudPrinterStatus.ERROR &&
-      printer.bindingStage === PrinterBindingStage.COMPENSATION_DELETE
+      (printer.bindingStage === PrinterBindingStage.COMPENSATION_DELETE ||
+        printer.bindingStage === PrinterBindingStage.UNBIND_DELETE)
     );
   }
 

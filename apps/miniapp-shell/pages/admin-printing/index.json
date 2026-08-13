@@ -1,0 +1,6 @@
+{
+  "navigationBarTitleText": "订单打印",
+  "usingComponents": {
+    "printing-order-list": "../../admin/components/printing-order-list/index"
+  }
+}

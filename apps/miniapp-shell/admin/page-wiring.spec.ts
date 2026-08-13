@@ -20,6 +20,7 @@ describe('Task 7 native admin page wiring', () => {
         'pages/admin-home/index',
         'pages/admin-password/index',
         'pages/admin-users/index',
+        'pages/admin-printing/index',
       ]),
     );
     expect(usersPage.usingComponents).toEqual({
@@ -67,6 +68,7 @@ describe('Task 7 native admin page wiring', () => {
     const ordinaryPages = await Promise.all([
       read('pages/admin-home/index.ts'),
       read('pages/admin-users/index.ts'),
+      read('pages/admin-printing/index.ts'),
     ]);
 
     ordinaryPages.forEach((source) => {
@@ -84,6 +86,22 @@ describe('Task 7 native admin page wiring', () => {
       expect(source.indexOf('return;', redirect)).toBeGreaterThan(redirect);
       expect(pageWork).toBeGreaterThan(redirect);
     });
+  });
+
+  it('wires UNKNOWN, FAILED and MANUAL_REVIEW recovery actions on printing jobs', async () => {
+    const sources = await Promise.all([
+      read('admin/api/printing-orders.ts'),
+      read('admin/hooks/printing-orders.ts'),
+      read('pages/admin-printing/index.ts'),
+      read('pages/admin-printing/index.wxml'),
+    ]);
+    const source = sources.join('\n');
+
+    expect(source).toContain('/query-unknown');
+    expect(source).toContain('/retry-failed');
+    expect(source).toContain('/manual-resolution');
+    expect(source).toContain('RETRY_WITH_DUPLICATE_RISK');
+    expect(source).toContain('可能重复出纸');
   });
 
   it('renders all three password fields for initial and current modes', async () => {

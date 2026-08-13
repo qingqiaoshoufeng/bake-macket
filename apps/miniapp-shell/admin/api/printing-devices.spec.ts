@@ -101,10 +101,16 @@ describe('createPrintingDevicesApi', () => {
 
     await api.list({ page: 2, pageSize: 50, includeUnbound: true });
     await api.refresh('90071992547409931234', {}, key);
+    await api.unbind(
+      '90071992547409931234',
+      { operationPassword: 'secret' },
+      key,
+    );
 
     expect(harness.calls.map(({ url }) => url)).toEqual([
       'https://mall.example.com/api/v1/admin/cloud-printers?page=2&pageSize=50&includeUnbound=true',
       'https://mall.example.com/api/v1/admin/cloud-printers/90071992547409931234/online-status/refresh',
+      'https://mall.example.com/api/v1/admin/cloud-printers/90071992547409931234/unbind',
     ]);
   });
 

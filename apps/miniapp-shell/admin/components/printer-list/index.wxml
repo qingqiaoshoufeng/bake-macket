@@ -23,9 +23,6 @@
       >
         {{action.label}}
       </button>
-      <button size="mini" disabled="{{true}}">
-        将在打印任务基础完成后开放
-      </button>
     </view>
   </view>
 </view>

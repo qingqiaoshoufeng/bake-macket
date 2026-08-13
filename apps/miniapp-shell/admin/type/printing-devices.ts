@@ -13,6 +13,7 @@ export type PrintingDeviceOperation =
   | 'refresh'
   | 'requery'
   | 'delete-confirm'
+  | 'unbind'
   | 'rename';
 
 export type PrintingDeviceAction =
@@ -36,7 +37,7 @@ export type PersistedPendingDeviceOperation = Readonly<{
 export type PrintingDevicesDialog = Readonly<{
   kind: 'bind' | 'verify' | 'recovery' | 'rename' | null;
   resourceId?: string;
-  recoveryAction?: 'resend' | 'requery' | 'delete-confirm';
+  recoveryAction?: 'resend' | 'requery' | 'delete-confirm' | 'unbind';
 }>;
 
 export type PrintingDevicesForms = Readonly<{

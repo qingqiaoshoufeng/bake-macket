@@ -4,8 +4,13 @@ import {
   ApiErrorCode,
   CloudPrinterOnlineStatus,
   CloudPrinterStatus,
+  PrintBatchStatus,
+  PrintJobStatus,
   PrinterBindingStage,
+  PRINTING_API_ERROR_CODES,
   VendorRelationState,
+  canTransitionPrintBatch,
+  canTransitionPrintJob,
   displayNameContainsSensitiveSerial,
   normalizeCloudPrinterDisplayName,
   normalizeCloudPrinterSerialNumber,
@@ -13,6 +18,76 @@ import {
 } from './index.js';
 
 describe('cloud printer contracts', () => {
+  it('locks complete print batch and job status values', () => {
+    expect(PrintBatchStatus).toEqual({
+      DRAFT: 'DRAFT',
+      READY: 'READY',
+      RUNNING: 'RUNNING',
+      PAUSED: 'PAUSED',
+      COMPLETED: 'COMPLETED',
+      COMPLETED_WITH_ISSUES: 'COMPLETED_WITH_ISSUES',
+      CANCELLED: 'CANCELLED',
+    });
+    expect(PrintJobStatus).toEqual({
+      PENDING: 'PENDING',
+      SUBMITTING: 'SUBMITTING',
+      ACCEPTED: 'ACCEPTED',
+      FAILED: 'FAILED',
+      UNKNOWN: 'UNKNOWN',
+      MANUAL_REVIEW: 'MANUAL_REVIEW',
+      MANUALLY_CONFIRMED_PRINTED: 'MANUALLY_CONFIRMED_PRINTED',
+      MANUALLY_CLOSED: 'MANUALLY_CLOSED',
+      CANCELLED: 'CANCELLED',
+    });
+  });
+
+  it('allows only authoritative print batch transitions', () => {
+    expect(canTransitionPrintBatch('DRAFT', 'READY')).toBe(true);
+    expect(canTransitionPrintBatch('DRAFT', 'CANCELLED')).toBe(true);
+    expect(canTransitionPrintBatch('READY', 'RUNNING')).toBe(true);
+    expect(canTransitionPrintBatch('READY', 'CANCELLED')).toBe(true);
+    expect(canTransitionPrintBatch('RUNNING', 'PAUSED')).toBe(true);
+    expect(canTransitionPrintBatch('RUNNING', 'COMPLETED')).toBe(true);
+    expect(canTransitionPrintBatch('RUNNING', 'COMPLETED_WITH_ISSUES')).toBe(
+      true,
+    );
+    expect(canTransitionPrintBatch('PAUSED', 'RUNNING')).toBe(true);
+    expect(canTransitionPrintBatch('PAUSED', 'COMPLETED')).toBe(true);
+    expect(canTransitionPrintBatch('PAUSED', 'COMPLETED_WITH_ISSUES')).toBe(
+      true,
+    );
+    expect(canTransitionPrintBatch('PAUSED', 'CANCELLED')).toBe(true);
+
+    expect(canTransitionPrintBatch('DRAFT', 'RUNNING')).toBe(false);
+    expect(canTransitionPrintBatch('RUNNING', 'CANCELLED')).toBe(false);
+    expect(canTransitionPrintBatch('COMPLETED', 'RUNNING')).toBe(false);
+    expect(canTransitionPrintBatch('CANCELLED', 'READY')).toBe(false);
+  });
+
+  it('allows only authoritative print job transitions', () => {
+    expect(canTransitionPrintJob('PENDING', 'SUBMITTING')).toBe(true);
+    expect(canTransitionPrintJob('PENDING', 'CANCELLED')).toBe(true);
+    expect(canTransitionPrintJob('SUBMITTING', 'ACCEPTED')).toBe(true);
+    expect(canTransitionPrintJob('SUBMITTING', 'FAILED')).toBe(true);
+    expect(canTransitionPrintJob('SUBMITTING', 'UNKNOWN')).toBe(true);
+    expect(canTransitionPrintJob('UNKNOWN', 'ACCEPTED')).toBe(true);
+    expect(canTransitionPrintJob('UNKNOWN', 'FAILED')).toBe(true);
+    expect(canTransitionPrintJob('UNKNOWN', 'MANUAL_REVIEW')).toBe(true);
+    expect(
+      canTransitionPrintJob('MANUAL_REVIEW', 'MANUALLY_CONFIRMED_PRINTED'),
+    ).toBe(true);
+    expect(canTransitionPrintJob('MANUAL_REVIEW', 'FAILED')).toBe(true);
+    expect(canTransitionPrintJob('MANUAL_REVIEW', 'MANUALLY_CLOSED')).toBe(
+      true,
+    );
+
+    expect(canTransitionPrintJob('UNKNOWN', 'PENDING')).toBe(false);
+    expect(canTransitionPrintJob('FAILED', 'PENDING')).toBe(false);
+    expect(canTransitionPrintJob('ACCEPTED', 'FAILED')).toBe(false);
+    expect(canTransitionPrintJob('MANUAL_REVIEW', 'ACCEPTED')).toBe(false);
+    expect(canTransitionPrintJob('CANCELLED', 'SUBMITTING')).toBe(false);
+  });
+
   it('locks binding, online, vendor relation and recovery stage values', () => {
     expect(CloudPrinterStatus).toEqual({
       BINDING: 'BINDING',
@@ -122,7 +197,10 @@ describe('cloud printer contracts', () => {
   });
 
   it('defines unique printer and idempotency failure categories', () => {
-    const codes = [
+    expect(PRINTING_API_ERROR_CODES).toEqual([
+      ApiErrorCode.ADMIN_VERIFICATION_FAILED,
+      ApiErrorCode.ADMIN_VERIFICATION_RATE_LIMITED,
+      ApiErrorCode.ADMIN_PERMISSION_DENIED,
       ApiErrorCode.CLOUD_PRINTER_SERIAL_INVALID,
       ApiErrorCode.CLOUD_PRINTER_NAME_INVALID,
       ApiErrorCode.CLOUD_PRINTER_ALREADY_BOUND,
@@ -139,12 +217,24 @@ describe('cloud printer contracts', () => {
       ApiErrorCode.CLOUD_PRINTER_RECOVERY_REQUIRED,
       ApiErrorCode.CLOUD_PRINTER_VENDOR_REJECTED,
       ApiErrorCode.CLOUD_PRINTER_VENDOR_UNAVAILABLE,
+      ApiErrorCode.CLOUD_PRINTER_UNBIND_BLOCKED,
+      ApiErrorCode.PRINT_ORDER_NOT_PRINTABLE,
+      ApiErrorCode.PRINT_BATCH_NOT_FOUND,
+      ApiErrorCode.PRINT_BATCH_STATUS_CONFLICT,
+      ApiErrorCode.PRINT_BATCH_APPEND_LIMIT_EXCEEDED,
+      ApiErrorCode.PRINT_BATCH_LEASE_CONFLICT,
+      ApiErrorCode.PRINT_JOB_NOT_FOUND,
+      ApiErrorCode.PRINT_JOB_STATUS_CONFLICT,
+      ApiErrorCode.PRINT_JOB_RESULT_UNKNOWN,
+      ApiErrorCode.PRINT_JOB_MANUAL_REVIEW_REQUIRED,
+      ApiErrorCode.PRINT_JOB_PAYLOAD_REDACTED,
       ApiErrorCode.IDEMPOTENCY_CONFLICT,
       ApiErrorCode.IDEMPOTENCY_IN_PROGRESS,
       ApiErrorCode.IDEMPOTENCY_RESULT_UNKNOWN,
-    ];
-
-    expect(codes).not.toContain(undefined);
-    expect(new Set(codes).size).toBe(codes.length);
+    ]);
+    expect(PRINTING_API_ERROR_CODES).not.toContain(undefined);
+    expect(new Set(PRINTING_API_ERROR_CODES).size).toBe(
+      PRINTING_API_ERROR_CODES.length,
+    );
   });
 });

@@ -6,7 +6,13 @@ import {
 } from '@bake-mall/contracts';
 
 export type PrinterAction =
-  'verify' | 'resend' | 'refresh' | 'requery' | 'delete-confirm' | 'rename';
+  | 'verify'
+  | 'resend'
+  | 'refresh'
+  | 'requery'
+  | 'delete-confirm'
+  | 'unbind'
+  | 'rename';
 
 export const PRINTER_ACTION_LABELS: Readonly<Record<PrinterAction, string>> = {
   verify: '输入验证码',
@@ -14,6 +20,7 @@ export const PRINTER_ACTION_LABELS: Readonly<Record<PrinterAction, string>> = {
   refresh: '刷新状态',
   requery: '重新查询',
   'delete-confirm': '确认补偿删除',
+  unbind: '解绑',
   rename: '重命名',
 };
 
@@ -21,7 +28,7 @@ export function actionsForPrinter(
   printer: CloudPrinterView,
 ): readonly PrinterAction[] {
   if (printer.status === CloudPrinterStatus.ACTIVE) {
-    return ['refresh', 'rename'];
+    return ['refresh', 'unbind', 'rename'];
   }
   if (
     printer.status === CloudPrinterStatus.ERROR &&
@@ -29,8 +36,11 @@ export function actionsForPrinter(
   ) {
     return ['delete-confirm', 'rename'];
   }
-  if (printer.bindingStage === PrinterBindingStage.UNBIND_DELETE) {
-    return ['rename'];
+  if (
+    printer.status === CloudPrinterStatus.ERROR &&
+    printer.bindingStage === PrinterBindingStage.UNBIND_DELETE
+  ) {
+    return ['delete-confirm', 'rename'];
   }
   if (
     printer.status === CloudPrinterStatus.PENDING_VERIFICATION &&

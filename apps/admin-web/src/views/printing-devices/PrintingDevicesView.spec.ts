@@ -20,6 +20,7 @@ vi.mock('./api/index.js', () => ({
     refresh: vi.fn(),
     requery: vi.fn(),
     confirmDeletion: vi.fn(),
+    unbind: vi.fn(),
     rename: vi.fn(),
   },
 }));
@@ -62,7 +63,7 @@ describe('PrintingDevicesView', () => {
     expect(wrapper.find('.admin-data-panel').exists()).toBe(true);
     expect(wrapper.text()).toContain('前台出单机');
     expect(wrapper.text()).toContain('绑定打印机');
-    expect(wrapper.text()).toContain('将在打印任务基础完成后开放');
+    expect(wrapper.find('[data-printer-action="unbind"]').exists()).toBe(true);
   });
 
   it('contains no fetch, store, or router imports in presentational components', async () => {
@@ -80,7 +81,7 @@ describe('PrintingDevicesView', () => {
     });
   });
 
-  it('has no unbind API, import, or emitted event anywhere in the feature module', () => {
+  it('composes unbind through the feature API and keeps components fetch-free', () => {
     const sources = import.meta.glob('./**/*.{ts,vue}', {
       eager: true,
       query: '?raw',
@@ -91,8 +92,8 @@ describe('PrintingDevicesView', () => {
       .map(([, source]) => source)
       .join('\n');
 
-    expect(executable).not.toMatch(/\.unbind\s*\(/u);
-    expect(executable).not.toMatch(/['"]unbind['"]\s*:/u);
-    expect(executable).not.toMatch(/emit\(['"]unbind['"]/u);
+    expect(executable).toContain('/unbind');
+    expect(executable).toContain("operation: 'unbind'");
+    expect(executable).not.toMatch(/components[\\/].*\bfetch\s*\(/u);
   });
 });

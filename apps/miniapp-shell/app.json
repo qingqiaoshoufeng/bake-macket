@@ -5,7 +5,8 @@
     "pages/admin-home/index",
     "pages/admin-password/index",
     "pages/admin-users/index",
-    "pages/admin-printers/index"
+    "pages/admin-printers/index",
+    "pages/admin-printing/index"
   ],
   "window": {
     "navigationBarBackgroundColor": "#fffaf3",

@@ -16,6 +16,7 @@ export const PRINTER_ACTION_LABELS: Readonly<
   refresh: '刷新在线状态',
   requery: '重新查询绑定关系',
   'delete-confirm': '确认补偿删除',
+  unbind: '解绑',
   rename: '重命名',
 });
 
@@ -23,15 +24,18 @@ export function actionsForPrinter(
   printer: CloudPrinterView,
 ): readonly PrintingDeviceAction[] {
   if (printer.status === CloudPrinterStatus.ACTIVE)
-    return ['refresh', 'rename'];
+    return ['refresh', 'unbind', 'rename'];
   if (
     printer.status === CloudPrinterStatus.ERROR &&
     printer.bindingStage === PrinterBindingStage.COMPENSATION_DELETE
   ) {
     return ['delete-confirm', 'rename'];
   }
-  if (printer.bindingStage === PrinterBindingStage.UNBIND_DELETE) {
-    return ['rename'];
+  if (
+    printer.status === CloudPrinterStatus.ERROR &&
+    printer.bindingStage === PrinterBindingStage.UNBIND_DELETE
+  ) {
+    return ['delete-confirm', 'rename'];
   }
   if (
     printer.status === CloudPrinterStatus.PENDING_VERIFICATION &&

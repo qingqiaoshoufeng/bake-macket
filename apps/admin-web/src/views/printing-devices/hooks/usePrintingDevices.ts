@@ -10,6 +10,7 @@ import {
   type RenameCloudPrinterResult,
   type RequeryCloudPrinterVendorRelationResult,
   type ResendCloudPrinterVerificationResult,
+  type UnbindCloudPrinterResult,
 } from '@bake-mall/contracts';
 import {
   computed,
@@ -55,6 +56,7 @@ const OPERATIONS = new Set<PrintingDeviceOperation>([
   'refresh',
   'requery',
   'delete-confirm',
+  'unbind',
   'rename',
 ]);
 const UNKNOWN_CODES = new Set<ApiErrorCode>([
@@ -70,7 +72,11 @@ const STABLE_CONFIRM_CODES = new Set<ApiErrorCode>([
 type DialogState = {
   readonly kind: 'bind' | 'verify' | 'recovery' | 'rename' | null;
   readonly resourceId?: string;
-  readonly recoveryAction?: 'resend' | 'requery' | 'delete-confirm';
+  readonly recoveryAction?:
+    | 'resend'
+    | 'requery'
+    | 'delete-confirm'
+    | 'unbind';
 };
 
 type PersistedOperations = {
@@ -86,7 +92,7 @@ type OperationRequest =
       readonly body: VerifyPrinterForm;
     }
   | {
-      readonly operation: 'resend' | 'requery' | 'delete-confirm';
+      readonly operation: 'resend' | 'requery' | 'delete-confirm' | 'unbind';
       readonly resourceId: string;
       readonly body: RecoveryPrinterForm;
     }
@@ -104,6 +110,7 @@ type OperationResult =
   | RefreshCloudPrinterOnlineStatusResult
   | RequeryCloudPrinterVendorRelationResult
   | ConfirmCloudPrinterCompensationDeletionResult
+  | UnbindCloudPrinterResult
   | RenameCloudPrinterResult;
 
 export type UsePrintingDevicesOptions = {
@@ -151,6 +158,7 @@ export type UsePrintingDevicesResult = {
   readonly confirmDeletion: (
     printerId: string,
   ) => Promise<ConfirmCloudPrinterCompensationDeletionResult>;
+  readonly unbind: (printerId: string) => Promise<UnbindCloudPrinterResult>;
   readonly rename: (printerId: string) => Promise<RenameCloudPrinterResult>;
   readonly retryOperation: (
     operation: PrintingDeviceOperation,
@@ -160,7 +168,7 @@ export type UsePrintingDevicesResult = {
   readonly openBind: () => void;
   readonly openVerify: (printer: CloudPrinterView) => void;
   readonly openRecovery: (
-    action: 'resend' | 'requery' | 'delete-confirm',
+    action: 'resend' | 'requery' | 'delete-confirm' | 'unbind',
     printer: CloudPrinterView,
   ) => void;
   readonly openRename: (printer: CloudPrinterView) => void;
@@ -658,6 +666,12 @@ export function usePrintingDevices(
           request.body,
           idempotencyKey,
         );
+      case 'unbind':
+        return printingDevicesApi.unbind(
+          request.resourceId,
+          request.body,
+          idempotencyKey,
+        );
       case 'rename':
         return printingDevicesApi.rename(
           request.resourceId,
@@ -759,7 +773,8 @@ export function usePrintingDevices(
     if (
       operation === 'resend' ||
       operation === 'requery' ||
-      operation === 'delete-confirm'
+      operation === 'delete-confirm' ||
+      operation === 'unbind'
     ) {
       return { operation, resourceId, body: { ...recoveryForm.value } };
     }
@@ -873,6 +888,18 @@ export function usePrintingDevices(
     }) as Promise<ConfirmCloudPrinterCompensationDeletionResult>;
   }
 
+  async function unbind(
+    printerId: string,
+  ): Promise<UnbindCloudPrinterResult> {
+    const request = { ...recoveryForm.value };
+    recoveryForm.value = createRecoveryPrinterDefaults();
+    return begin({
+      operation: 'unbind',
+      resourceId: printerId,
+      body: request,
+    }) as Promise<UnbindCloudPrinterResult>;
+  }
+
   async function rename(printerId: string): Promise<RenameCloudPrinterResult> {
     const normalized = normalizeCloudPrinterDisplayName(
       renameForm.value.displayName,
@@ -913,7 +940,7 @@ export function usePrintingDevices(
   }
 
   function openRecovery(
-    action: 'resend' | 'requery' | 'delete-confirm',
+    action: 'resend' | 'requery' | 'delete-confirm' | 'unbind',
     printer: CloudPrinterView,
   ): void {
     recoveryForm.value = createRecoveryPrinterDefaults();
@@ -971,6 +998,7 @@ export function usePrintingDevices(
     refreshOnlineStatus,
     requery,
     confirmDeletion,
+    unbind,
     rename,
     retryOperation,
     updateCountdown,

@@ -259,6 +259,8 @@ Page<PageData, PageCustom>({
         await controller.resend(resourceId);
       } else if (recoveryAction === 'requery') {
         await controller.requery(resourceId);
+      } else if (recoveryAction === 'unbind') {
+        await controller.unbind(resourceId);
       } else {
         await controller.confirmDeletion(resourceId);
       }
@@ -295,7 +297,17 @@ Page<PageData, PageCustom>({
     if (!printer) return;
     if (action === 'verify') controller.openVerify(printer);
     else if (action === 'rename') controller.openRename(printer);
-    else if (
+    else if (action === 'unbind') {
+      const confirmed = await new Promise<boolean>((resolve) => {
+        wx.showModal({
+          title: '确认解绑打印机',
+          content: `解绑“${printer.displayName}”后将不能继续提交打印任务。`,
+          success: ({ confirm }) => resolve(confirm),
+          fail: () => resolve(false),
+        });
+      });
+      if (confirmed) controller.openRecovery('unbind', printer);
+    } else if (
       action === 'resend' ||
       action === 'requery' ||
       action === 'delete-confirm'
@@ -338,7 +350,8 @@ Page<PageData, PageCustom>({
       else if (
         operation === 'resend' ||
         operation === 'requery' ||
-        operation === 'delete-confirm'
+        operation === 'delete-confirm' ||
+        operation === 'unbind'
       )
         controller.openRecovery(operation, printer);
       else if (operation === 'refresh') {

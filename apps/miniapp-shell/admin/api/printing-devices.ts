@@ -15,6 +15,8 @@ import type {
   RequeryCloudPrinterVendorRelationResult,
   ResendCloudPrinterVerificationRequest,
   ResendCloudPrinterVerificationResult,
+  UnbindCloudPrinterRequest,
+  UnbindCloudPrinterResult,
 } from '@bake-mall/contracts';
 
 import type { BakeMallAppData } from '../../app.js';
@@ -121,6 +123,17 @@ export function createPrintingDevicesApi(
     ): Promise<ConfirmCloudPrinterCompensationDeletionResult> {
       return client.post(
         `/admin/cloud-printers/${printerId}/compensation-delete/confirm`,
+        body,
+        writeOptions(idempotencyKey),
+      );
+    },
+    unbind(
+      printerId: string,
+      body: UnbindCloudPrinterRequest,
+      idempotencyKey: string,
+    ): Promise<UnbindCloudPrinterResult> {
+      return client.post(
+        `/admin/cloud-printers/${printerId}/unbind`,
         body,
         writeOptions(idempotencyKey),
       );

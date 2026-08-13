@@ -16,6 +16,7 @@ import {
   type RenameCloudPrinterResult,
   type RequeryCloudPrinterVendorRelationResult,
   type ResendCloudPrinterVerificationResult,
+  type UnbindCloudPrinterResult,
 } from '@bake-mall/contracts';
 
 import { ApiClientError } from '../../utils/api-client.js';
@@ -43,6 +44,7 @@ const OPERATIONS = new Set<PrintingDeviceOperation>([
   'refresh',
   'requery',
   'delete-confirm',
+  'unbind',
   'rename',
 ]);
 const UNCERTAIN_CODES = new Set<ApiErrorCode>([
@@ -92,6 +94,11 @@ export type PrintingDevicesApi = Readonly<{
     body: import('@bake-mall/contracts').ConfirmCloudPrinterCompensationDeletionRequest,
     idempotencyKey: string,
   ) => Promise<ConfirmCloudPrinterCompensationDeletionResult>;
+  unbind: (
+    printerId: string,
+    body: import('@bake-mall/contracts').UnbindCloudPrinterRequest,
+    idempotencyKey: string,
+  ) => Promise<UnbindCloudPrinterResult>;
   rename: (
     printerId: string,
     body: import('@bake-mall/contracts').RenameCloudPrinterRequest,
@@ -110,7 +117,7 @@ type OperationRequest =
       readonly body: import('@bake-mall/contracts').ConfirmCloudPrinterRequest;
     }
   | {
-      readonly operation: 'resend' | 'requery' | 'delete-confirm';
+      readonly operation: 'resend' | 'requery' | 'delete-confirm' | 'unbind';
       readonly resourceId: string;
       readonly body: import('@bake-mall/contracts').RequeryCloudPrinterVendorRelationRequest;
     }
@@ -128,6 +135,7 @@ type OperationResult =
   | RefreshCloudPrinterOnlineStatusResult
   | RequeryCloudPrinterVendorRelationResult
   | ConfirmCloudPrinterCompensationDeletionResult
+  | UnbindCloudPrinterResult
   | RenameCloudPrinterResult;
 
 type PersistedState = Readonly<{
@@ -690,6 +698,12 @@ export function createPrintingDevicesController(dependencies: Dependencies) {
           request.body,
           idempotencyKey,
         );
+      case 'unbind':
+        return dependencies.api.unbind(
+          request.resourceId,
+          request.body,
+          idempotencyKey,
+        );
       case 'rename':
         return dependencies.api.rename(
           request.resourceId,
@@ -869,7 +883,8 @@ export function createPrintingDevicesController(dependencies: Dependencies) {
     } else if (
       request.operation === 'resend' ||
       request.operation === 'requery' ||
-      request.operation === 'delete-confirm'
+      request.operation === 'delete-confirm' ||
+      request.operation === 'unbind'
     ) {
       state = {
         ...state,
@@ -958,7 +973,7 @@ export function createPrintingDevicesController(dependencies: Dependencies) {
   }
 
   function openRecovery(
-    action: 'resend' | 'requery' | 'delete-confirm',
+    action: 'resend' | 'requery' | 'delete-confirm' | 'unbind',
     device: CloudPrinterView,
   ): void {
     state = {
@@ -1043,7 +1058,7 @@ export function createPrintingDevicesController(dependencies: Dependencies) {
   }
 
   function beginRecovery(
-    operation: 'resend' | 'requery' | 'delete-confirm',
+    operation: 'resend' | 'requery' | 'delete-confirm' | 'unbind',
     printerId: string,
   ): Promise<OperationResult> {
     const body = { operationPassword: state.forms.recoveryPassword };
@@ -1096,6 +1111,13 @@ export function createPrintingDevicesController(dependencies: Dependencies) {
       'delete-confirm',
       printerId,
     ) as Promise<ConfirmCloudPrinterCompensationDeletionResult>;
+  }
+
+  function unbind(printerId: string): Promise<UnbindCloudPrinterResult> {
+    return beginRecovery(
+      'unbind',
+      printerId,
+    ) as Promise<UnbindCloudPrinterResult>;
   }
 
   async function rename(printerId: string): Promise<RenameCloudPrinterResult> {
@@ -1152,6 +1174,7 @@ export function createPrintingDevicesController(dependencies: Dependencies) {
     persistLifecycleState,
     refreshOnlineStatus,
     rename,
+    unbind,
     requery,
     resend,
     setBindForm,
