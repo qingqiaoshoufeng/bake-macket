@@ -14,6 +14,10 @@ import { OrderItem } from '../database/entities/order-item.entity.js';
 import { Order } from '../database/entities/order.entity.js';
 import { PrintBatch } from '../database/entities/print-batch.entity.js';
 import { PrintJob } from '../database/entities/print-job.entity.js';
+import {
+  CreatePrintBatchDto,
+  CreateSinglePrintDto,
+} from './dto/print-job.dto.js';
 import { PrintBatchService } from './print-batch.service.js';
 
 const admin: AuthenticatedAdmin = {
@@ -149,16 +153,21 @@ const setup = () => {
         responseSnapshot: Record<string, unknown> | null;
       };
   const idempotency = {
-    claim: vi.fn(async (): Promise<ClaimResult> => ({
-      kind: 'OWNER',
-      owner: {
-        id: 'operation-1',
-        adminId: admin.id,
-        operation: 'PRINT_BATCH_CREATE',
-        key: KEY,
-        requestHash: 'hash',
+    claim: vi.fn(
+      async (...args: [unknown, { request: unknown }]): Promise<ClaimResult> => {
+        void args;
+        return {
+          kind: 'OWNER',
+          owner: {
+            id: 'operation-1',
+            adminId: admin.id,
+            operation: 'PRINT_BATCH_CREATE',
+            key: KEY,
+            requestHash: 'hash',
+          },
+        };
       },
-    })),
+    ),
     complete: vi.fn(async () => undefined),
   };
   const audit = { record: vi.fn(async () => undefined) };
@@ -190,7 +199,10 @@ describe('PrintBatchService 构建批次', () => {
   it('create 幂等创建一个 DRAFT 空批次并保存稳定 snapshot', async () => {
     const context = setup();
 
-    const result = await context.service.create(admin, { printerId: '4' }, KEY);
+    const request = Object.assign(new CreatePrintBatchDto(), {
+      printerId: '4',
+    });
+    const result = await context.service.create(admin, request, KEY);
 
     expect(result.batch).toMatchObject({
       id: '1',
@@ -207,6 +219,9 @@ describe('PrintBatchService 构建批次', () => {
         request: { printerId: '4' },
       }),
     );
+    const createClaimRequest = context.idempotency.claim.mock.calls[0]![1]
+      .request as object;
+    expect(Object.getPrototypeOf(createClaimRequest)).toBe(Object.prototype);
     expect(context.idempotency.complete).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
@@ -394,9 +409,13 @@ describe('PrintBatchService 单张打印', () => {
         };
       });
 
+    const request = Object.assign(new CreateSinglePrintDto(), {
+      orderId: '9',
+      printerId: '4',
+    });
     const result = await context.service.createSingle(
       admin,
-      { orderId: '9', printerId: '4' },
+      request,
       '66666666-6666-4666-8666-666666666666',
     );
 
@@ -407,6 +426,9 @@ describe('PrintBatchService 单张打印', () => {
         request: { orderId: '9', printerId: '4' },
       }),
     );
+    const singleClaimRequest = context.idempotency.claim.mock.calls[0]![1]
+      .request as object;
+    expect(Object.getPrototypeOf(singleClaimRequest)).toBe(Object.prototype);
     expect(context.batches[0]).toMatchObject({
       status: PrintBatchStatus.READY,
       totalCount: 1,
