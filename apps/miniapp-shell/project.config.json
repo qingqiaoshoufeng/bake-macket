@@ -1,16 +1,29 @@
 {
   "appid": "touristappid",
   "compileType": "miniprogram",
-  "libVersion": "trial",
+  "libVersion": "3.17.1",
   "miniprogramRoot": "./",
   "projectname": "bake-mall-miniapp-shell",
   "packOptions": {
     "ignore": [
-      { "type": "folder", "value": "node_modules" },
-      { "type": "folder", "value": "scripts" },
-      { "type": "folder", "value": "types" },
-      { "type": "suffix", "value": ".spec.ts" }
-    ]
+      {
+        "value": "node_modules",
+        "type": "folder"
+      },
+      {
+        "value": "scripts",
+        "type": "folder"
+      },
+      {
+        "value": "types",
+        "type": "folder"
+      },
+      {
+        "value": ".spec.ts",
+        "type": "suffix"
+      }
+    ],
+    "include": []
   },
   "setting": {
     "checkInvalidKey": true,
@@ -19,6 +32,27 @@
     "postcss": true,
     "preloadBackgroundData": false,
     "urlCheck": true,
-    "useCompilerPlugins": ["typescript"]
-  }
+    "useCompilerPlugins": ["typescript"],
+    "compileWorklet": false,
+    "minified": false,
+    "uglifyFileName": false,
+    "uploadWithSourceMap": true,
+    "enhance": false,
+    "packNpmManually": false,
+    "packNpmRelationList": [],
+    "minifyWXSS": true,
+    "minifyWXML": true,
+    "localPlugins": false,
+    "disableUseStrict": false,
+    "condition": false,
+    "swc": false,
+    "disableSWC": true,
+    "babelSetting": {
+      "ignore": [],
+      "disablePlugins": [],
+      "outputPath": ""
+    }
+  },
+  "simulatorPluginLibVersion": {},
+  "editorSetting": {}
 }

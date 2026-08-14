@@ -1,0 +1,98 @@
+<view class="printing-page">
+  <view class="printing-card">
+    <text class="printing-card__title">选择在线打印机</text>
+    <view wx:if="{{printerOptions.length === 0}}" class="printing-empty">
+      暂无 ACTIVE 且在线的打印机，请先完成设备绑定和状态刷新。
+    </view>
+    <view class="printer-options">
+      <button
+        wx:for="{{printerOptions}}"
+        wx:key="id"
+        size="mini"
+        class="printer-option {{item.selected ? 'printer-option--selected' : ''}}"
+        data-printer-id="{{item.id}}"
+        bindtap="onSelectPrinter"
+      >{{item.displayName}} · {{item.serialNumberMasked}}</button>
+    </view>
+  </view>
+
+  <view wx:if="{{error}}" class="printing-error">
+    <text>{{error}}</text>
+    <button size="mini" bindtap="onRetry">重试</button>
+  </view>
+
+  <view class="printing-heading">
+    <view>
+      <text class="printing-heading__title">可打印订单</text>
+      <text class="printing-heading__copy">已选择 {{selectedOrderIds.length}} 笔</text>
+    </view>
+    <button
+      size="mini"
+      type="primary"
+      loading="{{submitting}}"
+      disabled="{{!canSubmit}}"
+      bindtap="onSubmit"
+    >{{selectedOrderIds.length > 1 ? '批量打印' : '打印订单'}}</button>
+  </view>
+
+  <printing-order-list
+    orders="{{orderRows}}"
+    disabled="{{loading || submitting}}"
+    bind:toggle="onToggleOrder"
+  />
+
+  <button
+    wx:if="{{setupContinueRequired}}"
+    type="warn"
+    loading="{{submitting}}"
+    disabled="{{submitting}}"
+    bindtap="onResumeSetup"
+  >恢复上次未确认的打印请求</button>
+
+  <button
+    wx:if="{{manualContinueRequired}}"
+    type="primary"
+    loading="{{submitting}}"
+    disabled="{{submitting}}"
+    bindtap="onContinueBatch"
+  >继续批次 #{{pendingBatchId}}（最多 20 项）</button>
+
+  <view wx:if="{{result}}" class="printing-result">
+    <text class="printing-result__title">本次提交结果</text>
+    <text>厂商已接受 {{result.accepted}}</text>
+    <text>明确失败 {{result.failed}}</text>
+    <text>状态未知 {{result.unknown}}</text>
+    <text>人工复核 {{result.manualReview}}</text>
+    <text>批次状态 {{result.batch.status}}</text>
+    <view wx:for="{{jobRows}}" wx:key="id" class="printing-job">
+      <text>订单 #{{item.orderId}} · {{item.statusLabel}}</text>
+      <view class="printing-job__actions">
+        <button
+          wx:if="{{item.canQueryUnknown}}"
+          size="mini"
+          disabled="{{submitting}}"
+          data-job-id="{{item.id}}"
+          bindtap="onQueryUnknown"
+        >查询厂商状态</button>
+        <button
+          wx:if="{{item.canRetryFailed}}"
+          size="mini"
+          disabled="{{submitting}}"
+          data-job-id="{{item.id}}"
+          bindtap="onRetryFailed"
+        >重试明确失败</button>
+        <block wx:if="{{item.canResolveManually}}">
+          <button size="mini" disabled="{{submitting}}" data-job-id="{{item.id}}" bindtap="onConfirmPrinted">确认已打印</button>
+          <button size="mini" disabled="{{submitting}}" data-job-id="{{item.id}}" bindtap="onConfirmNotPrinted">确认未打印</button>
+          <button size="mini" type="warn" disabled="{{submitting}}" data-job-id="{{item.id}}" bindtap="onDuplicateRiskRetry">风险重打</button>
+        </block>
+      </view>
+    </view>
+  </view>
+
+  <view class="printing-pagination">
+    <button size="mini" disabled="{{loading || page <= 1}}" bindtap="onPreviousPage">上一页</button>
+    <text>第 {{page}} 页，共 {{total}} 条</text>
+    <button size="mini" disabled="{{loading || page * pageSize >= total}}" bindtap="onNextPage">下一页</button>
+  </view>
+</view>

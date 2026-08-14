@@ -1,10 +1,11 @@
+import type { CloudPrinterListResult } from '@bake-mall/contracts';
+
 import {
   CloudPrinterOnlineStatus,
   CloudPrinterStatus,
   PrinterBindingStage,
   VendorRelationState,
-  type CloudPrinterListResult,
-} from '@bake-mall/contracts';
+} from '../../config/contracts.generated.js';
 
 export const PRINTING_DEVICES_MOCK: CloudPrinterListResult = Object.freeze({
   items: [

@@ -135,12 +135,6 @@ function formatCheckedAt(value: string | null): string {
           >
             {{ PRINTER_ACTION_LABELS[action] }}
           </ElButton>
-          <span class="printer-table__unbind">
-            <ElButton disabled link :data-testid="`unbind-printer-${row.id}`">
-              解绑
-            </ElButton>
-            <small>将在打印任务基础完成后开放</small>
-          </span>
         </div>
       </template>
     </ElTableColumn>
@@ -160,8 +154,7 @@ function formatCheckedAt(value: string | null): string {
 }
 
 .printer-table__identity,
-.printer-table__actions,
-.printer-table__unbind {
+.printer-table__actions {
   display: flex;
   align-items: center;
 }
@@ -188,8 +181,7 @@ function formatCheckedAt(value: string | null): string {
   display: block;
 }
 
-.printer-table__identity small,
-.printer-table__unbind small {
+.printer-table__identity small {
   margin-top: 3px;
   color: var(--admin-muted);
   font-size: 11px;
@@ -198,15 +190,6 @@ function formatCheckedAt(value: string | null): string {
 .printer-table__actions {
   flex-wrap: wrap;
   gap: 2px 8px;
-}
-
-.printer-table__unbind {
-  align-items: flex-start;
-  flex-direction: column;
-}
-
-.printer-table__unbind :deep(.el-button) {
-  margin-left: 0;
 }
 
 .printer-table__empty {

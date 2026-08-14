@@ -755,6 +755,86 @@ describe('AdminOperationIdempotencyService owner transitions', () => {
     ).rejects.toThrow(/owner|状态|transition/iu);
   });
 
+  it('允许不含 payload/PII 的 print batch 稳定响应 snapshot', async () => {
+    const harness = buildHarness();
+    const claimed = await harness.service.claim(harness.manager as never, {
+      adminId: 'admin-1',
+      operation: 'PRINT_BATCH_PROCESS',
+      key: IDEMPOTENCY_KEY_1,
+      request: { batchId: '7' },
+    });
+    if (claimed.kind !== 'OWNER') throw new Error('owner expected');
+    const responseSnapshot = {
+      batch: {
+        id: '7',
+        printerId: '4',
+        createdByAdminId: 'admin-1',
+        status: 'COMPLETED',
+        leaseOwner: null,
+        leaseExpiresAt: null,
+        totalCount: 1,
+        classifiedCount: 1,
+        pendingCount: 0,
+        submittingCount: 0,
+        acceptedCount: 1,
+        failedCount: 0,
+        unknownCount: 0,
+        manualReviewCount: 0,
+        manuallyResolvedCount: 0,
+        cancelledCount: 0,
+        createdAt: '2026-08-11T01:00:00.000Z',
+        updatedAt: '2026-08-11T01:01:00.000Z',
+      },
+      processedCount: 1,
+      accepted: 1,
+      failed: 0,
+      unknown: 0,
+      manualReview: 0,
+    };
+
+    await expect(
+      harness.service.complete(harness.manager as never, {
+        owner: claimed.owner,
+        resourceType: 'PRINT_BATCH',
+        resourceId: '7',
+        responseSnapshot,
+        sensitiveValues: [],
+      }),
+    ).resolves.toBeUndefined();
+    expect(harness.records[0]).toMatchObject({
+      status: 'COMPLETED',
+      responseSnapshot,
+    });
+  });
+
+  it('拒绝 PRINT_BATCH snapshot 的嵌套 batch.id 与 resourceId 不一致', async () => {
+    const harness = buildHarness();
+    const claimed = await harness.service.claim(harness.manager as never, {
+      adminId: 'admin-1',
+      operation: 'PRINT_BATCH_PROCESS',
+      key: IDEMPOTENCY_KEY_1,
+      request: { batchId: '7' },
+    });
+    if (claimed.kind !== 'OWNER') throw new Error('owner expected');
+
+    await expect(
+      harness.service.complete(harness.manager as never, {
+        owner: claimed.owner,
+        resourceType: 'PRINT_BATCH',
+        resourceId: '7',
+        responseSnapshot: {
+          batch: {
+            id: '8',
+            printerId: '4',
+            status: 'COMPLETED',
+          },
+        },
+        sensitiveValues: [],
+      }),
+    ).rejects.toThrow(/resource|inconsistent|一致/iu);
+    expect(harness.records[0]?.status).toBe('IN_PROGRESS');
+  });
+
   it('owner 可在外部成功但本地完成不确定时条件标记 UNKNOWN 并持久化安全 server context', async () => {
     const harness = buildHarness();
     const claimed = await harness.service.claim(

@@ -8,6 +8,7 @@
   "include": [
     "app.ts",
     "config/**/*.d.ts",
+    "config/contracts.generated.ts",
     "admin/**/*.ts",
     "pages/**/*.ts",
     "scripts/**/*.mjs",

@@ -21,6 +21,8 @@ export * from './order-item.entity.js';
 export * from './order.entity.js';
 export * from './product-image.entity.js';
 export * from './product.entity.js';
+export { PrintBatch } from './print-batch.entity.js';
+export { PrintJob } from './print-job.entity.js';
 export * from './sku.entity.js';
 export * from './user-membership.entity.js';
 export * from './user.entity.js';

@@ -4,7 +4,7 @@ import vue from '@vitejs/plugin-vue';
 import { defineConfig, loadEnv } from 'vite';
 
 const repositoryRoot = fileURLToPath(new URL('../..', import.meta.url));
-const allowedHosts = ['12297oy2ga916.vicp.fun'];
+const allowedHosts = ['12297oy2ga916.vicp.fun', '12fg2re344234.vicp.fun'];
 
 /**
  * Vite configuration for the customer-facing mobile storefront.

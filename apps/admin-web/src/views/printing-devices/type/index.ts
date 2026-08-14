@@ -17,6 +17,8 @@ import type {
   RequeryCloudPrinterVendorRelationResult,
   ResendCloudPrinterVerificationRequest,
   ResendCloudPrinterVerificationResult,
+  UnbindCloudPrinterRequest,
+  UnbindCloudPrinterResult,
 } from '@bake-mall/contracts';
 
 export type {
@@ -38,6 +40,8 @@ export type {
   RequeryCloudPrinterVendorRelationResult,
   ResendCloudPrinterVerificationRequest,
   ResendCloudPrinterVerificationResult,
+  UnbindCloudPrinterRequest,
+  UnbindCloudPrinterResult,
 };
 
 export type PrintingDeviceOperation =
@@ -47,6 +51,7 @@ export type PrintingDeviceOperation =
   | 'refresh'
   | 'requery'
   | 'delete-confirm'
+  | 'unbind'
   | 'rename';
 
 export type PrintingDeviceOperationStatus = 'PENDING' | 'RETRYABLE' | 'UNKNOWN';

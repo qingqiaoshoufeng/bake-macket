@@ -55,6 +55,36 @@ describe('installMiniappBridge', () => {
     teardown();
   });
 
+  it('parses the startup handoff when Object.hasOwn is unavailable', () => {
+    const originalHasOwn = Object.hasOwn;
+    Object.defineProperty(Object, 'hasOwn', {
+      configurable: true,
+      value: undefined,
+    });
+    window.history.replaceState(
+      null,
+      '',
+      '/?miniappSource=bake-miniapp&miniappType=WECHAT_CODE&wechatCode=legacy-webview-code',
+    );
+    const onMessage = vi.fn();
+
+    try {
+      const teardown = installMiniappBridge(onMessage);
+
+      expect(onMessage).toHaveBeenCalledWith({
+        source: 'bake-miniapp',
+        type: 'WECHAT_CODE',
+        code: 'legacy-webview-code',
+      });
+      teardown();
+    } finally {
+      Object.defineProperty(Object, 'hasOwn', {
+        configurable: true,
+        value: originalHasOwn,
+      });
+    }
+  });
+
   it('has already scrubbed the URL when the business callback throws', () => {
     window.history.replaceState(
       null,

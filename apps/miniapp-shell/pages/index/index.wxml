@@ -7,6 +7,9 @@
     bindload="onWebViewLoad"
     binderror="onWebViewError"
   >
+    <cover-view class="web-view-diagnostic web-view-diagnostic--{{webViewState}}">
+      {{webViewMessage}}
+    </cover-view>
     <cover-view
       wx:if="{{adminEligible}}"
       class="admin-entry"

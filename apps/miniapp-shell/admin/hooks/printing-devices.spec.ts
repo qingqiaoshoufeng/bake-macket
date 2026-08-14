@@ -115,6 +115,7 @@ function apiHarness(): PrintingDevicesApi {
     refresh: vi.fn(),
     requery: vi.fn(),
     confirmDeletion: vi.fn(),
+    unbind: vi.fn(),
     rename: vi.fn(),
   };
 }
@@ -239,6 +240,20 @@ describe('printing device idempotency and storage', () => {
         return vi.mocked(api.confirmDeletion);
       },
       success: { printer: activePrinter },
+    },
+    {
+      operation: 'unbind' as const,
+      resourceId: printer.id,
+      prime(controller: ReturnType<typeof controllerHarness>['controller']) {
+        controller.setRecoveryPassword('secret');
+      },
+      start(controller: ReturnType<typeof controllerHarness>['controller']) {
+        return controller.unbind(printer.id);
+      },
+      api(api: PrintingDevicesApi) {
+        return vi.mocked(api.unbind);
+      },
+      success: { printer: { ...activePrinter, status: CloudPrinterStatus.UNBOUND } },
     },
     {
       operation: 'rename' as const,
@@ -715,33 +730,30 @@ describe('challenge, fencing, actions, and validation', () => {
     await first;
     expect(harness.controller.snapshot().devices).toEqual([activePrinter]);
 
-    const staleRename = deferred<{ printer: CloudPrinterView }>();
-    const currentRename = deferred<{ printer: CloudPrinterView }>();
-    vi.mocked(harness.api.rename)
-      .mockReturnValueOnce(staleRename.promise)
-      .mockReturnValueOnce(currentRename.promise);
+    const pendingRename = deferred<{ printer: CloudPrinterView }>();
+    vi.mocked(harness.api.rename).mockReturnValueOnce(pendingRename.promise);
     vi.mocked(harness.api.list).mockResolvedValue({
       ...listResult,
-      items: [{ ...activePrinter, displayName: '新名字' }],
+      items: [{ ...activePrinter, displayName: '旧名字' }],
     });
     harness.controller.setRenameName('旧名字');
-    const oldMutation = harness.controller.rename(printer.id);
+    const firstMutation = harness.controller.rename(printer.id);
     harness.controller.setRenameName('新名字');
-    const newMutation = harness.controller.rename(printer.id);
-    currentRename.resolve({
-      printer: { ...activePrinter, displayName: '新名字' },
-    });
-    await newMutation;
-    staleRename.resolve({
+
+    await expect(harness.controller.rename(printer.id)).rejects.toThrow(
+      '正在准备或等待恢复',
+    );
+    expect(harness.api.rename).toHaveBeenCalledTimes(1);
+    pendingRename.resolve({
       printer: { ...activePrinter, displayName: '旧名字' },
     });
-    await oldMutation;
+    await firstMutation;
     expect(harness.controller.snapshot().devices[0]?.displayName).toBe(
-      '新名字',
+      '旧名字',
     );
   });
 
-  it('uses the approved action matrix and exposes no unbind action', () => {
+  it('uses the approved action matrix and exposes unbind only for ACTIVE', () => {
     const harness = controllerHarness();
     expect(harness.controller.actionsFor(printer)).toEqual([
       'verify',
@@ -750,6 +762,7 @@ describe('challenge, fencing, actions, and validation', () => {
     ]);
     expect(harness.controller.actionsFor(activePrinter)).toEqual([
       'refresh',
+      'unbind',
       'rename',
     ]);
     expect(
@@ -765,7 +778,7 @@ describe('challenge, fencing, actions, and validation', () => {
         status: CloudPrinterStatus.ERROR,
         bindingStage: PrinterBindingStage.UNBIND_DELETE,
       }),
-    ).toEqual(['rename']);
+    ).toEqual(['delete-confirm', 'rename']);
     expect(
       harness.controller.actionsFor({
         ...printer,
@@ -773,9 +786,7 @@ describe('challenge, fencing, actions, and validation', () => {
         bindingStage: PrinterBindingStage.UNBIND_DELETE,
       }),
     ).toEqual(['rename']);
-    expect(
-      JSON.stringify(harness.controller.actionsFor(printer)),
-    ).not.toContain('unbind');
+    expect(harness.controller.actionsFor(printer)).not.toContain('unbind');
   });
 
   it('validates trimmed Unicode rename at 1-64 codepoints without password', async () => {

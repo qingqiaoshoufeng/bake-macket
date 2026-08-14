@@ -275,6 +275,45 @@ const ALLOWED_SNAPSHOT_KEYS = new Set([
   'pageSize',
   'allowlistSatisfied',
   'rejectedKeys',
+  'batch',
+  'jobs',
+  'job',
+  'createdByAdminId',
+  'leaseOwner',
+  'leaseExpiresAt',
+  'totalCount',
+  'classifiedCount',
+  'pendingCount',
+  'submittingCount',
+  'acceptedCount',
+  'failedCount',
+  'unknownCount',
+  'manualReviewCount',
+  'manuallyResolvedCount',
+  'cancelledCount',
+  'createdAt',
+  'updatedAt',
+  'batchId',
+  'orderId',
+  'sequence',
+  'vendorJobId',
+  'vendorErrorCode',
+  'acceptedAt',
+  'manualResolution',
+  'manualResolutionByAdminId',
+  'manualResolutionAt',
+  'supersedesJobId',
+  'payloadRedactedAt',
+  'processedCount',
+  'accepted',
+  'failed',
+  'unknown',
+  'manualReview',
+  'resolution',
+  'retryBatch',
+  'retryJob',
+  'originalBatch',
+  'originalJob',
 ]);
 
 const SHORT_SENSITIVE_VALUE_LENGTH = 4;
@@ -396,13 +435,23 @@ const assertResourceIdentity = (
   assertBoundedText('resourceId', resourceId, 64, /^[!-~]+$/u);
 
   const candidateIds: unknown[] = [snapshot.resourceId, snapshot.printerId];
-  const nestedPrinter = snapshot.printer;
+  const nestedResourceKey =
+    resourceType === 'CLOUD_PRINTER'
+      ? 'printer'
+      : resourceType === 'PRINT_BATCH'
+        ? 'batch'
+        : resourceType === 'PRINT_JOB'
+          ? 'job'
+          : null;
+  const nestedResource = nestedResourceKey
+    ? snapshot[nestedResourceKey]
+    : undefined;
   if (
-    nestedPrinter &&
-    typeof nestedPrinter === 'object' &&
-    !Array.isArray(nestedPrinter)
+    nestedResource &&
+    typeof nestedResource === 'object' &&
+    !Array.isArray(nestedResource)
   ) {
-    candidateIds.push((nestedPrinter as Record<string, unknown>).id);
+    candidateIds.push((nestedResource as Record<string, unknown>).id);
   }
   const inconsistent = candidateIds.some(
     (candidate) => candidate !== undefined && candidate !== resourceId,

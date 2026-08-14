@@ -2,6 +2,8 @@ import {
   ApiErrorCode,
   CloudPrinterOnlineStatus,
   CloudPrinterStatus,
+  PrintBatchStatus,
+  PrintJobStatus,
   PrinterBindingStage,
   VendorRelationState,
   displayNameContainsSensitiveSerial,
@@ -19,6 +21,8 @@ import {
   type RenameCloudPrinterResult,
   type ResendCloudPrinterVerificationRequest,
   type ResendCloudPrinterVerificationResult,
+  type UnbindCloudPrinterRequest,
+  type UnbindCloudPrinterResult,
 } from '@bake-mall/contracts';
 import {
   BadRequestException,
@@ -40,6 +44,8 @@ import { type AuthenticatedAdmin } from '../auth/auth.types.js';
 import { AdminVerificationService } from '../auth/admin-verification.service.js';
 import { AdminOperationIdempotency } from '../database/entities/admin-operation-idempotency.entity.js';
 import { CloudPrinter } from '../database/entities/cloud-printer.entity.js';
+import { PrintBatch } from '../database/entities/print-batch.entity.js';
+import { PrintJob } from '../database/entities/print-job.entity.js';
 import {
   AdminOperationIdempotencyService,
   type AdminOperationClaim,
@@ -79,7 +85,8 @@ type OperationName =
   | 'CLOUD_PRINTER_CONFIRM'
   | 'CLOUD_PRINTER_RESEND'
   | 'CLOUD_PRINTER_RENAME'
-  | 'CLOUD_PRINTER_REFRESH_ONLINE';
+  | 'CLOUD_PRINTER_REFRESH_ONLINE'
+  | 'PRINT_DEVICE_UNBIND';
 
 type OwnerClaim = Extract<AdminOperationClaim, { kind: 'OWNER' }>;
 type ReplayClaim = Extract<AdminOperationClaim, { kind: 'REPLAY' }>;
@@ -97,6 +104,7 @@ type FailureCode =
   | 'INVALID_STATE'
   | 'ONLINE_STATUS_UNKNOWN'
   | 'NOT_FOUND'
+  | 'UNBIND_BLOCKED'
   | 'IDEMPOTENCY_RESULT_UNKNOWN';
 
 type StableFailureSnapshot = Readonly<{
@@ -309,6 +317,11 @@ const failedException = (code: FailureCode): HttpException => {
       return new NotFoundException({
         code: ApiErrorCode.CLOUD_PRINTER_RECOVERY_REQUIRED,
         message: 'printer not found',
+      });
+    case 'UNBIND_BLOCKED':
+      return new ConflictException({
+        code: ApiErrorCode.CLOUD_PRINTER_UNBIND_BLOCKED,
+        message: '打印机仍被非终态打印批次或任务引用',
       });
     case 'IDEMPOTENCY_RESULT_UNKNOWN':
       return resultUnknown('当前绑定周期结果未知，必须先收敛原操作');
@@ -1425,6 +1438,162 @@ export class CloudPrinterService {
     });
   }
 
+  async unbind(
+    principal: AuthenticatedAdmin,
+    printerId: string,
+    request: UnbindCloudPrinterRequest,
+    idempotencyKey: string,
+  ): Promise<UnbindCloudPrinterResult> {
+    this.assertIdempotencyKey(idempotencyKey);
+    await this.verifyPassword(principal, request.operationPassword);
+    const prepared = await this.dataSource.transaction(async (manager) => {
+      const claim = await this.idempotencyService.claim(manager, {
+        adminId: principal.id,
+        operation: 'PRINT_DEVICE_UNBIND' satisfies OperationName,
+        key: idempotencyKey,
+        request: { printerId, operationPassword: request.operationPassword },
+      });
+      if (claim.kind === 'REPLAY') {
+        return { kind: 'REPLAY' as const, result: this.handleReplay<UnbindCloudPrinterResult>(claim) };
+      }
+      const printer = await manager.getRepository(CloudPrinter).findOne({
+        where: { id: printerId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!printer || printer.status !== CloudPrinterStatus.ACTIVE) {
+        await this.idempotencyService.fail(manager, {
+          owner: claim.owner,
+          resourceType: printer ? 'CLOUD_PRINTER' : null,
+          resourceId: printer?.id ?? null,
+          responseSnapshot: this.failureSnapshot('RECOVERY_REQUIRED', printer?.id),
+          sensitiveValues: [request.operationPassword],
+        });
+        return { kind: 'FAILURE' as const, failure: 'RECOVERY_REQUIRED' as const };
+      }
+      const [blockingBatch, blockingJob] = await Promise.all([
+        manager.getRepository(PrintBatch).findOne({
+          where: {
+            printerId,
+            status: In([
+              PrintBatchStatus.DRAFT,
+              PrintBatchStatus.READY,
+              PrintBatchStatus.RUNNING,
+              PrintBatchStatus.PAUSED,
+            ]),
+          },
+        }),
+        manager.getRepository(PrintJob).findOne({
+          where: {
+            printerId,
+            status: In([
+              PrintJobStatus.PENDING,
+              PrintJobStatus.SUBMITTING,
+              PrintJobStatus.UNKNOWN,
+              PrintJobStatus.MANUAL_REVIEW,
+            ]),
+          },
+        }),
+      ]);
+      if (blockingBatch || blockingJob) {
+        await this.idempotencyService.fail(manager, {
+          owner: claim.owner,
+          resourceType: 'CLOUD_PRINTER',
+          resourceId: printer.id,
+          responseSnapshot: this.failureSnapshot('UNBIND_BLOCKED', printer.id),
+          sensitiveValues: [printer.serialNumber, request.operationPassword],
+        });
+        return { kind: 'FAILURE' as const, failure: 'UNBIND_BLOCKED' as const };
+      }
+      printer.status = CloudPrinterStatus.UNBINDING;
+      printer.bindingStage = PrinterBindingStage.UNBIND_DELETE;
+      printer.vendorRelationState = VendorRelationState.CONFIRMED_BOUND;
+      printer.bindingOperationId = claim.owner.id;
+      printer.bindingIdempotencyKey = idempotencyKey;
+      const saved = await manager.getRepository(CloudPrinter).save(printer);
+      return { kind: 'OWNER' as const, claim, printer: saved };
+    });
+    if (prepared.kind === 'REPLAY') return prepared.result;
+    if (prepared.kind === 'FAILURE') throw failedException(prepared.failure);
+
+    let deletion: VendorClassification;
+    try {
+      const result = await this.vendor.deletePrinter(prepared.printer.serialNumber);
+      deletion = { kind: 'SUCCESS', vendorCode: result.vendorCode };
+    } catch (error) {
+      deletion = errorClassification(error);
+    }
+
+    const outcome = await this.dataSource.transaction(async (manager) => {
+      const repository = manager.getRepository(CloudPrinter);
+      const printer = await repository.findOne({
+        where: { id: prepared.printer.id },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!printer || printer.bindingOperationId !== prepared.claim.owner.id) {
+        throw resultUnknown('解绑周期已变化，必须先收敛原操作');
+      }
+      if (deletion.kind === 'SUCCESS') {
+        printer.status = CloudPrinterStatus.UNBOUND;
+        printer.bindingStage = PrinterBindingStage.NONE;
+        printer.vendorRelationState = VendorRelationState.CONFIRMED_UNBOUND;
+        printer.unboundAt = this.now();
+        printer.lastOnlineStatus = CloudPrinterOnlineStatus.UNKNOWN;
+        printer.lastStatusCheckedAt = null;
+        const saved = await repository.save(printer);
+        const snapshot = { printer: toSnapshotView(saved) };
+        await this.idempotencyService.complete(manager, {
+          owner: prepared.claim.owner,
+          resourceType: 'CLOUD_PRINTER',
+          resourceId: saved.id,
+          responseSnapshot: snapshot,
+          sensitiveValues: [saved.serialNumber, request.operationPassword],
+        });
+        await this.recordAudit(manager, principal.id, saved.id, 'CLOUD_PRINTER_UNBOUND', {
+          result: 'COMPLETED',
+          status: saved.status,
+        });
+        return { snapshot };
+      }
+      printer.status =
+        deletion.kind === 'UNKNOWN'
+          ? CloudPrinterStatus.ERROR
+          : CloudPrinterStatus.ACTIVE;
+      printer.bindingStage =
+        deletion.kind === 'UNKNOWN'
+          ? PrinterBindingStage.UNBIND_DELETE
+          : PrinterBindingStage.NONE;
+      printer.vendorRelationState =
+        deletion.kind === 'UNKNOWN'
+          ? VendorRelationState.UNKNOWN
+          : VendorRelationState.CONFIRMED_BOUND;
+      printer.lastVendorErrorCode = deletion.vendorCode;
+      const saved = await repository.save(printer);
+      if (deletion.kind === 'UNKNOWN') {
+        await this.idempotencyService.markUnknown(manager, {
+          owner: prepared.claim.owner,
+          resourceType: 'CLOUD_PRINTER',
+          resourceId: saved.id,
+        });
+        return { failure: 'IDEMPOTENCY_RESULT_UNKNOWN' as const };
+      }
+      await this.idempotencyService.fail(manager, {
+        owner: prepared.claim.owner,
+        resourceType: 'CLOUD_PRINTER',
+        resourceId: saved.id,
+        responseSnapshot: this.failureSnapshot('VENDOR_REJECTED', saved.id),
+        sensitiveValues: [saved.serialNumber, request.operationPassword],
+      });
+      return { failure: 'VENDOR_REJECTED' as const };
+    });
+    if ('failure' in outcome && outcome.failure) {
+      throw failedException(outcome.failure);
+    }
+    if (!('snapshot' in outcome)) {
+      throw failedException('IDEMPOTENCY_RESULT_UNKNOWN');
+    }
+    return outcome.snapshot;
+  }
+
   async list(query: CloudPrinterListQuery): Promise<CloudPrinterListResult> {
     const all = await this.cloudPrinterRepository().find();
     const filtered = query.includeUnbound
@@ -2120,6 +2289,7 @@ export class CloudPrinterService {
       code === 'INVALID_STATE' ||
       code === 'ONLINE_STATUS_UNKNOWN' ||
       code === 'NOT_FOUND' ||
+      code === 'UNBIND_BLOCKED' ||
       code === 'IDEMPOTENCY_RESULT_UNKNOWN'
     );
   }

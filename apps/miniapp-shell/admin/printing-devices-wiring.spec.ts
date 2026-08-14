@@ -36,8 +36,8 @@ describe('native printing devices wiring and static safety', () => {
     expect(template).toContain('onlineStatus');
     expect(template).toContain('离线，不能提交打印任务');
     expect(template).toContain('status');
-    expect(template).toContain('将在打印任务基础完成后开放');
-    expect(`${component}\n${template}`).not.toMatch(/unbind|解绑事件/u);
+    expect(template).toContain('action.value');
+    expect(`${component}\n${template}`).not.toMatch(/api|request|wx\.request/u);
   });
 
   it('contains strict page gates, permission navigation, and lifecycle persistence', async () => {
@@ -90,7 +90,7 @@ describe('native printing devices wiring and static safety', () => {
     );
   });
 
-  it('has no unbind API or event anywhere in the new feature', async () => {
+  it('wires password-confirmed unbind through API, hook, and page confirmation', async () => {
     const sources = await Promise.all([
       read('admin/api/printing-devices.ts'),
       read('admin/hooks/printing-devices.ts'),
@@ -100,6 +100,9 @@ describe('native printing devices wiring and static safety', () => {
       read('admin/components/printer-list/index.wxml'),
     ]);
 
-    expect(sources.join('\n')).not.toMatch(/unbind|onUnbind|bind:unbind/u);
+    const source = sources.join('\n');
+    expect(source).toContain('/unbind');
+    expect(source).toContain("'unbind'");
+    expect(source).toContain('wx.showModal');
   });
 });

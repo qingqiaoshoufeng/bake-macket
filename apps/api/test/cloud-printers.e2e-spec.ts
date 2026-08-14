@@ -639,8 +639,9 @@ describe.sequential('Admin cloud printers controller (e2e)', () => {
     },
   );
 
-  it('exposes refresh/requery/delete-confirm with canonical keys, password forwarding, masked SN, and no unbind route', async () => {
+  it('exposes refresh/requery/delete-confirm/unbind with canonical keys, password forwarding, and masked SN', async () => {
     const recoveryPassword = 'recovery-http-secret';
+    const unbindPassword = '12345678';
     printerRows.push(
       {
         id: '9101',
@@ -699,6 +700,25 @@ describe.sequential('Admin cloud printers controller (e2e)', () => {
         unboundAt: null,
         version: 1,
       },
+      {
+        id: '9104',
+        serialNumber: 'SN-Unbind-Http',
+        displayName: '待解绑设备',
+        status: 'ACTIVE',
+        bindingStage: 'NONE',
+        vendorRelationState: 'CONFIRMED_BOUND',
+        bindingIdempotencyKey: null,
+        verificationCodeHash: null,
+        verificationExpiresAt: null,
+        verificationFailedAttempts: 0,
+        verifiedAt: new Date(),
+        lastOnlineStatus: 'ONLINE',
+        lastStatusCheckedAt: new Date(),
+        boundByAdminId: '42',
+        lastVendorErrorCode: null,
+        unboundAt: null,
+        version: 1,
+      },
     );
     verification.verifyPassword.mockClear();
 
@@ -727,11 +747,12 @@ describe.sequential('Admin cloud printers controller (e2e)', () => {
       .set('idempotency-key', '00000000-0000-4000-8000-000000000111')
       .set('x-test-role', AdminRole.OPERATOR)
       .send({});
-    const noUnbind = await request(app!.getHttpServer())
-      .post('/api/v1/admin/cloud-printers/9101/unbind')
+    vendorCalls.deletePrinter.mockClear();
+    const unbind = await request(app!.getHttpServer())
+      .post('/api/v1/admin/cloud-printers/9104/unbind')
       .set('idempotency-key', '00000000-0000-4000-8000-000000000112')
       .set('x-test-role', AdminRole.OPERATOR)
-      .send({ operationPassword: recoveryPassword });
+      .send({ operationPassword: unbindPassword });
 
     expect(requery.status).toBe(201);
     expect(deletion.status).toBe(201);
@@ -739,11 +760,17 @@ describe.sequential('Admin cloud printers controller (e2e)', () => {
     expect(invalidKey.status).toBe(400);
     expect(invalidKey.body.code).toBe(ApiErrorCode.IDEMPOTENCY_CONFLICT);
     expect(missingPassword.status).toBe(400);
-    expect(noUnbind.status).toBe(404);
+    expect(unbind.status).toBe(201);
+    expect(unbind.body.printer).toMatchObject({
+      id: '9104',
+      status: 'UNBOUND',
+    });
+    expect(vendorCalls.deletePrinter).toHaveBeenCalledTimes(1);
+    expect(vendorCalls.deletePrinter).toHaveBeenCalledWith('SN-Unbind-Http');
     expect(verification.verifyPassword).toHaveBeenCalledWith(
       expect.objectContaining({ candidatePassword: recoveryPassword }),
     );
-    for (const response of [requery, deletion, refresh]) {
+    for (const response of [requery, deletion, refresh, unbind]) {
       expect(response.body.printer.serialNumberMasked).toEqual(
         expect.any(String),
       );

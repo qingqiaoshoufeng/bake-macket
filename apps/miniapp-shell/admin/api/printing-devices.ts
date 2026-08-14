@@ -15,6 +15,8 @@ import type {
   RequeryCloudPrinterVendorRelationResult,
   ResendCloudPrinterVerificationRequest,
   ResendCloudPrinterVerificationResult,
+  UnbindCloudPrinterRequest,
+  UnbindCloudPrinterResult,
 } from '@bake-mall/contracts';
 
 import type { BakeMallAppData } from '../../app.js';
@@ -34,11 +36,13 @@ type ApiRequest = NonNullable<
 export function createPrintingDevicesApi(
   app: BakeMallAppData,
   request?: ApiRequest,
+  baseUrl?: string,
 ) {
   const client = createMiniappApiClient({
     adminSession: app.adminSession,
     customerSession: app.customerSession,
     ...(request ? { request } : {}),
+    ...(baseUrl ? { baseUrl } : {}),
   });
   function writeOptions(idempotencyKey: string): MiniappApiRequestOptions {
     return {
@@ -121,6 +125,17 @@ export function createPrintingDevicesApi(
     ): Promise<ConfirmCloudPrinterCompensationDeletionResult> {
       return client.post(
         `/admin/cloud-printers/${printerId}/compensation-delete/confirm`,
+        body,
+        writeOptions(idempotencyKey),
+      );
+    },
+    unbind(
+      printerId: string,
+      body: UnbindCloudPrinterRequest,
+      idempotencyKey: string,
+    ): Promise<UnbindCloudPrinterResult> {
+      return client.post(
+        `/admin/cloud-printers/${printerId}/unbind`,
         body,
         writeOptions(idempotencyKey),
       );

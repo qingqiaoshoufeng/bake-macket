@@ -1,6 +1,8 @@
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath, URL } from 'node:url';
 
+import './generate-contracts-runtime.mjs';
+
 import { createMiniappConfigSources, resolveBuildH5Url } from './config.mjs';
 import { scanMiniappSourceBoundary } from './source-boundary.mjs';
 
@@ -20,6 +22,7 @@ const [
   apiRuntime,
   h5Declaration,
   apiDeclaration,
+  contractsRuntime,
 ] = await Promise.all([
   read('project.config.json'),
   read('app.json'),
@@ -29,19 +32,29 @@ const [
   read('config/api.generated.js'),
   read('config/h5.generated.d.ts'),
   read('config/api.generated.d.ts'),
+  read('config/contracts.generated.ts'),
 ]);
 
 const project = JSON.parse(projectSource);
 const app = JSON.parse(appSource);
 const expectedSources = createMiniappConfigSources(
-  resolveBuildH5Url(process.env.MINIAPP_H5_URL),
+  resolveBuildH5Url(
+    process.env.MINIAPP_H5_URL ?? 'https://miniapp-build-check.invalid/',
+  ),
 );
 const expectedH5Declaration =
   'export declare const MINIAPP_H5_URL: string;\n' +
   'export declare const MINIAPP_H5_ORIGIN: string;\n';
 const expectedApiDeclaration =
   'export declare const MINIAPP_API_BASE_URL: string;\n';
+/** @param {string} source */
+const normalizeLineEndings = (source) => source.replace(/\r\n?/gu, '\n');
 
+if (project.appid !== 'touristappid') {
+  throw new Error(
+    'committed project.config.json must keep the placeholder AppID; use project.private.config.json for real AppIDs',
+  );
+}
 if (project.miniprogramRoot !== './') {
   throw new Error('project.config.json miniprogramRoot must be ./');
 }
@@ -77,13 +90,21 @@ if (apiRuntime !== expectedSources.api) {
     'generated API runtime must match the current MINIAPP_H5_URL origin',
   );
 }
-if (h5Declaration !== expectedH5Declaration) {
+if (normalizeLineEndings(h5Declaration) !== expectedH5Declaration) {
   throw new Error('generated H5 declaration must expose only URL and origin');
 }
-if (apiDeclaration !== expectedApiDeclaration) {
+if (normalizeLineEndings(apiDeclaration) !== expectedApiDeclaration) {
   throw new Error(
     'generated API declaration must expose only MINIAPP_API_BASE_URL',
   );
+}
+if (
+  !contractsRuntime.includes('export enum AdminPermission') ||
+  !contractsRuntime.includes('export enum PrintJobStatus') ||
+  contractsRuntime.includes('@bake-mall/contracts') ||
+  /\brequire\s*\(/u.test(contractsRuntime)
+) {
+  throw new Error('generated contracts runtime is incomplete or non-local');
 }
 
 const sourceBoundaryDiagnostics = await scanMiniappSourceBoundary(

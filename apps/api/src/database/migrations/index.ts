@@ -10,6 +10,8 @@ import { HomepagePages1718000000008 } from './0009-homepage-pages.js';
 import { HomepageMultipleDrafts1718000000009 } from './0010-homepage-multiple-drafts.js';
 import { UserAdminIdentity1718000000009 } from './0011-user-admin-identity.js';
 import { CloudPrinters1718000000010 } from './0012-cloud-printers.js';
+import { CloudPrintJobs1718000000011 } from './0013-cloud-print-jobs.js';
+import { PrintJobUnknownMetadata1718000000012 } from './0014-print-job-unknown-metadata.js';
 
 export const DATABASE_MIGRATIONS = [
   InitialSchema1718000000000,
@@ -24,6 +26,8 @@ export const DATABASE_MIGRATIONS = [
   HomepageMultipleDrafts1718000000009,
   UserAdminIdentity1718000000009,
   CloudPrinters1718000000010,
+  CloudPrintJobs1718000000011,
+  PrintJobUnknownMetadata1718000000012,
 ] as const;
 
 type MigrationClass = (typeof DATABASE_MIGRATIONS)[number];

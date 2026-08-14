@@ -23,11 +23,11 @@ assert.equal(
 assert.match(h5ViteConfig, /strictPort:\s*true/);
 assert.match(h5ViteConfig, /H5_PORT/);
 assert.match(h5ViteConfig, /\.\.\.process\.env/);
-assert.match(h5ViteConfig, /12297oy2ga916\.vicp\.fun/);
+assert.match(h5ViteConfig, /12fg2re344234\.vicp\.fun/);
 assert.match(adminViteConfig, /strictPort:\s*true/);
 assert.match(adminViteConfig, /ADMIN_PORT/);
 assert.match(adminViteConfig, /\.\.\.process\.env/);
-assert.match(adminViteConfig, /12297oy2ga916\.vicp\.fun/);
+assert.match(adminViteConfig, /12fg2re344234\.vicp\.fun/);
 assert.match(composeScript, /--env-file/);
 assert.match(
   developmentEnvTemplate,

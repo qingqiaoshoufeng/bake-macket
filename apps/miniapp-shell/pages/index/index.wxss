@@ -12,6 +12,26 @@
   font-size: 28rpx;
 }
 
+.web-view-diagnostic {
+  position: fixed;
+  z-index: 3;
+  top: 16rpx;
+  left: 16rpx;
+  border-radius: 8rpx;
+  padding: 10rpx 16rpx;
+  background: rgba(111, 103, 93, 0.88);
+  color: #ffffff;
+  font-size: 22rpx;
+}
+
+.web-view-diagnostic--loaded {
+  background: rgba(48, 145, 92, 0.88);
+}
+
+.web-view-diagnostic--error {
+  background: rgba(196, 69, 54, 0.92);
+}
+
 .admin-entry {
   position: fixed;
   z-index: 2;

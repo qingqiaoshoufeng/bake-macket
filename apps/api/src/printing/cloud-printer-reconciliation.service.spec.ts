@@ -1014,26 +1014,41 @@ describe('CloudPrinterReconciliationService administrator recovery', () => {
     await expectTransactionsCommitted(fixture.dataSource.transaction);
   });
 
-  it('rejects UNBIND_DELETE without calling the vendor in this batch', async () => {
+  it('UNBIND_DELETE 只查询厂商关系并在确认已解绑后收敛，不重复 delete', async () => {
     const fixture = buildFixture({
       printers: [
-        basePrinter({ bindingStage: PrinterBindingStage.UNBIND_DELETE }),
+        basePrinter({
+          bindingStage: PrinterBindingStage.UNBIND_DELETE,
+          vendorRelationState: VendorRelationState.UNKNOWN,
+        }),
       ],
+      vendor: {
+        queryOnline: vi.fn(async () => {
+          throw Object.assign(new Error('not bound'), {
+            classification: 'FAILED',
+            vendorCode: '1002',
+          });
+        }),
+      },
     });
 
-    await expect(
-      fixture.service.confirmDeletion(
-        { id: ADMIN_ID },
-        '1',
-        { operationPassword: PASSWORD },
-        newKey(),
-      ),
-    ).rejects.toMatchObject(
-      apiCode(ApiErrorCode.CLOUD_PRINTER_RECOVERY_REQUIRED),
+    const result = await fixture.service.confirmDeletion(
+      { id: ADMIN_ID },
+      '1',
+      { operationPassword: PASSWORD },
+      newKey(),
     );
 
+    expect(result.printer).toMatchObject({
+      status: CloudPrinterStatus.UNBOUND,
+    });
+    expect(fixture.printers[0]).toMatchObject({
+      status: CloudPrinterStatus.UNBOUND,
+      bindingStage: PrinterBindingStage.NONE,
+    });
+    expect(fixture.vendor.queryOnline).toHaveBeenCalledTimes(1);
     expect(fixture.vendor.deletePrinter).not.toHaveBeenCalled();
-    expect(fixture.operations[0]).toMatchObject({ status: 'FAILED' });
+    expect(fixture.operations[0]).toMatchObject({ status: 'COMPLETED' });
   });
 
   it('does not start a transaction or delete when compensation password verification fails', async () => {

@@ -25,6 +25,8 @@ type IndexPageData = Readonly<{
   deliveryId: string;
   h5Url: string;
   showWebView: boolean;
+  webViewMessage: string;
+  webViewState: 'error' | 'loaded' | 'loading';
 }>;
 
 type WebViewEvent = Readonly<{
@@ -46,6 +48,8 @@ Page<IndexPageData, IndexPageCustom>({
     deliveryId: '',
     h5Url: '',
     showWebView: false,
+    webViewMessage: '正在加载商城网页…',
+    webViewState: 'loading',
   },
 
   onLoad(): void {
@@ -68,7 +72,11 @@ Page<IndexPageData, IndexPageCustom>({
       peekPhoneHandoff: app.phoneCredentialHandoff.peek,
       rebuildWebView: (h5Url, deliveryId): boolean => {
         try {
-          this.setData({ showWebView: false }, () => {
+          this.setData({
+            showWebView: false,
+            webViewMessage: '正在加载商城网页…',
+            webViewState: 'loading',
+          }, () => {
             this.setData({ deliveryId, h5Url, showWebView: true });
           });
           return true;
@@ -117,10 +125,18 @@ Page<IndexPageData, IndexPageCustom>({
   },
 
   onWebViewLoad(event): void {
+    this.setData({
+      webViewMessage: '商城网页已加载',
+      webViewState: 'loaded',
+    });
     this.controller?.handleWebViewLoad(event.currentTarget.dataset.deliveryId);
   },
 
   onWebViewError(event): void {
+    this.setData({
+      webViewMessage: '商城网页加载失败',
+      webViewState: 'error',
+    });
     this.controller?.handleWebViewError(event.currentTarget.dataset.deliveryId);
     wx.showToast({ title: '商城页面加载失败，请检查网络', icon: 'none' });
   },

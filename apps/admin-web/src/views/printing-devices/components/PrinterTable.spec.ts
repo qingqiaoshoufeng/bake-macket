@@ -97,7 +97,7 @@ describe('PrinterTable', () => {
       CloudPrinterStatus.ERROR,
       PrinterBindingStage.UNBIND_DELETE,
       VendorRelationState.CONFIRMED_BOUND,
-      ['rename'],
+      ['delete-confirm', 'rename'],
     ],
     [
       CloudPrinterStatus.UNBINDING,
@@ -115,7 +115,7 @@ describe('PrinterTable', () => {
       CloudPrinterStatus.ACTIVE,
       PrinterBindingStage.PRINT_VERIFICATION_CODE,
       VendorRelationState.CONFIRMED_BOUND,
-      ['refresh', 'rename'],
+      ['refresh', 'unbind', 'rename'],
     ],
   ])(
     'emits only status-driven recovery actions for %s/%s/%s',
@@ -144,14 +144,14 @@ describe('PrinterTable', () => {
     expect(wrapper.emitted('action')).toEqual([['resend', selected]]);
   });
 
-  it('always shows disabled unbind with the fixed future copy and never emits unbind', async () => {
-    const wrapper = mountTable([printer()]);
-    const unbind = wrapper.get('[data-testid="unbind-printer-1001"]');
+  it('shows active unbind and emits it through the shared action seam', async () => {
+    const selected = printer();
+    const wrapper = mountTable([selected]);
+    const unbind = wrapper.get('[data-printer-action="unbind"]');
 
-    expect(unbind.attributes()).toHaveProperty('disabled');
-    expect(wrapper.text()).toContain('将在打印任务基础完成后开放');
+    expect(unbind.attributes()).not.toHaveProperty('disabled');
     await unbind.trigger('click');
-    expect(wrapper.emitted('unbind')).toBeUndefined();
+    expect(wrapper.emitted('action')).toEqual([['unbind', selected]]);
   });
 
   it('contains no fetch boundary inside the presentational component', () => {

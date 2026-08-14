@@ -135,18 +135,19 @@ describe('printer dialogs', () => {
     expect(wrapper.html()).not.toMatch(/operationPassword|密码/);
   });
 
-  it('recovery component offers only requested recovery events and no unbind', () => {
+  it('recovery component supports password-confirmed unbind without networking', () => {
     const wrapper = mount(PrinterRecoveryActions, {
       props: {
         visible: true,
         submitting: false,
-        action: 'requery',
+        action: 'unbind',
         printerName: '前台出单机',
         form: { operationPassword: '' },
       },
     });
 
-    expect(wrapper.html()).not.toContain('unbind');
+    expect(wrapper.props('action')).toBe('unbind');
+    expect(wrapper.html()).toContain('aria-label="确认解绑打印机"');
     expect(wrapper.html()).not.toContain('fetch(');
   });
 });

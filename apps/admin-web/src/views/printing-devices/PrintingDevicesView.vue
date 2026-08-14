@@ -56,11 +56,21 @@ async function perform(
 
 function handleAction(
   action:
-    'verify' | 'resend' | 'refresh' | 'requery' | 'delete-confirm' | 'rename',
+    | 'verify'
+    | 'resend'
+    | 'refresh'
+    | 'requery'
+    | 'delete-confirm'
+    | 'unbind'
+    | 'rename',
   printer: CloudPrinterView,
 ): void {
   if (action === 'verify') state.openVerify(printer);
-  else if (action === 'refresh') {
+  else if (action === 'unbind') {
+    if (window.confirm(`确认解绑“${printer.displayName}”吗？`)) {
+      state.openRecovery('unbind', printer);
+    }
+  } else if (action === 'refresh') {
     void perform(() => state.refreshOnlineStatus(printer.id), '在线状态已刷新');
   } else if (action === 'rename') state.openRename(printer);
   else state.openRecovery(action, printer);
@@ -74,6 +84,7 @@ function matchingPending(
     | 'refresh'
     | 'requery'
     | 'delete-confirm'
+    | 'unbind'
     | 'rename',
   resourceId?: string,
 ) {
@@ -111,6 +122,7 @@ function submitRecovery(): void {
     resend: () => state.resend(printerId),
     requery: () => state.requery(printerId),
     'delete-confirm': () => state.confirmDeletion(printerId),
+    unbind: () => state.unbind(printerId),
   } as const;
   const operation = matchingPending(action, printerId);
   void perform(
@@ -156,7 +168,8 @@ function continuePendingOperation(): void {
   else if (
     pending.operation === 'resend' ||
     pending.operation === 'requery' ||
-    pending.operation === 'delete-confirm'
+    pending.operation === 'delete-confirm' ||
+    pending.operation === 'unbind'
   ) {
     state.openRecovery(pending.operation, printer);
   }

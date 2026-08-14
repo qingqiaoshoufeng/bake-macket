@@ -83,6 +83,23 @@ describe('miniapp request boundary AST scanner', () => {
     ).toEqual([]);
   });
 
+  it('rejects shared-contract runtime imports but permits erased type imports', () => {
+    expect(
+      diagnostics(
+        ordinarySourcePath,
+        "import { AdminPermission } from '@bake-mall/contracts';",
+      ),
+    ).toContain(
+      '小程序运行时代码不得直接导入 @bake-mall/contracts；请使用 config/contracts.generated.js',
+    );
+    expect(
+      diagnostics(
+        ordinarySourcePath,
+        "import type { AdminSessionView } from '@bake-mall/contracts';",
+      ),
+    ).toEqual([]);
+  });
+
   it('keeps the checked-in miniapp source tree inside the request boundary', async () => {
     await expect(scanMiniappSourceBoundary(packageRoot)).resolves.toEqual([]);
   });

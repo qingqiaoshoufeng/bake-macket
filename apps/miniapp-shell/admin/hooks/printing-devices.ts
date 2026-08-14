@@ -1,25 +1,34 @@
+import type {
+  AdminSessionView,
+  BindCloudPrinterRequest,
+  BindCloudPrinterResult,
+  CloudPrinterListQuery,
+  CloudPrinterListResult,
+  CloudPrinterView,
+  ConfirmCloudPrinterCompensationDeletionResult,
+  ConfirmCloudPrinterResult,
+  PrinterVerificationChallengeView,
+  RefreshCloudPrinterOnlineStatusResult,
+  RenameCloudPrinterResult,
+  RequeryCloudPrinterVendorRelationResult,
+  ResendCloudPrinterVerificationResult,
+  UnbindCloudPrinterResult,
+} from '@bake-mall/contracts';
+
 import {
   AdminPermission,
   ApiErrorCode,
   CloudPrinterStatus,
   normalizeCloudPrinterDisplayName,
-  type AdminSessionView,
-  type BindCloudPrinterRequest,
-  type BindCloudPrinterResult,
-  type CloudPrinterListQuery,
-  type CloudPrinterListResult,
-  type CloudPrinterView,
-  type ConfirmCloudPrinterCompensationDeletionResult,
-  type ConfirmCloudPrinterResult,
-  type PrinterVerificationChallengeView,
-  type RefreshCloudPrinterOnlineStatusResult,
-  type RenameCloudPrinterResult,
-  type RequeryCloudPrinterVendorRelationResult,
-  type ResendCloudPrinterVerificationResult,
-} from '@bake-mall/contracts';
-
+} from '../../config/contracts.generated.js';
 import { ApiClientError } from '../../utils/api-client.js';
 import type { MemorySessionStore } from '../../utils/admin-session.js';
+import {
+  createSecureUuidV4,
+  isUuidV4,
+  requireUuidV4,
+  type RandomUuidFactory,
+} from '../../utils/random-uuid.js';
 import {
   PRINTING_DEVICE_PAGE_SIZE,
   actionsForPrinter,
@@ -33,8 +42,6 @@ import type {
 } from '../type/printing-devices.js';
 
 export const PRINTING_DEVICES_STORAGE_KEY = 'bake-mall:admin-printing-devices';
-const UUID_V4_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const ADMIN_ID_PATTERN = /^[1-9]\d*$/u;
 const OPERATIONS = new Set<PrintingDeviceOperation>([
   'bind',
@@ -43,6 +50,7 @@ const OPERATIONS = new Set<PrintingDeviceOperation>([
   'refresh',
   'requery',
   'delete-confirm',
+  'unbind',
   'rename',
 ]);
 const UNCERTAIN_CODES = new Set<ApiErrorCode>([
@@ -92,6 +100,11 @@ export type PrintingDevicesApi = Readonly<{
     body: import('@bake-mall/contracts').ConfirmCloudPrinterCompensationDeletionRequest,
     idempotencyKey: string,
   ) => Promise<ConfirmCloudPrinterCompensationDeletionResult>;
+  unbind: (
+    printerId: string,
+    body: import('@bake-mall/contracts').UnbindCloudPrinterRequest,
+    idempotencyKey: string,
+  ) => Promise<UnbindCloudPrinterResult>;
   rename: (
     printerId: string,
     body: import('@bake-mall/contracts').RenameCloudPrinterRequest,
@@ -110,7 +123,7 @@ type OperationRequest =
       readonly body: import('@bake-mall/contracts').ConfirmCloudPrinterRequest;
     }
   | {
-      readonly operation: 'resend' | 'requery' | 'delete-confirm';
+      readonly operation: 'resend' | 'requery' | 'delete-confirm' | 'unbind';
       readonly resourceId: string;
       readonly body: import('@bake-mall/contracts').RequeryCloudPrinterVendorRelationRequest;
     }
@@ -128,6 +141,7 @@ type OperationResult =
   | RefreshCloudPrinterOnlineStatusResult
   | RequeryCloudPrinterVendorRelationResult
   | ConfirmCloudPrinterCompensationDeletionResult
+  | UnbindCloudPrinterResult
   | RenameCloudPrinterResult;
 
 type PersistedState = Readonly<{
@@ -140,7 +154,7 @@ type Dependencies = Readonly<{
   adminSession: MemorySessionStore<AdminSessionView>;
   api: PrintingDevicesApi;
   storage?: PrintingDevicesStorage;
-  randomUUID?: () => string;
+  randomUUID?: RandomUuidFactory;
   now?: () => number;
 }>;
 
@@ -220,7 +234,7 @@ function exactKeys(
   const actual = Object.keys(value);
   return (
     actual.length === keys.length &&
-    keys.every((key) => Object.hasOwn(value, key))
+    keys.every((key) => Object.prototype.hasOwnProperty.call(value, key))
   );
 }
 
@@ -228,7 +242,10 @@ function isPersistedOperation(
   value: unknown,
 ): value is PersistedPendingDeviceOperation {
   if (!isRecord(value)) return false;
-  const hasResourceId = Object.hasOwn(value, 'resourceId');
+  const hasResourceId = Object.prototype.hasOwnProperty.call(
+    value,
+    'resourceId',
+  );
   const operation = value.operation;
   if (
     !exactKeys(
@@ -240,7 +257,7 @@ function isPersistedOperation(
     typeof operation !== 'string' ||
     !OPERATIONS.has(operation as PrintingDeviceOperation) ||
     typeof value.idempotencyKey !== 'string' ||
-    !UUID_V4_PATTERN.test(value.idempotencyKey)
+    !isUuidV4(value.idempotencyKey)
   ) {
     return false;
   }
@@ -256,7 +273,10 @@ function isPersistedState(
   adminId: string,
 ): value is PersistedState {
   if (!isRecord(value)) return false;
-  const hasLastPrinterId = Object.hasOwn(value, 'lastPrinterId');
+  const hasLastPrinterId = Object.prototype.hasOwnProperty.call(
+    value,
+    'lastPrinterId',
+  );
   return (
     exactKeys(
       value,
@@ -327,8 +347,9 @@ function classifyOperationError(error: unknown): OperationErrorClassification {
   return 'FAILED';
 }
 
-function pendingStatus(error: unknown): PrintingDeviceOperationStatus | null {
-  const classification = classifyOperationError(error);
+function pendingStatus(
+  classification: OperationErrorClassification,
+): PrintingDeviceOperationStatus | null {
   if (classification === 'UNKNOWN') return 'UNKNOWN';
   if (classification === 'RETRYABLE') return 'RETRYABLE';
   return null;
@@ -369,26 +390,10 @@ function countdown(
 
 export function createPrintingDevicesController(dependencies: Dependencies) {
   const storage = dependencies.storage ?? defaultStorage();
-  const randomUUID =
-    dependencies.randomUUID ??
-    (() => {
-      const bytes = new Uint8Array(16);
-      wx.getRandomValues(bytes);
-      bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x40;
-      bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80;
-      const hexadecimal = Array.from(bytes)
-        .map((value) => value.toString(16).padStart(2, '0'))
-        .join('');
-      return [
-        hexadecimal.slice(0, 8),
-        hexadecimal.slice(8, 12),
-        hexadecimal.slice(12, 16),
-        hexadecimal.slice(16, 20),
-        hexadecimal.slice(20),
-      ].join('-');
-    });
+  const randomUUID = dependencies.randomUUID ?? createSecureUuidV4;
   const now = dependencies.now ?? Date.now;
   const operationRequests = new Map<string, OperationRequest>();
+  const preparingOperations = new Set<string>();
   let state = emptyState();
   let ownerAdminId: string | null = null;
   let lastPrinterId: string | undefined;
@@ -690,6 +695,12 @@ export function createPrintingDevicesController(dependencies: Dependencies) {
           request.body,
           idempotencyKey,
         );
+      case 'unbind':
+        return dependencies.api.unbind(
+          request.resourceId,
+          request.body,
+          idempotencyKey,
+        );
       case 'rename':
         return dependencies.api.rename(
           request.resourceId,
@@ -763,7 +774,7 @@ export function createPrintingDevicesController(dependencies: Dependencies) {
       );
       if (!current) throw error;
       const classification = classifyOperationError(error);
-      const status = pendingStatus(error);
+      const status = pendingStatus(classification);
       const message = safeMessage(error);
       if (status) {
         updateStatus(request.operation, resourceId, idempotencyKey, status);
@@ -771,15 +782,15 @@ export function createPrintingDevicesController(dependencies: Dependencies) {
         releaseOperation(request.operation, resourceId, idempotencyKey);
       }
       state = { ...state, error: message };
+      const code = apiCode(error);
       if (
         request.operation === 'confirm' &&
-        apiCode(error) !== undefined &&
-        AUTHORITATIVE_CONFIRM_CODES.has(apiCode(error)!)
+        code !== undefined &&
+        AUTHORITATIVE_CONFIRM_CODES.has(code)
       ) {
         await authoritativeReload(message);
         if (
-          apiCode(error) ===
-          ApiErrorCode.CLOUD_PRINTER_VERIFICATION_ATTEMPTS_EXHAUSTED
+          code === ApiErrorCode.CLOUD_PRINTER_VERIFICATION_ATTEMPTS_EXHAUSTED
         ) {
           state = {
             ...state,
@@ -800,22 +811,33 @@ export function createPrintingDevicesController(dependencies: Dependencies) {
     }
   }
 
-  function begin(request: OperationRequest): Promise<OperationResult> {
-    const idempotencyKey = randomUUID();
-    if (!UUID_V4_PATTERN.test(idempotencyKey)) {
-      throw new Error('无法生成安全的操作标识，请重试');
-    }
+  async function begin(request: OperationRequest): Promise<OperationResult> {
     const resourceId = 'resourceId' in request ? request.resourceId : undefined;
     const operationId = identity(request.operation, resourceId);
-    operationRequests.set(operationId, request);
-    state = { ...state, mutationGeneration: state.mutationGeneration + 1 };
-    replaceOperation({
-      operation: request.operation,
-      ...(resourceId ? { resourceId } : {}),
-      idempotencyKey,
-      status: 'PENDING',
-    });
-    return execute(request, idempotencyKey);
+    if (
+      preparingOperations.has(operationId) ||
+      state.operations.some(
+        (candidate) =>
+          identity(candidate.operation, candidate.resourceId) === operationId,
+      )
+    ) {
+      throw new Error('该打印机操作正在准备或等待恢复，请勿重复提交');
+    }
+    preparingOperations.add(operationId);
+    try {
+      const idempotencyKey = await requireUuidV4(randomUUID);
+      operationRequests.set(operationId, request);
+      state = { ...state, mutationGeneration: state.mutationGeneration + 1 };
+      replaceOperation({
+        operation: request.operation,
+        ...(resourceId ? { resourceId } : {}),
+        idempotencyKey,
+        status: 'PENDING',
+      });
+      return execute(request, idempotencyKey);
+    } finally {
+      preparingOperations.delete(operationId);
+    }
   }
 
   function requestForContinue(
@@ -869,7 +891,8 @@ export function createPrintingDevicesController(dependencies: Dependencies) {
     } else if (
       request.operation === 'resend' ||
       request.operation === 'requery' ||
-      request.operation === 'delete-confirm'
+      request.operation === 'delete-confirm' ||
+      request.operation === 'unbind'
     ) {
       state = {
         ...state,
@@ -958,7 +981,7 @@ export function createPrintingDevicesController(dependencies: Dependencies) {
   }
 
   function openRecovery(
-    action: 'resend' | 'requery' | 'delete-confirm',
+    action: 'resend' | 'requery' | 'delete-confirm' | 'unbind',
     device: CloudPrinterView,
   ): void {
     state = {
@@ -1043,7 +1066,7 @@ export function createPrintingDevicesController(dependencies: Dependencies) {
   }
 
   function beginRecovery(
-    operation: 'resend' | 'requery' | 'delete-confirm',
+    operation: 'resend' | 'requery' | 'delete-confirm' | 'unbind',
     printerId: string,
   ): Promise<OperationResult> {
     const body = { operationPassword: state.forms.recoveryPassword };
@@ -1096,6 +1119,13 @@ export function createPrintingDevicesController(dependencies: Dependencies) {
       'delete-confirm',
       printerId,
     ) as Promise<ConfirmCloudPrinterCompensationDeletionResult>;
+  }
+
+  function unbind(printerId: string): Promise<UnbindCloudPrinterResult> {
+    return beginRecovery(
+      'unbind',
+      printerId,
+    ) as Promise<UnbindCloudPrinterResult>;
   }
 
   async function rename(printerId: string): Promise<RenameCloudPrinterResult> {
@@ -1152,6 +1182,7 @@ export function createPrintingDevicesController(dependencies: Dependencies) {
     persistLifecycleState,
     refreshOnlineStatus,
     rename,
+    unbind,
     requery,
     resend,
     setBindForm,

@@ -244,6 +244,36 @@ export function analyzeMiniappSource({ filePath, packageRoot, source }) {
     }
   }
 
+  for (const statement of sourceFile.statements) {
+    if (
+      !ts.isImportDeclaration(statement) ||
+      !ts.isStringLiteral(statement.moduleSpecifier) ||
+      statement.moduleSpecifier.text !== '@bake-mall/contracts'
+    ) {
+      continue;
+    }
+    const clause = statement.importClause;
+    const hasRuntimeBinding = Boolean(
+      clause &&
+      !clause.isTypeOnly &&
+      (clause.name ||
+        (clause.namedBindings &&
+          (ts.isNamespaceImport(clause.namedBindings) ||
+            clause.namedBindings.elements.some(
+              (element) => !element.isTypeOnly,
+            )))),
+    );
+    if (hasRuntimeBinding) {
+      diagnostics.push(
+        diagnostic(
+          sourceFile,
+          statement,
+          '小程序运行时代码不得直接导入 @bake-mall/contracts；请使用 config/contracts.generated.js',
+        ),
+      );
+    }
+  }
+
   const relativePath = portablePath(relative(packageRoot, filePath));
   const isAdminFeatureApi =
     relativePath.startsWith('admin/') &&
