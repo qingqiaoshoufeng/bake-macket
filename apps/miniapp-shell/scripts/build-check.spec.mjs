@@ -3,13 +3,26 @@ import { execFile } from 'node:child_process';
 import { access, readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import test from 'node:test';
+import test, { after } from 'node:test';
 
 import { createMiniappConfigSources } from './config.mjs';
 
 const execFileAsync = promisify(execFile);
 const packageRootUrl = new URL('../', import.meta.url);
 const repositoryRootUrl = new URL('../../../', import.meta.url);
+const h5RuntimeUrl = new URL('config/h5.generated.js', packageRootUrl);
+const apiRuntimeUrl = new URL('config/api.generated.js', packageRootUrl);
+const [originalH5Runtime, originalApiRuntime] = await Promise.all([
+  readFile(h5RuntimeUrl, 'utf8'),
+  readFile(apiRuntimeUrl, 'utf8'),
+]);
+
+after(async () => {
+  await Promise.all([
+    writeFile(h5RuntimeUrl, originalH5Runtime, 'utf8'),
+    writeFile(apiRuntimeUrl, originalApiRuntime, 'utf8'),
+  ]);
+});
 
 /** @param {string[]} args */
 async function runGit(args) {
@@ -39,9 +52,11 @@ test('keeps generated runtime configs ignored and declarations tracked', async (
     'check-ignore',
     'apps/miniapp-shell/config/h5.generated.js',
     'apps/miniapp-shell/config/api.generated.js',
+    'apps/miniapp-shell/config/contracts.generated.ts',
   ]);
   assert.match(ignored.stdout, /h5\.generated\.js/);
   assert.match(ignored.stdout, /api\.generated\.js/);
+  assert.match(ignored.stdout, /contracts\.generated\.ts/);
 
   const status = await runGit([
     'status',
@@ -54,6 +69,56 @@ test('keeps generated runtime configs ignored and declarations tracked', async (
   assert.doesNotMatch(status.stdout, /!!/);
   await access(new URL('config/h5.generated.d.ts', packageRootUrl));
   await access(new URL('config/api.generated.d.ts', packageRootUrl));
+});
+
+test('keeps the committed project config on the placeholder AppID', async () => {
+  const project = JSON.parse(
+    await readFile(new URL('project.config.json', packageRootUrl), 'utf8'),
+  );
+  assert.equal(project.appid, 'touristappid');
+});
+
+test('package build-check self-bootstraps safe generated config without an environment URL', async () => {
+  const packageJson = JSON.parse(
+    await readFile(new URL('package.json', packageRootUrl), 'utf8'),
+  );
+  const env = { ...process.env };
+  delete env.MINIAPP_H5_URL;
+
+  const prepareScript = fileURLToPath(
+    new URL('scripts/prepare-build-check.mjs', packageRootUrl),
+  );
+  const checkScript = fileURLToPath(
+    new URL('scripts/build-check.mjs', packageRootUrl),
+  );
+  await execFileAsync(process.execPath, [prepareScript], { env });
+  await execFileAsync(process.execPath, [checkScript], { env });
+
+  assert.match(packageJson.scripts['build:check'], /prepare-build-check/);
+});
+
+test('build generates local contracts runtime without bare workspace requires', async () => {
+  const buildScript = fileURLToPath(
+    new URL('scripts/build.mjs', packageRootUrl),
+  );
+  const checkScript = fileURLToPath(
+    new URL('scripts/build-check.mjs', packageRootUrl),
+  );
+  const env = {
+    ...process.env,
+    MINIAPP_H5_URL: 'https://mall.example.com/',
+  };
+
+  await execFileAsync(process.execPath, [buildScript], { env });
+  await execFileAsync(process.execPath, [checkScript], { env });
+
+  const runtime = await readFile(
+    new URL('config/contracts.generated.ts', packageRootUrl),
+    'utf8',
+  );
+  assert.match(runtime, /export enum AdminPermission/);
+  assert.match(runtime, /export enum PrintJobStatus/);
+  assert.doesNotMatch(runtime, /@bake-mall\/contracts|require\s*\(/);
 });
 
 test('build generates both runtime modules and build-check validates them', async () => {
@@ -112,8 +177,6 @@ test('build-check rejects an API runtime with a different or unsafe origin', asy
     ...process.env,
     MINIAPP_H5_URL: 'https://mall.example.com/',
   };
-  const apiRuntimeUrl = new URL('config/api.generated.js', packageRootUrl);
-
   await execFileAsync(process.execPath, [buildScript], { env });
   for (const unsafeSource of [
     "export const MINIAPP_API_BASE_URL = 'https://attacker.example/api/v1';\n",
@@ -125,6 +188,32 @@ test('build-check rejects an API runtime with a different or unsafe origin', asy
       execFileAsync(process.execPath, [checkScript], { env }),
       /generated API runtime/,
     );
+  }
+});
+
+test('build-check rejects a committed real AppID', async () => {
+  const checkScript = fileURLToPath(
+    new URL('scripts/build-check.mjs', packageRootUrl),
+  );
+  const env = {
+    ...process.env,
+    MINIAPP_H5_URL: 'https://mall.example.com/',
+  };
+  const projectUrl = new URL('project.config.json', packageRootUrl);
+  const originalProject = await readFile(projectUrl, 'utf8');
+
+  try {
+    await writeFile(
+      projectUrl,
+      originalProject.replace('touristappid', 'wx2cd800899cf6fab5'),
+      'utf8',
+    );
+    await assert.rejects(
+      execFileAsync(process.execPath, [checkScript], { env }),
+      /placeholder AppID/,
+    );
+  } finally {
+    await writeFile(projectUrl, originalProject, 'utf8');
   }
 });
 

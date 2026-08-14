@@ -1,10 +1,11 @@
+import type { AdminOrderListItem } from '@bake-mall/contracts';
+
 import {
   FulfillmentType,
   OrderStatus,
   PrintBatchStatus,
   PrintJobStatus,
-  type AdminOrderListItem,
-} from '@bake-mall/contracts';
+} from '../../config/contracts.generated.js';
 
 export const PRINTING_ORDERS_PAGE_SIZE = 20;
 

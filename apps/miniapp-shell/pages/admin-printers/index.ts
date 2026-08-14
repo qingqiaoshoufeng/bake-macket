@@ -1,5 +1,6 @@
-import { AdminPermission, type CloudPrinterView } from '@bake-mall/contracts';
+import type { CloudPrinterView } from '@bake-mall/contracts';
 
+import { AdminPermission } from '../../config/contracts.generated.js';
 import { createPrintingDevicesApi } from '../../admin/api/printing-devices.js';
 import { PRINTER_ACTION_LABELS } from '../../admin/config/printing-devices.js';
 import { createPrintingDevicesController } from '../../admin/hooks/printing-devices.js';

@@ -1,12 +1,14 @@
+import type {
+  AdminSessionView,
+  AdminUserListQuery,
+  AdminUserListResult,
+  AdminUserView,
+} from '@bake-mall/contracts';
+
 import {
   AdminPermission,
   ApiErrorCode,
-  type AdminSessionView,
-  type AdminUserListQuery,
-  type AdminUserListResult,
-  type AdminUserView,
-} from '@bake-mall/contracts';
-
+} from '../../config/contracts.generated.js';
 import type { MemorySessionStore } from '../../utils/admin-session.js';
 import type { AdminUsersState } from '../type/index.js';
 

@@ -1,17 +1,24 @@
+import type {
+  AdminSessionView,
+  ManualPrintResolutionRequest,
+  PrintBatchView,
+  PrintJobView,
+  ProcessPrintBatchResult,
+} from '@bake-mall/contracts';
+
 import {
   AdminPermission,
   CloudPrinterOnlineStatus,
   CloudPrinterStatus,
   ManualPrintResolution,
   PrintJobStatus,
-  type AdminSessionView,
-  type ManualPrintResolutionRequest,
-  type PrintBatchView,
-  type PrintJobView,
-  type ProcessPrintBatchResult,
-} from '@bake-mall/contracts';
-
+} from '../../config/contracts.generated.js';
 import type { MemorySessionStore } from '../../utils/admin-session.js';
+import {
+  createSecureUuidV4,
+  requireUuidV4,
+  type RandomUuidFactory,
+} from '../../utils/random-uuid.js';
 import type { PrintingOrdersApi } from '../api/printing-orders.js';
 import {
   PRINTING_ORDERS_PAGE_SIZE,
@@ -23,13 +30,81 @@ import type {
   PrintingResultSummary,
 } from '../type/printing-orders.js';
 
-const UUID_V4_TEMPLATE = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx';
+export const PRINTING_ORDERS_STORAGE_KEY = 'bake-mall:admin-printing-orders';
+const ADMIN_ID_PATTERN = /^[1-9]\d*$/u;
+
+type PrintingOrdersStorage = Readonly<{
+  get: (key: string) => unknown;
+  remove: (key: string) => void;
+  set: (key: string, value: unknown) => void;
+}>;
 
 type Dependencies = Readonly<{
   adminSession: MemorySessionStore<AdminSessionView>;
   api: PrintingOrdersApi;
-  random?: () => number;
+  randomUUID?: RandomUuidFactory;
+  now?: () => number;
+  storage?: PrintingOrdersStorage;
 }>;
+
+const ONLINE_STATUS_MAX_AGE_MS = 30_000;
+const APPEND_BATCH_SIZE = 100;
+const PERSISTED_BATCH_KEYS = ['batchId', 'pendingOperationKeys'] as const;
+
+type PrintingResultCounts = Pick<
+  PrintingResultSummary,
+  'accepted' | 'failed' | 'unknown' | 'manualReview'
+>;
+
+function defaultStorage(): PrintingOrdersStorage {
+  return {
+    get: (key) => wx.getStorageSync(key),
+    remove: (key) => wx.removeStorageSync(key),
+    set: (key, value) => wx.setStorageSync(key, value),
+  };
+}
+
+function decodeBase64Url(value: string): string | null {
+  const alphabet =
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  const normalized = value
+    .replace(/-/gu, '+')
+    .replace(/_/gu, '/')
+    .replace(/=+$/gu, '');
+  const indexes = Array.from(normalized).map((character) =>
+    alphabet.indexOf(character),
+  );
+  if (indexes.some((index) => index < 0)) return null;
+  const bits = indexes
+    .map((index) => index.toString(2).padStart(6, '0'))
+    .join('');
+  const bytes = bits.match(/.{8}/gu)?.map((byte) => Number.parseInt(byte, 2)) ?? [];
+  return String.fromCharCode(...bytes);
+}
+
+function adminIdFromSession(session: AdminSessionView | null): string | null {
+  const payload = session?.accessToken.split('.')[1];
+  if (!payload) return null;
+  try {
+    const decoded = decodeBase64Url(payload);
+    const value: unknown = decoded ? JSON.parse(decoded) : null;
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+      return null;
+    }
+    const record = value as Record<string, unknown>;
+    return record.aud === 'mall-admin' &&
+      typeof record.sub === 'string' &&
+      ADMIN_ID_PATTERN.test(record.sub)
+      ? record.sub
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function storageKey(adminId: string): string {
+  return `${PRINTING_ORDERS_STORAGE_KEY}:${adminId}`;
+}
 
 function hasPermission(
   session: AdminSessionView | null,
@@ -39,14 +114,6 @@ function hasPermission(
     session &&
     session.permissions.some((candidate) => candidate === permission),
   );
-}
-
-function uuidV4(random: () => number): string {
-  return UUID_V4_TEMPLATE.replace(/[xy]/gu, (token) => {
-    const value = Math.floor(random() * 16);
-    const nibble = token === 'x' ? value : (value & 0x3) | 0x8;
-    return nibble.toString(16);
-  });
 }
 
 function safeMessage(error: unknown, fallback: string): string {
@@ -63,10 +130,17 @@ function safeMessage(error: unknown, fallback: string): string {
 
 function isAvailablePrinter(
   printer: PrintingOrdersState['printers'][number],
+  now: number,
 ): boolean {
+  const checkedAt = printer.lastStatusCheckedAt
+    ? Date.parse(printer.lastStatusCheckedAt)
+    : Number.NaN;
   return (
     printer.status === CloudPrinterStatus.ACTIVE &&
-    printer.onlineStatus === CloudPrinterOnlineStatus.ONLINE
+    printer.onlineStatus === CloudPrinterOnlineStatus.ONLINE &&
+    Number.isFinite(checkedAt) &&
+    now - checkedAt >= 0 &&
+    now - checkedAt <= ONLINE_STATUS_MAX_AGE_MS
   );
 }
 
@@ -108,7 +182,7 @@ function replaceJob(
   return jobs.map((job) => (job.id === replacement.id ? replacement : job));
 }
 
-function countsOfJobs(jobs: readonly PrintJobView[]) {
+function countsOfJobs(jobs: readonly PrintJobView[]): PrintingResultCounts {
   return jobs.reduce(
     (counts, job) => ({
       accepted:
@@ -124,7 +198,11 @@ function countsOfJobs(jobs: readonly PrintJobView[]) {
 }
 
 export function createPrintingOrdersController(dependencies: Dependencies) {
-  const random = dependencies.random ?? Math.random;
+  const randomUUID = dependencies.randomUUID ?? createSecureUuidV4;
+  const now = dependencies.now ?? Date.now;
+  const storage = dependencies.storage ?? defaultStorage();
+  const adminId = adminIdFromSession(dependencies.adminSession.get());
+  const persistedStorageKey = adminId ? storageKey(adminId) : null;
   let requestGeneration = 0;
   let state: PrintingOrdersState = {
     orders: [],
@@ -136,9 +214,79 @@ export function createPrintingOrdersController(dependencies: Dependencies) {
     total: 0,
     loading: false,
     submitting: false,
+    manualContinueRequired: false,
+    setupContinueRequired: false,
+    pendingBatchId: null,
+    pendingOperationKeys: {},
     error: null,
     result: null,
   };
+
+  function persistedBatch(): {
+    batchId: string;
+    pendingOperationKeys: Readonly<Record<string, string>>;
+  } | null {
+    const value = persistedStorageKey ? storage.get(persistedStorageKey) : undefined;
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+      return null;
+    }
+    const record = value as Record<string, unknown>;
+    const keys = Object.keys(record);
+    const operationKeys = record.pendingOperationKeys;
+    if (
+      keys.length !== PERSISTED_BATCH_KEYS.length ||
+      !PERSISTED_BATCH_KEYS.every((key) =>
+        Object.prototype.hasOwnProperty.call(record, key),
+      ) ||
+      typeof record.batchId !== 'string' ||
+      typeof operationKeys !== 'object' ||
+      operationKeys === null ||
+      Array.isArray(operationKeys) ||
+      (record.batchId.length === 0 && Object.keys(operationKeys).length === 0) ||
+      !Object.values(operationKeys).every(
+        (value) => typeof value === 'string' && value.length > 0,
+      )
+    ) {
+      if (persistedStorageKey) storage.remove(persistedStorageKey);
+      return null;
+    }
+    return {
+      batchId: record.batchId,
+      pendingOperationKeys: operationKeys as Readonly<Record<string, string>>,
+    };
+  }
+
+  function persistBatchState(): void {
+    if (!persistedStorageKey) return;
+    if (!state.pendingBatchId && Object.keys(state.pendingOperationKeys).length === 0) {
+      storage.remove(persistedStorageKey);
+      return;
+    }
+    storage.set(persistedStorageKey, {
+      batchId: state.pendingBatchId ?? '',
+      pendingOperationKeys: { ...state.pendingOperationKeys },
+    });
+  }
+
+  const restored = persistedBatch();
+  if (restored) {
+    const resumableIntent = Object.keys(restored.pendingOperationKeys).find(
+      (operationId) =>
+        operationId.startsWith('single:') || operationId.startsWith('create:'),
+    );
+    const [kind, firstId, secondId] = resumableIntent?.split(':') ?? [];
+    const restoredPrinterId = kind === 'single' ? secondId : firstId;
+    const restoredOrderIds = kind === 'single' ? firstId : secondId;
+    state = {
+      ...state,
+      selectedOrderIds: restoredOrderIds ? restoredOrderIds.split(',') : [],
+      selectedPrinterId: restoredPrinterId ?? null,
+      pendingBatchId: restored.batchId || null,
+      pendingOperationKeys: restored.pendingOperationKeys,
+      manualContinueRequired: restored.batchId.length > 0,
+      setupContinueRequired: Boolean(resumableIntent),
+    };
+  }
 
   function authorized(): boolean {
     const session = dependencies.adminSession.get();
@@ -167,10 +315,11 @@ export function createPrintingOrdersController(dependencies: Dependencies) {
       ]);
       if (requestId !== requestGeneration) return;
       const printableOrders = orders.items.filter(isPrintableOrder);
-      const availablePrinters = printers.items.filter(isAvailablePrinter);
-      const selectedOrderIds = state.selectedOrderIds.filter((id) =>
-        printableOrders.some((order) => order.id === id),
+      const loadedAt = now();
+      const availablePrinters = printers.items.filter((printer) =>
+        isAvailablePrinter(printer, loadedAt),
       );
+      const selectedOrderIds = [...state.selectedOrderIds];
       const selectedPrinterId = availablePrinters.some(
         (printer) => printer.id === state.selectedPrinterId,
       )
@@ -220,6 +369,60 @@ export function createPrintingOrdersController(dependencies: Dependencies) {
     state = { ...state, selectedPrinterId: printerId, result: null };
   }
 
+  async function operationKey(operationId: string): Promise<string> {
+    const existing = state.pendingOperationKeys[operationId];
+    if (existing) return existing;
+    const created = await requireUuidV4(randomUUID);
+    state = {
+      ...state,
+      pendingOperationKeys: {
+        ...state.pendingOperationKeys,
+        [operationId]: created,
+      },
+    };
+    persistBatchState();
+    return created;
+  }
+
+  function releaseOperationKey(operationId: string): void {
+    state = {
+      ...state,
+      pendingOperationKeys: Object.fromEntries(
+        Object.entries(state.pendingOperationKeys).filter(
+          ([candidate]) => candidate !== operationId,
+        ),
+      ),
+    };
+    persistBatchState();
+  }
+
+  function requiresManualContinue(batch: PrintBatchView): boolean {
+    return (
+      batch.pendingCount > 0 &&
+      PROCESSABLE_BATCH_STATUSES.some((status) => status === batch.status)
+    );
+  }
+
+  function orderIdChunks(orderIds: readonly string[]): readonly string[][] {
+    return Array.from(
+      { length: Math.ceil(orderIds.length / APPEND_BATCH_SIZE) },
+      (_, index) =>
+        orderIds.slice(
+          index * APPEND_BATCH_SIZE,
+          (index + 1) * APPEND_BATCH_SIZE,
+        ),
+    );
+  }
+
+  async function loadBatchJobs(batchId: string) {
+    const jobs = await dependencies.api.listJobs({
+      batchId,
+      page: 1,
+      pageSize: 100,
+    });
+    return jobs.items;
+  }
+
   async function submit(): Promise<PrintingResultSummary> {
     if (!authorized()) throw new Error('当前账号无权打印订单');
     if (state.submitting) throw new Error('打印请求正在提交，请勿重复操作');
@@ -232,73 +435,131 @@ export function createPrintingOrdersController(dependencies: Dependencies) {
     state = { ...state, submitting: true, error: null, result: null };
     try {
       if (orderIds.length === 1) {
+        const operationId = `single:${orderIds[0]}:${printerId}`;
         const single = await dependencies.api.createSingle(
           { orderId: orderIds[0]!, printerId },
-          uuidV4(random),
+          await operationKey(operationId),
         );
+        releaseOperationKey(operationId);
+        const jobs = [single.job];
         const result: PrintingResultSummary = {
           batch: single.batch,
-          jobs: [single.job],
+          jobs,
           processedCount: 1,
-          accepted: single.job.status === 'ACCEPTED' ? 1 : 0,
-          failed: single.job.status === 'FAILED' ? 1 : 0,
-          unknown: single.job.status === 'UNKNOWN' ? 1 : 0,
-          manualReview: single.job.status === 'MANUAL_REVIEW' ? 1 : 0,
+          ...countsOfJobs(jobs),
         };
         state = { ...state, result, selectedOrderIds: [] };
         return result;
       }
 
+      const createOperationId = `create:${printerId}:${orderIds.join(',')}`;
       const created = await dependencies.api.createBatch(
         { printerId },
-        uuidV4(random),
+        await operationKey(createOperationId),
       );
-      await dependencies.api.appendBatch(
+      state = { ...state, pendingBatchId: created.batch.id };
+      const appendOperations = orderIdChunks(orderIds).map(
+        (chunk, index) => ({
+          chunk,
+          operationId: `append:${created.batch.id}:${index}`,
+        }),
+      );
+      await appendOperations.reduce<Promise<void>>(
+        (previous, { chunk, operationId }) =>
+          previous.then(async () => {
+            await dependencies.api.appendBatch(
+              created.batch.id,
+              { orderIds: chunk },
+              await operationKey(operationId),
+            );
+          }),
+        Promise.resolve(),
+      );
+      const sealOperationId = `seal:${created.batch.id}`;
+      await dependencies.api.sealBatch(
         created.batch.id,
-        { orderIds },
-        uuidV4(random),
+        await operationKey(sealOperationId),
       );
-      await dependencies.api.sealBatch(created.batch.id, uuidV4(random));
-      let processed = await dependencies.api.processBatch(
+      const processOperationId = `process:${created.batch.id}`;
+      const processed = await dependencies.api.processBatch(
         created.batch.id,
-        uuidV4(random),
+        await operationKey(processOperationId),
       );
-      const totals = {
-        processedCount: processed.processedCount,
-        accepted: processed.accepted,
-        failed: processed.failed,
-        unknown: processed.unknown,
-        manualReview: processed.manualReview,
+      const jobs = await loadBatchJobs(created.batch.id);
+      const result = summaryOf(processed, jobs);
+      const manualContinueRequired = requiresManualContinue(processed.batch);
+      state = {
+        ...state,
+        pendingOperationKeys: {},
       };
-      while (
-        PROCESSABLE_BATCH_STATUSES.some(
-          (status) => status === processed.batch.status,
-        )
-      ) {
-        if (processed.batch.pendingCount === 0) break;
-        processed = await dependencies.api.processBatch(
-          created.batch.id,
-          uuidV4(random),
-        );
-        totals.processedCount += processed.processedCount;
-        totals.accepted += processed.accepted;
-        totals.failed += processed.failed;
-        totals.unknown += processed.unknown;
-        totals.manualReview += processed.manualReview;
-      }
-      const jobs = await dependencies.api.listJobs({
-        batchId: created.batch.id,
-        page: 1,
-        pageSize: 100,
-      });
-      const result = {
-        ...summaryOf(processed, jobs.items),
-        ...totals,
+      state = {
+        ...state,
+        result,
+        selectedOrderIds: [],
+        manualContinueRequired,
+        setupContinueRequired: false,
+        pendingBatchId: manualContinueRequired ? created.batch.id : null,
+        pendingOperationKeys: {},
       };
-      state = { ...state, result, selectedOrderIds: [] };
+      persistBatchState();
       return result;
     } catch (error) {
       const message = safeMessage(error, '打印请求失败，请稍后重试');
+      state = { ...state, error: message };
+      throw new Error(message);
+    } finally {
+      state = { ...state, submitting: false };
+    }
+  }
+
+  async function continueBatch(): Promise<PrintingResultSummary> {
+    const current = state.result;
+    const batchId = current?.batch.id ?? state.pendingBatchId;
+    if (!batchId || !state.manualContinueRequired) {
+      throw new Error('当前没有可继续的打印批次');
+    }
+    if (state.submitting) throw new Error('打印请求正在提交，请勿重复操作');
+    state = { ...state, submitting: true, error: null };
+    try {
+      const processOperationId = `process:${batchId}`;
+      const processKey = await operationKey(processOperationId);
+      state = {
+        ...state,
+        pendingBatchId: batchId,
+        pendingOperationKeys: {
+          ...state.pendingOperationKeys,
+          [processOperationId]: processKey,
+        },
+      };
+      persistBatchState();
+      const processed = await dependencies.api.processBatch(
+        batchId,
+        processKey,
+      );
+      const jobs = await loadBatchJobs(batchId);
+      releaseOperationKey(processOperationId);
+      const result = {
+        ...summaryOf(processed, jobs),
+        processedCount:
+          (current?.processedCount ?? 0) + processed.processedCount,
+        accepted: (current?.accepted ?? 0) + processed.accepted,
+        failed: (current?.failed ?? 0) + processed.failed,
+        unknown: (current?.unknown ?? 0) + processed.unknown,
+        manualReview: (current?.manualReview ?? 0) + processed.manualReview,
+      };
+      const manualContinueRequired = requiresManualContinue(processed.batch);
+      state = {
+        ...state,
+        result,
+        manualContinueRequired,
+        setupContinueRequired: false,
+        pendingBatchId: manualContinueRequired ? batchId : null,
+        pendingOperationKeys: {},
+      };
+      persistBatchState();
+      return result;
+    } catch (error) {
+      const message = safeMessage(error, '批次继续失败，请稍后重试');
       state = { ...state, error: message };
       throw new Error(message);
     } finally {
@@ -336,25 +597,33 @@ export function createPrintingOrdersController(dependencies: Dependencies) {
       throw new Error('仅状态未知的打印任务可以查询');
     }
     await runRecovery(async () => {
+      const operationId = `query:${job.id}`;
       const result = await dependencies.api.queryUnknown(
         job.id,
-        uuidV4(random),
+        await operationKey(operationId),
       );
+      releaseOperationKey(operationId);
       updateResolvedJob(result.batch, result.job);
     }, '未知任务查询失败，请稍后重试');
   }
 
   async function processRecoveryBatch(batchId: string): Promise<void> {
+    const operationId = `process:${batchId}`;
     const processed = await dependencies.api.processBatch(
       batchId,
-      uuidV4(random),
+      await operationKey(operationId),
     );
-    const jobs = await dependencies.api.listJobs({
-      batchId,
-      page: 1,
-      pageSize: 100,
-    });
-    state = { ...state, result: summaryOf(processed, jobs.items) };
+    const jobs = await loadBatchJobs(batchId);
+    releaseOperationKey(operationId);
+    const manualContinueRequired = requiresManualContinue(processed.batch);
+    state = {
+      ...state,
+      result: summaryOf(processed, jobs),
+      manualContinueRequired,
+      setupContinueRequired: false,
+      pendingBatchId: manualContinueRequired ? batchId : null,
+    };
+    persistBatchState();
   }
 
   async function retryFailed(job: PrintJobView): Promise<void> {
@@ -364,12 +633,16 @@ export function createPrintingOrdersController(dependencies: Dependencies) {
     if (!state.selectedPrinterId) throw new Error('请选择一台在线打印机');
     const printerId = state.selectedPrinterId;
     await runRecovery(async () => {
+      const operationId = `retry:${job.id}:${printerId}`;
       const retry = await dependencies.api.retryFailed(
         job.id,
         { printerId },
-        uuidV4(random),
+        await operationKey(operationId),
       );
+      state = { ...state, pendingBatchId: retry.batch.id };
+      persistBatchState();
       await processRecoveryBatch(retry.batch.id);
+      releaseOperationKey(operationId);
     }, '失败任务重试失败，请稍后重试');
   }
 
@@ -395,11 +668,13 @@ export function createPrintingOrdersController(dependencies: Dependencies) {
           }
         : { resolution };
     await runRecovery(async () => {
+      const operationId = `manual:${job.id}:${resolution}`;
       const result = await dependencies.api.resolveManual(
         job.id,
         request,
-        uuidV4(random),
+        await operationKey(operationId),
       );
+      releaseOperationKey(operationId);
       if (
         result.resolution === ManualPrintResolution.RETRY_WITH_DUPLICATE_RISK
       ) {
@@ -411,12 +686,13 @@ export function createPrintingOrdersController(dependencies: Dependencies) {
   }
 
   async function setPage(page: number): Promise<void> {
-    state = { ...state, page, selectedOrderIds: [], result: null };
+    state = { ...state, page, result: null };
     await load();
   }
 
   return {
     authorized,
+    continueBatch,
     load,
     queryUnknown,
     resolveManual,

@@ -97,7 +97,11 @@ function requestHarness() {
 describe('createPrintingDevicesApi', () => {
   it('composes the list route and preserves numeric printer IDs as strings', async () => {
     const harness = requestHarness();
-    const api = createPrintingDevicesApi(appData(), harness.request);
+    const api = createPrintingDevicesApi(
+      appData(),
+      harness.request,
+      'https://mall.example.com/api/v1',
+    );
 
     await api.list({ page: 2, pageSize: 50, includeUnbound: true });
     await api.refresh('90071992547409931234', {}, key);
@@ -219,6 +223,7 @@ describe('createPrintingDevicesApi', () => {
         requestKind === 'load'
           ? controller.load()
           : controller.refreshOnlineStatus(activePrinter.id);
+      await vi.waitFor(() => expect(request).toHaveBeenCalled());
       const newerSession = {
         ...app.adminSession.get()!,
         accessToken: 'header.newer.signature',

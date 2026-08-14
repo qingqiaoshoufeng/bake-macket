@@ -58,13 +58,13 @@ function parseMiniappMessage(value: unknown): MiniappMessage | null {
 
   if (record.type === 'WECHAT_CODE') {
     const code = parseNonEmptyString(record.code);
-    return code && !Object.hasOwn(record, 'credential')
+    return code && !Object.prototype.hasOwnProperty.call(record, 'credential')
       ? { source: 'bake-miniapp', type: 'WECHAT_CODE', code }
       : null;
   }
   if (record.type === 'PHONE_CREDENTIAL') {
     const credential = parseNonEmptyString(record.credential);
-    return credential && !Object.hasOwn(record, 'code')
+    return credential && !Object.prototype.hasOwnProperty.call(record, 'code')
       ? { source: 'bake-miniapp', type: 'PHONE_CREDENTIAL', credential }
       : null;
   }

@@ -730,29 +730,26 @@ describe('challenge, fencing, actions, and validation', () => {
     await first;
     expect(harness.controller.snapshot().devices).toEqual([activePrinter]);
 
-    const staleRename = deferred<{ printer: CloudPrinterView }>();
-    const currentRename = deferred<{ printer: CloudPrinterView }>();
-    vi.mocked(harness.api.rename)
-      .mockReturnValueOnce(staleRename.promise)
-      .mockReturnValueOnce(currentRename.promise);
+    const pendingRename = deferred<{ printer: CloudPrinterView }>();
+    vi.mocked(harness.api.rename).mockReturnValueOnce(pendingRename.promise);
     vi.mocked(harness.api.list).mockResolvedValue({
       ...listResult,
-      items: [{ ...activePrinter, displayName: '新名字' }],
+      items: [{ ...activePrinter, displayName: '旧名字' }],
     });
     harness.controller.setRenameName('旧名字');
-    const oldMutation = harness.controller.rename(printer.id);
+    const firstMutation = harness.controller.rename(printer.id);
     harness.controller.setRenameName('新名字');
-    const newMutation = harness.controller.rename(printer.id);
-    currentRename.resolve({
-      printer: { ...activePrinter, displayName: '新名字' },
-    });
-    await newMutation;
-    staleRename.resolve({
+
+    await expect(harness.controller.rename(printer.id)).rejects.toThrow(
+      '正在准备或等待恢复',
+    );
+    expect(harness.api.rename).toHaveBeenCalledTimes(1);
+    pendingRename.resolve({
       printer: { ...activePrinter, displayName: '旧名字' },
     });
-    await oldMutation;
+    await firstMutation;
     expect(harness.controller.snapshot().devices[0]?.displayName).toBe(
-      '新名字',
+      '旧名字',
     );
   });
 

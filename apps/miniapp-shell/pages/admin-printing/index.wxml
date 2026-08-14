@@ -41,6 +41,22 @@
     bind:toggle="onToggleOrder"
   />
 
+  <button
+    wx:if="{{setupContinueRequired}}"
+    type="warn"
+    loading="{{submitting}}"
+    disabled="{{submitting}}"
+    bindtap="onResumeSetup"
+  >恢复上次未确认的打印请求</button>
+
+  <button
+    wx:if="{{manualContinueRequired}}"
+    type="primary"
+    loading="{{submitting}}"
+    disabled="{{submitting}}"
+    bindtap="onContinueBatch"
+  >继续批次 #{{pendingBatchId}}（最多 20 项）</button>
+
   <view wx:if="{{result}}" class="printing-result">
     <text class="printing-result__title">本次提交结果</text>
     <text>厂商已接受 {{result.accepted}}</text>

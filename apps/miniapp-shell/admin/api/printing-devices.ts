@@ -36,11 +36,13 @@ type ApiRequest = NonNullable<
 export function createPrintingDevicesApi(
   app: BakeMallAppData,
   request?: ApiRequest,
+  baseUrl?: string,
 ) {
   const client = createMiniappApiClient({
     adminSession: app.adminSession,
     customerSession: app.customerSession,
     ...(request ? { request } : {}),
+    ...(baseUrl ? { baseUrl } : {}),
   });
   function writeOptions(idempotencyKey: string): MiniappApiRequestOptions {
     return {

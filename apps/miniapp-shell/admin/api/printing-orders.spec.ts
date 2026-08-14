@@ -54,7 +54,11 @@ function requestHarness() {
 describe('printing orders api', () => {
   it('uses admin audience for orders and printers', async () => {
     const request = requestHarness();
-    const api = createPrintingOrdersApi(app(), request);
+    const api = createPrintingOrdersApi(
+      app(),
+      request,
+      'https://mall.example.com/api/v1',
+    );
 
     await api.listOrders({ page: 1, pageSize: 20 });
     await api.listPrinters({ page: 1, pageSize: 100 });
@@ -72,7 +76,11 @@ describe('printing orders api', () => {
 
   it('reads batch jobs and sends every recovery key only through headers', async () => {
     const request = requestHarness();
-    const api = createPrintingOrdersApi(app(), request);
+    const api = createPrintingOrdersApi(
+      app(),
+      request,
+      'https://mall.example.com/api/v1',
+    );
     const key = '123e4567-e89b-42d3-a456-426614174000';
 
     await api.listJobs({ batchId: '7', page: 1, pageSize: 100 });
@@ -100,7 +108,11 @@ describe('printing orders api', () => {
 
   it('sends idempotency keys only through headers for single and batch writes', async () => {
     const request = requestHarness();
-    const api = createPrintingOrdersApi(app(), request);
+    const api = createPrintingOrdersApi(
+      app(),
+      request,
+      'https://mall.example.com/api/v1',
+    );
     const key = '123e4567-e89b-42d3-a456-426614174000';
 
     await api.createSingle({ orderId: '9', printerId: '4' }, key);

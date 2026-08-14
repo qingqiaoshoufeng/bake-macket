@@ -1,6 +1,6 @@
 ---
 name: frontend-page-generator
-description: 在生成或重构前端页面（包括 Vue 3 / React + Vite / Vant / Element Plus）时使用此 skill。按 components、hooks、mock、config、type 模块化拆分文件夹，业务逻辑与视图解耦，可配置化的表格列、分页与初始化数据集中在 config，无后端时使用 mock，无后端时也可采用全局封装的统一 api 入口，type 单独维护，但子组件 props 不提出到该模块；枚举全局维护且按页面域拆分，编码风格遵循 js-functional-style skill。
+description: 在生成或重构前端页面（包括 Vue 3 / React + Vite / Vant / Element Plus）时使用此 skill。按 components、hooks、mock、config、type 模块化拆分文件夹，业务逻辑与视图解耦，可配置化的表格列、分页与初始化数据集中在 config，无后端时使用 mock，HTTP 统一走全局 api 入口，type 单独维护且子组件 props 不上提；枚举全局维护。必须同时遵循 js-functional-style 与 frontend-runtime-compat，页面能通过 typecheck/build 不代表 Safari/微信 WebView 运行时兼容。
 ---
 
 # Frontend Page Generator
@@ -91,11 +91,13 @@ src/views/<feature>/
 
 ## Coding conventions (delegated)
 
-- This skill **assumes** `js-functional-style` is available. All code written under it must additionally honour:
+- This skill **assumes** `js-functional-style` and `frontend-runtime-compat` are available. All code written under it must additionally honour:
   - Pure functions and immutable data.
   - ES6 array helpers (`map`/`filter`/`reduce`/`some`/`every`/`find`) instead of `for`/`forEach`/manual push.
   - Avoid in-place mutation; treat state transitions as "return a new value".
   - When a small library helper (e.g. a `groupBy`) is needed, write it once in `src/utils/` rather than scattering it.
+  - Identify the page's browser/WebView runtime before choosing built-in APIs; Vite/TypeScript compilation is not runtime support evidence.
+  - For startup, auth, URL handoff and store hydration paths, add a compatibility test that disables any guarded modern API and exercises the real call site.
 
 ## Enums
 
@@ -118,4 +120,5 @@ src/views/<feature>/
 2. Wire `index.ts` exports for routing/registration.
 3. Mirror backend DTOs into `type/` (do not import child-component props).
 4. Provide at least one mock fixture so the view renders end-to-end without the backend.
-5. Verify with `pnpm --filter <package> typecheck` and `pnpm --filter <package> test` before declaring complete.
+5. Verify with `pnpm --filter <package> typecheck`, `test`, `lint` and production `build` before declaring complete.
+6. For browser/WebView code, report the runtime baseline and run the `frontend-runtime-compat` checklist; build success alone is insufficient.

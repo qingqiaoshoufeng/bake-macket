@@ -37,12 +37,18 @@ describe('Task 7 native admin page wiring', () => {
     ).resolves.toBeTruthy();
   });
 
-  it('renders the management entry as a cover-view over the web-view', async () => {
-    const indexPage = await read('pages/index/index.wxml');
+  it('renders native web-view diagnostics and the management entry as cover views', async () => {
+    const [indexPage, indexController] = await Promise.all([
+      read('pages/index/index.wxml'),
+      read('pages/index/index.ts'),
+    ]);
 
     expect(indexPage).toMatch(
-      /<web-view[\s\S]*<cover-view[\s\S]*bindtap="onEnterAdmin"[\s\S]*>门店管理<\/cover-view>[\s\S]*<\/web-view>/u,
+      /<web-view[\s\S]*class="web-view-diagnostic[^"]*"[\s\S]*webViewMessage[\s\S]*<cover-view[\s\S]*bindtap="onEnterAdmin"[\s\S]*>门店管理<\/cover-view>[\s\S]*<\/web-view>/u,
     );
+    expect(indexController).toContain("webViewMessage: '正在加载商城网页…'");
+    expect(indexController).toContain("webViewMessage: '商城网页已加载'");
+    expect(indexController).toContain("webViewMessage: '商城网页加载失败'");
     expect(indexPage).not.toMatch(/<button[\s\S]*class="admin-entry"/u);
   });
 

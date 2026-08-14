@@ -46,6 +46,10 @@ export type PrintingOrdersState = Readonly<{
   total: number;
   loading: boolean;
   submitting: boolean;
+  manualContinueRequired: boolean;
+  setupContinueRequired: boolean;
+  pendingBatchId: string | null;
+  pendingOperationKeys: Readonly<Record<string, string>>;
   error: string | null;
   result: PrintingResultSummary | null;
 }>;

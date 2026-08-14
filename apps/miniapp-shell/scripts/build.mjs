@@ -1,6 +1,8 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath, URL } from 'node:url';
 
+import './generate-contracts-runtime.mjs';
+
 import { createMiniappConfigSources, resolveBuildH5Url } from './config.mjs';
 
 const configUrl = new URL('../config/', import.meta.url);

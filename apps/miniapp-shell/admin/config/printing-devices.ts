@@ -1,9 +1,10 @@
+import type { CloudPrinterView } from '@bake-mall/contracts';
+
 import {
   CloudPrinterStatus,
   PrinterBindingStage,
   VendorRelationState,
-  type CloudPrinterView,
-} from '@bake-mall/contracts';
+} from '../../config/contracts.generated.js';
 
 import type { PrintingDeviceAction } from '../type/printing-devices.js';
 

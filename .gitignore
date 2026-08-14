@@ -14,6 +14,7 @@ coverage/
 # Generated miniapp URL config and developer-specific WeChat settings.
 apps/miniapp-shell/config/h5.generated.js
 apps/miniapp-shell/config/api.generated.js
+apps/miniapp-shell/config/contracts.generated.ts
 apps/miniapp-shell/project.private.config.json
 
 # Local HBuilderX Android pack config may contain signing credentials.

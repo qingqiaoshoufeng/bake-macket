@@ -37,11 +37,13 @@ function writeOptions(idempotencyKey: string) {
 export function createPrintingOrdersApi(
   app: BakeMallAppData,
   request?: ApiRequest,
+  baseUrl?: string,
 ) {
   const client = createMiniappApiClient({
     adminSession: app.adminSession,
     customerSession: app.customerSession,
     ...(request ? { request } : {}),
+    ...(baseUrl ? { baseUrl } : {}),
   });
 
   return {

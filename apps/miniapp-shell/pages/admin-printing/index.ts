@@ -1,11 +1,13 @@
+import type {
+  AdminOrderListItem,
+  CloudPrinterView,
+  PrintJobView,
+} from '@bake-mall/contracts';
+
 import {
   ManualPrintResolution,
   PrintJobStatus,
-  type AdminOrderListItem,
-  type CloudPrinterView,
-  type PrintJobView,
-} from '@bake-mall/contracts';
-
+} from '../../config/contracts.generated.js';
 import { createPrintingOrdersApi } from '../../admin/api/printing-orders.js';
 import {
   FULFILLMENT_LABELS,
@@ -47,6 +49,7 @@ type JobEvent = Readonly<{
 type PageCustom = {
   onConfirmNotPrinted: (event: JobEvent) => Promise<void>;
   onConfirmPrinted: (event: JobEvent) => Promise<void>;
+  onContinueBatch: () => Promise<void>;
   onDuplicateRiskRetry: (event: JobEvent) => Promise<void>;
   onNextPage: () => Promise<void>;
   onQueryUnknown: (event: JobEvent) => Promise<void>;
@@ -54,6 +57,7 @@ type PageCustom = {
   onRetry: () => Promise<void>;
   onRetryFailed: (event: JobEvent) => Promise<void>;
   onSelectPrinter: (event: PrinterEvent) => void;
+  onResumeSetup: () => Promise<void>;
   onSubmit: () => Promise<void>;
   onToggleOrder: (event: ToggleEvent) => void;
 };
@@ -119,10 +123,13 @@ function findJob(event: JobEvent): PrintJobView | null {
   );
 }
 
-function confirm(content: string): Promise<boolean> {
+function confirm(
+  content: string,
+  title = '确认打印任务处置',
+): Promise<boolean> {
   return new Promise((resolve) => {
     wx.showModal({
-      title: '确认打印任务处置',
+      title,
       content,
       success: ({ confirm: accepted }) => resolve(accepted),
       fail: () => resolve(false),
@@ -174,21 +181,41 @@ Page<PageData, PageCustom>({
     this.setData(pageData());
   },
 
+  async onResumeSetup(): Promise<void> {
+    if (!(await confirm('将使用原操作标识恢复上次未确认的打印请求。', '确认恢复打印'))) {
+      return;
+    }
+    await this.onSubmit();
+  },
+
   async onSubmit(): Promise<void> {
     try {
       const count = controller.snapshot().selectedOrderIds.length;
-      const confirmed = await new Promise<boolean>((resolve) => {
-        wx.showModal({
-          title: count === 1 ? '确认打印订单' : '确认批量打印',
-          content: `将向所选在线打印机提交 ${count} 笔订单。厂商接受不代表已经物理出纸。`,
-          success: ({ confirm }) => resolve(confirm),
-          fail: () => resolve(false),
-        });
-      });
+      const confirmed = await confirm(
+        `将向所选在线打印机提交 ${count} 笔订单。厂商接受不代表已经物理出纸。`,
+        count === 1 ? '确认打印订单' : '确认批量打印',
+      );
       if (!confirmed) return;
       const result = await controller.submit();
       void wx.showToast({
         title: `厂商已接受 ${result.accepted} 项`,
+        icon: result.failed + result.unknown > 0 ? 'none' : 'success',
+      });
+    } catch (error) {
+      void wx.showToast({ title: safeMessage(error), icon: 'none' });
+    } finally {
+      this.setData(pageData());
+    }
+  },
+
+  async onContinueBatch(): Promise<void> {
+    if (!(await confirm('将继续提交下一批待打印任务（最多 20 项）。', '确认继续批次'))) {
+      return;
+    }
+    try {
+      const result = await controller.continueBatch();
+      void wx.showToast({
+        title: `本次厂商接受 ${result.accepted} 项`,
         icon: result.failed + result.unknown > 0 ? 'none' : 'success',
       });
     } catch (error) {

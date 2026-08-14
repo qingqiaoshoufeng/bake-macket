@@ -1,4 +1,4 @@
-import { AdminPermission } from '@bake-mall/contracts';
+import { AdminPermission } from '../../config/contracts.generated.js';
 
 export const ADMIN_ROUTES = Object.freeze({
   home: '/pages/admin-home/index',
