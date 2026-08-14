@@ -1,0 +1,31 @@
+<view wx:if="{{empty}}" class="printer-list__empty">暂未绑定打印机</view>
+<view wx:else class="printer-list">
+  <view wx:for="{{printers}}" wx:key="id" class="printer-card">
+    <view class="printer-card__head">
+      <text class="printer-card__name">{{item.displayName}}</text>
+      <text class="printer-card__online">{{item.onlineStatus}}</text>
+    </view>
+    <text class="printer-card__meta">设备号 {{item.serialNumberMasked}}</text>
+    <text class="printer-card__meta">绑定状态 {{item.status}}</text>
+    <text wx:if="{{item.onlineStatus === 'OFFLINE'}}" class="printer-card__meta">
+      离线，不能提交打印任务
+    </text>
+    <view class="printer-card__actions">
+      <button
+        wx:for="{{item.actions}}"
+        wx:for-item="action"
+        wx:key="value"
+        size="mini"
+        data-printer-id="{{item.id}}"
+        data-action="{{action.value}}"
+        disabled="{{action.disabled}}"
+        bindtap="onAction"
+      >
+        {{action.label}}
+      </button>
+      <button size="mini" disabled="{{true}}">
+        将在打印任务基础完成后开放
+      </button>
+    </view>
+  </view>
+</view>

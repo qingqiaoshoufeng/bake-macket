@@ -1,20 +1,23 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import type { CartItemView } from '@bake-mall/contracts';
-import { Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 
 import { CartItem } from '../database/entities/cart-item.entity.js';
 import { Product } from '../database/entities/product.entity.js';
 import { Sku } from '../database/entities/sku.entity.js';
+import { UserIdentityService } from '../users/user-identity.service.js';
 import { UpsertCartItemDto } from './dto/cart.dto.js';
 
 @Injectable()
 export class CartService {
   constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
     @InjectRepository(CartItem)
     private readonly cartItems: Repository<CartItem>,
     @InjectRepository(Sku) private readonly skus: Repository<Sku>,
     @InjectRepository(Product) private readonly products: Repository<Product>,
+    private readonly identities: UserIdentityService,
   ) {}
 
   async list(userId: string): Promise<CartItemView[]> {
@@ -25,28 +28,43 @@ export class CartService {
     return Promise.all(items.map((item) => this.toView(item)));
   }
 
-  async upsert(userId: string, dto: UpsertCartItemDto): Promise<CartItemView> {
-    await this.requireSku(dto.skuId);
-    await this.cartItems.query(
-      `INSERT INTO cart_items (user_id, sku_id, quantity)
-       VALUES (?, ?, ?)
-       ON DUPLICATE KEY UPDATE quantity = VALUES(quantity)`,
-      [userId, dto.skuId, dto.quantity],
-    );
-    const item = await this.cartItems.findOneByOrFail({
-      userId,
-      skuId: dto.skuId,
+  upsert(userId: string, dto: UpsertCartItemDto): Promise<CartItemView> {
+    return this.dataSource.transaction(async (manager) => {
+      await this.identities.assertActiveWriteTarget(userId, manager);
+      const sku = await this.requireSku(dto.skuId, manager);
+      const cartItems = manager.getRepository(CartItem);
+      await cartItems.query(
+        `INSERT INTO cart_items (user_id, sku_id, quantity)
+         VALUES (?, ?, ?)
+         ON DUPLICATE KEY UPDATE quantity = VALUES(quantity)`,
+        [userId, dto.skuId, dto.quantity],
+      );
+      const item = await cartItems.findOneByOrFail({
+        userId,
+        skuId: dto.skuId,
+      });
+      return this.toView(item, manager, sku);
     });
-    return this.toView(item);
   }
 
-  async remove(userId: string, id: string): Promise<void> {
-    const result = await this.cartItems.delete({ id, userId });
-    if (!result.affected) throw new NotFoundException('Cart item not found');
+  remove(userId: string, id: string): Promise<void> {
+    return this.dataSource.transaction(async (manager) => {
+      await this.identities.assertActiveWriteTarget(userId, manager);
+      const result = await manager
+        .getRepository(CartItem)
+        .delete({ id, userId });
+      if (!result.affected) throw new NotFoundException('Cart item not found');
+    });
   }
 
-  private async toView(item: CartItem): Promise<CartItemView> {
-    const sku = await this.skus.findOneBy({ id: item.skuId });
+  private async toView(
+    item: CartItem,
+    manager?: EntityManager,
+    knownSku?: Sku,
+  ): Promise<CartItemView> {
+    const skus = manager?.getRepository(Sku) ?? this.skus;
+    const products = manager?.getRepository(Product) ?? this.products;
+    const sku = knownSku ?? (await skus.findOneBy({ id: item.skuId }));
     if (!sku) {
       return {
         id: item.id,
@@ -64,7 +82,7 @@ export class CartService {
         product: { id: '', name: '', coverImageUrl: null, isActive: false },
       };
     }
-    const product = await this.products.findOneBy({ id: sku.productId });
+    const product = await products.findOneBy({ id: sku.productId });
     const available = Boolean(
       sku.isActive && sku.stock > 0 && product?.isActive,
     );
@@ -92,8 +110,8 @@ export class CartService {
     };
   }
 
-  private async requireSku(id: string): Promise<Sku> {
-    const sku = await this.skus.findOneBy({ id });
+  private async requireSku(id: string, manager: EntityManager): Promise<Sku> {
+    const sku = await manager.getRepository(Sku).findOneBy({ id });
     if (!sku) throw new NotFoundException('SKU not found');
     return sku;
   }

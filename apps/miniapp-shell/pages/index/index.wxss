@@ -1,0 +1,26 @@
+.shell {
+  height: 100vh;
+}
+
+.loading-state {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  color: #6f675d;
+  background: #fffaf3;
+  font-size: 28rpx;
+}
+
+.admin-entry {
+  position: fixed;
+  z-index: 2;
+  right: 24rpx;
+  bottom: 40rpx;
+  width: auto;
+  border-radius: 999rpx;
+  background: #b77966;
+  color: #ffffff;
+  font-size: 26rpx;
+  box-shadow: 0 12rpx 28rpx rgba(83, 63, 56, 0.2);
+}

@@ -13,6 +13,7 @@ import { ApiErrorCode } from '@bake-mall/contracts';
 
 import { type AppConfig } from '../config/env.schema.js';
 import { User } from '../database/entities/user.entity.js';
+import { UserIdentityMergeService } from '../users/user-identity-merge.service.js';
 import {
   DEVELOPMENT_VERIFICATION_CODE,
   JWT_USER_AUDIENCE,
@@ -43,6 +44,7 @@ export class UserAuthService {
     private readonly config: ConfigService<AppConfig, true>,
     @InjectRepository(User)
     private readonly users: Repository<User>,
+    private readonly identityMerge: UserIdentityMergeService,
   ) {}
 
   /**
@@ -68,7 +70,7 @@ export class UserAuthService {
     this.assertNotProduction();
     this.assertCodeMatches(code);
     const user = await this.findOrCreateByPhone(phone);
-    return this.issueSession(user.id, user.phone);
+    return this.issueSession(user);
   }
 
   /**
@@ -80,30 +82,14 @@ export class UserAuthService {
     authenticatedUser: { id: string; phone: string | null },
     phone: string,
     code: string,
-  ): Promise<{ phone: string; phoneVerified: true }> {
+  ): Promise<AuthSession> {
     this.assertNotProduction();
     this.assertCodeMatches(code);
-
-    const user = await this.users.findOne({
-      where: { id: authenticatedUser.id },
+    const merged = await this.identityMerge.mergeVerifiedPhone({
+      authenticatedUserId: authenticatedUser.id,
+      normalizedPhone: phone,
     });
-    if (!user) {
-      // The guard validated a signed token, but the user row may have been
-      // removed between issuing and the bind call — surface as 401 so the
-      // client re-authenticates.
-      throw new UnauthorizedException('User no longer exists');
-    }
-
-    const existing = await this.users.findOne({ where: { phone } });
-    if (existing && existing.id !== user.id) {
-      throw new ForbiddenException('Phone already linked to another user');
-    }
-
-    user.phone = phone;
-    user.phoneVerified = true;
-    await this.users.save(user);
-
-    return { phone: user.phone as string, phoneVerified: true };
+    return this.issueSession(merged.user);
   }
 
   /**
@@ -127,26 +113,36 @@ export class UserAuthService {
 
   private async findOrCreateByPhone(phone: string): Promise<User> {
     const existing = await this.users.findOne({ where: { phone } });
+    if (existing?.phoneVerified) return existing;
     if (existing) {
-      return existing;
+      const merged = await this.identityMerge.mergeVerifiedPhone({
+        authenticatedUserId: existing.id,
+        normalizedPhone: phone,
+      });
+      return merged.user;
     }
-    const created = this.users.create({
-      phone,
-      phoneVerified: true,
-      nickname: null,
-      avatarUrl: null,
-      wechatOpenid: null,
-      wechatUnionid: null,
+    const created = await this.users.save(
+      this.users.create({
+        nickname: null,
+        avatarUrl: null,
+        wechatOpenid: null,
+        wechatUnionid: null,
+      }),
+    );
+    const merged = await this.identityMerge.mergeVerifiedPhone({
+      authenticatedUserId: created.id,
+      normalizedPhone: phone,
     });
-    return this.users.save(created);
+    return merged.user;
   }
 
-  private issueSession(userId: string, phone: string | null): AuthSession {
+  issueSession(user: User): AuthSession {
     const env = this.config.get('appEnv', { infer: true });
     const payload: UserJwtPayload = {
-      sub: userId,
+      sub: user.id,
       aud: JWT_USER_AUDIENCE,
-      phone,
+      phone: user.phone,
+      tokenVersion: user.tokenVersion,
     };
     // The payload already carries `aud`; jsonwebtoken rejects passing
     // `audience` at sign time when the payload has the claim.
@@ -174,12 +170,13 @@ export class UserAuthService {
 export function requireVerifiedPhone(user: {
   id: string;
   phone: string | null;
-}): { id: string; phone: string } {
-  if (!user.phone) {
+  phoneVerified: boolean;
+}): { id: string; phone: string; phoneVerified: true } {
+  if (!user.phone || user.phoneVerified !== true) {
     throw new ForbiddenException({
       code: ApiErrorCode.PHONE_REQUIRED,
       message: 'A verified phone number is required before placing an order.',
     });
   }
-  return { id: user.id, phone: user.phone };
+  return { id: user.id, phone: user.phone, phoneVerified: true };
 }

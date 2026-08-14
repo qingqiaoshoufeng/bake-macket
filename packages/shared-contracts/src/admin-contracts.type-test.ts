@@ -1,12 +1,16 @@
 import {
   AdminOrderExportView,
   AdminOrderSupplyMatchType,
+  AdminPermission,
+  AdminRole,
   ApiErrorCode,
   FulfillmentType,
   BannerTargetType,
   OrderStatus,
   ProductStockFilter,
+  OPERATOR_PERMISSIONS,
   type AdminBannerView,
+  type AdminLoginRequest,
   type AdminOrderExportQuery,
   type AdminOrderListItem,
   type AdminOrderListQuery,
@@ -16,6 +20,16 @@ import {
   type AdminOrderSupplyQuery,
   type AdminProductListQuery,
   type AdminProductDetailView,
+  type AdminSessionView,
+  type AdminUserListItem,
+  type AdminUserListQuery,
+  type ChangeAdminPasswordRequest,
+  type ChangeInitialOperatorPasswordRequest,
+  type ExchangeOperatorSessionRequest,
+  type FullSuperAdminSessionView,
+  type GrantOperatorRequest,
+  type OperatorLoginRequest,
+  type SuperAdminLoginRequest,
   type MediaAsset,
   type PresignUploadResponse,
   type PublicProductDetailView,
@@ -24,6 +38,173 @@ import {
   type SaveProductRequest,
   type SaveProductSkuInput,
 } from './index.js';
+
+const superAdminLogin: AdminLoginRequest = {
+  kind: 'SUPER_ADMIN',
+  email: 'admin@example.com',
+  password: 'secret',
+};
+const operatorLogin: AdminLoginRequest = {
+  kind: 'OPERATOR',
+  phone: '13800000000',
+  password: 'secret',
+};
+
+class SuperAdminLoginDto implements SuperAdminLoginRequest {
+  kind = 'SUPER_ADMIN' as const;
+  email = 'admin@example.com';
+  password = 'secret';
+}
+
+class OperatorLoginDto implements OperatorLoginRequest {
+  kind = 'OPERATOR' as const;
+  phone = '13800000000';
+  password = 'secret';
+}
+
+class ExchangeOperatorSessionDto implements ExchangeOperatorSessionRequest {}
+
+const exchangeWithExtraField: ExchangeOperatorSessionRequest = {
+  // @ts-expect-error 空交换请求的对象字面量不得携带额外字段。
+  unexpected: true,
+};
+
+const listedUser: AdminUserListItem = {
+  id: 'user-1',
+  nickname: '张三',
+  phoneMasked: '138****0000',
+  phoneVerified: true,
+  createdAt: '2026-08-04T00:00:00.000Z',
+  isOperator: false,
+  operatorActive: false,
+  mustChangePassword: false,
+};
+
+const listedUserWithRawPhone: AdminUserListItem = {
+  id: 'user-1',
+  nickname: '张三',
+  phoneMasked: '138****0000',
+  // @ts-expect-error 管理端用户列表响应不得暴露原始手机号。
+  phone: '13800000000',
+  phoneVerified: true,
+  createdAt: '2026-08-04T00:00:00.000Z',
+  isOperator: false,
+  operatorActive: false,
+  mustChangePassword: false,
+};
+
+const listSearch: AdminUserListQuery = {
+  q: '13800000000',
+  page: 1,
+  pageSize: 20,
+};
+
+// @ts-expect-error 管理员登录必须通过 kind 明确身份类型。
+const loginWithoutKind: AdminLoginRequest = {
+  email: 'admin@example.com',
+  password: 'secret',
+};
+
+// @ts-expect-error SUPER_ADMIN 登录不得混入 OPERATOR 手机号。
+const loginWithMixedIdentityFields: AdminLoginRequest = {
+  kind: 'SUPER_ADMIN',
+  email: 'admin@example.com',
+  phone: '13800000000',
+  password: 'secret',
+};
+
+// @ts-expect-error 修改管理员密码必须同时提供当前密码、新密码和确认值。
+const incompletePasswordChange: ChangeAdminPasswordRequest = {
+  currentPassword: 'temporary',
+  newPassword: 'new-password',
+};
+
+// @ts-expect-error 首次改密必须提交临时密码、新密码和确认值。
+const incompleteInitialPasswordChange: ChangeInitialOperatorPasswordRequest = {
+  temporaryPassword: '123456',
+  newPassword: '654321',
+};
+
+const wrongInitialPasswordField: ChangeInitialOperatorPasswordRequest = {
+  // @ts-expect-error 首次改密字段不能误用普通改密的 currentPassword。
+  currentPassword: '123456',
+  newPassword: '654321',
+  confirmPassword: '654321',
+};
+
+// @ts-expect-error 授权 OPERATOR 必须确认临时密码。
+const grantWithoutConfirmation: GrantOperatorRequest = {
+  currentPassword: 'super-admin-password',
+  temporaryPassword: 'temporary-password',
+};
+
+const restrictedOperatorSession: AdminSessionView = {
+  accessToken: 'restricted-token',
+  expiresAt: '2026-08-04T00:00:00.000Z',
+  role: AdminRole.OPERATOR,
+  permissions: [],
+  mustChangePassword: true,
+};
+const fullOperatorSession: AdminSessionView = {
+  accessToken: 'operator-token',
+  expiresAt: '2026-08-04T00:00:00.000Z',
+  role: AdminRole.OPERATOR,
+  permissions: OPERATOR_PERMISSIONS,
+  mustChangePassword: false,
+};
+
+// @ts-expect-error SUPER_ADMIN 不存在 mustChangePassword 为 true 的受限会话。
+const restrictedSuperAdminSession: AdminSessionView = {
+  accessToken: 'restricted-super-admin-token',
+  expiresAt: '2026-08-04T00:00:00.000Z',
+  role: AdminRole.SUPER_ADMIN,
+  permissions: [],
+  mustChangePassword: true,
+};
+
+const assertRestrictedSessionNarrowing = (session: AdminSessionView): void => {
+  if (session.mustChangePassword) {
+    const role: AdminRole.OPERATOR = session.role;
+    const permissions: readonly [] = session.permissions;
+    void [role, permissions];
+  }
+};
+
+const emptySuperAdminSession: FullSuperAdminSessionView = {
+  accessToken: 'super-admin-token',
+  expiresAt: '2026-08-04T00:00:00.000Z',
+  role: AdminRole.SUPER_ADMIN,
+  // @ts-expect-error SUPER_ADMIN 会话不得缺少完整权限。
+  permissions: [],
+  mustChangePassword: false,
+};
+
+const partialSuperAdminSession: FullSuperAdminSessionView = {
+  accessToken: 'super-admin-token',
+  expiresAt: '2026-08-04T00:00:00.000Z',
+  role: AdminRole.SUPER_ADMIN,
+  // @ts-expect-error SUPER_ADMIN 会话不得只携带部分权限。
+  permissions: [AdminPermission.ORDER_READ],
+  mustChangePassword: false,
+};
+
+const incompleteOperatorSession: AdminSessionView = {
+  accessToken: 'operator-token',
+  expiresAt: '2026-08-04T00:00:00.000Z',
+  role: AdminRole.OPERATOR,
+  // @ts-expect-error 完整 OPERATOR 会话必须携带完整且有序的白名单。
+  permissions: [AdminPermission.ORDER_READ],
+  mustChangePassword: false,
+};
+
+const invalidRestrictedSession: AdminSessionView = {
+  accessToken: 'restricted-token',
+  expiresAt: '2026-08-04T00:00:00.000Z',
+  role: AdminRole.OPERATOR,
+  // @ts-expect-error 受限会话不得携带 permission。
+  permissions: [AdminPermission.ORDER_READ],
+  mustChangePassword: true,
+};
 
 const image: MediaAsset = {
   objectKey: 'products/cake.webp',
@@ -277,6 +458,29 @@ const ownershipCode: ApiErrorCode =
   ApiErrorCode.PRODUCT_ASSET_OWNERSHIP_INVALID;
 
 void [
+  superAdminLogin,
+  operatorLogin,
+  SuperAdminLoginDto,
+  OperatorLoginDto,
+  ExchangeOperatorSessionDto,
+  exchangeWithExtraField,
+  listedUser,
+  listedUserWithRawPhone,
+  listSearch,
+  loginWithoutKind,
+  loginWithMixedIdentityFields,
+  incompletePasswordChange,
+  incompleteInitialPasswordChange,
+  wrongInitialPasswordField,
+  grantWithoutConfirmation,
+  restrictedOperatorSession,
+  fullOperatorSession,
+  restrictedSuperAdminSession,
+  assertRestrictedSessionNarrowing,
+  emptySuperAdminSession,
+  partialSuperAdminSession,
+  incompleteOperatorSession,
+  invalidRestrictedSession,
   upload,
   saveProduct,
   product,

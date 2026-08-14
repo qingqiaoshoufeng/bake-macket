@@ -1,0 +1,24 @@
+{
+  "appid": "touristappid",
+  "compileType": "miniprogram",
+  "libVersion": "trial",
+  "miniprogramRoot": "./",
+  "projectname": "bake-mall-miniapp-shell",
+  "packOptions": {
+    "ignore": [
+      { "type": "folder", "value": "node_modules" },
+      { "type": "folder", "value": "scripts" },
+      { "type": "folder", "value": "types" },
+      { "type": "suffix", "value": ".spec.ts" }
+    ]
+  },
+  "setting": {
+    "checkInvalidKey": true,
+    "coverView": true,
+    "es6": true,
+    "postcss": true,
+    "preloadBackgroundData": false,
+    "urlCheck": true,
+    "useCompilerPlugins": ["typescript"]
+  }
+}

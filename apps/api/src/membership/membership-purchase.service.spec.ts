@@ -53,6 +53,13 @@ const buildService = ({
   previousMembership = null,
   grant = null,
   segment = null,
+  user = {
+    id: 'user-1',
+    phone: '13800000000',
+    phoneVerified: true,
+    isActive: true,
+    mergedIntoUserId: null,
+  } as User,
   simulatedPaymentEnabled = true,
 }: {
   level?: MembershipLevel | null;
@@ -62,6 +69,7 @@ const buildService = ({
   previousMembership?: UserMembership | null;
   grant?: MemberCreditGrant | null;
   segment?: MembershipEntitlementSegment | null;
+  user?: User | null;
   simulatedPaymentEnabled?: boolean;
 } = {}) => {
   const savedPurchases: Record<string, unknown>[] = [];
@@ -188,7 +196,7 @@ const buildService = ({
   };
   const orderRepository = { existsBy: vi.fn().mockResolvedValue(false) };
   const userRepository = {
-    findOne: vi.fn().mockResolvedValue({ id: 'user-1' }),
+    findOne: vi.fn().mockResolvedValue(user),
   };
   const repositories = new Map<unknown, object>([
     [MembershipLevel, levelRepository],
@@ -283,6 +291,7 @@ const buildService = ({
     entitlement,
     credit,
     membershipRepository,
+    userRepository,
   };
 };
 
@@ -1012,6 +1021,64 @@ describe('MembershipPurchaseService', () => {
       simulatedPaymentEnabled: true,
     });
   });
+
+  it.each([
+    ['missing', null],
+    [
+      'inactive',
+      {
+        id: 'user-1',
+        phone: '13800000000',
+        phoneVerified: true,
+        isActive: false,
+        mergedIntoUserId: null,
+      } as User,
+    ],
+    [
+      'merged',
+      {
+        id: 'user-1',
+        phone: '13800000000',
+        phoneVerified: true,
+        isActive: true,
+        mergedIntoUserId: 'user-2',
+      } as User,
+    ],
+    [
+      'placeholder',
+      {
+        id: 'user-1',
+        phone: '13800000000',
+        phoneVerified: false,
+        isActive: true,
+        mergedIntoUserId: null,
+      } as User,
+    ],
+  ])(
+    'rechecks and locks a %s user before creating a financial purchase',
+    async (_state, user) => {
+      const { service, savedPurchases, userRepository } = buildService({
+        user,
+      });
+
+      await expect(
+        service.createPurchase('user-1', 'purchase-key-guard', {
+          levelId: 'level-gold',
+        }),
+      ).rejects.toSatisfy((error: ForbiddenException) => {
+        expect(error.getResponse()).toMatchObject({
+          code: ApiErrorCode.PHONE_REQUIRED,
+        });
+        return true;
+      });
+
+      expect(userRepository.findOne).toHaveBeenCalledWith({
+        where: { id: 'user-1' },
+        lock: { mode: 'pessimistic_write' },
+      });
+      expect(savedPurchases).toHaveLength(0);
+    },
+  );
 
   it('creates a pending purchase with an immutable level snapshot only', async () => {
     const { service, savedPurchases, savedMemberships, savedGrants } =

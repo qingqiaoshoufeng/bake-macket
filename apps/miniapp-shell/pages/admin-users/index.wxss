@@ -1,0 +1,53 @@
+.users-page {
+  min-height: 100vh;
+  box-sizing: border-box;
+  padding: 32rpx;
+  background: #fffaf3;
+}
+
+.users-card,
+.users-error {
+  padding: 24rpx;
+  border: 1rpx solid #f1dfd1;
+  border-radius: 20rpx;
+  background: #ffffff;
+}
+
+.users-search,
+.users-create,
+.users-pagination,
+.users-error {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.users-create {
+  margin-top: 20rpx;
+}
+
+.users-input {
+  flex: 1;
+  min-width: 0;
+  padding: 18rpx 20rpx;
+  border-radius: 14rpx;
+  background: #fff6ef;
+}
+
+.users-error {
+  justify-content: space-between;
+  margin: 24rpx 0;
+  color: #a34f46;
+}
+
+user-list {
+  display: block;
+  margin-top: 24rpx;
+}
+
+.users-pagination {
+  justify-content: space-between;
+  margin-top: 28rpx;
+  color: #755f57;
+  font-size: 24rpx;
+}

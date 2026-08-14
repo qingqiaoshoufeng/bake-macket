@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { AdminOrderExportView } from '@bake-mall/contracts';
-import { onMounted } from 'vue';
+import { AdminOrderExportView, AdminRole } from '@bake-mall/contracts';
+import { computed, onMounted } from 'vue';
 import { ElAlert, ElMessage, ElMessageBox, ElPagination } from 'element-plus';
 
 import AdminDataPanel from '../../components/layout/AdminDataPanel.vue';
 import AdminPage from '../../components/layout/AdminPage.vue';
 import AdminPageHeader from '../../components/layout/AdminPageHeader.vue';
 import { PAGE_SIZE_OPTIONS } from '../../config/pagination.js';
+import { useAdminAuthStore } from '../../stores/admin-auth.js';
 import OrderDetailDrawer from './components/OrderDetailDrawer.vue';
 import OrderFilters from './components/OrderFilters.vue';
 import OrderModeSwitch from './components/OrderModeSwitch.vue';
@@ -16,6 +17,8 @@ import type { OrderAction } from './hooks/useOrderActions.js';
 import { useOrderWorkspace } from './hooks/useOrderWorkspace.js';
 
 const state = useOrderWorkspace();
+const adminAuth = useAdminAuthStore();
+const isSuperAdmin = computed(() => adminAuth.role === AdminRole.SUPER_ADMIN);
 onMounted(state.initialize);
 
 async function runAction(action: OrderAction): Promise<void> {
@@ -67,10 +70,15 @@ async function exportCurrent(): Promise<void> {
       <AdminPageHeader
         eyebrow="FULFILLMENT"
         title="订单管理"
-        description="逐单处理订单，或按 SKU 汇总待供货数量并导出 Excel。"
+        :description="
+          isSuperAdmin
+            ? '逐单处理订单，或按 SKU 汇总待供货数量并导出 Excel。'
+            : '查看全部订单并处理合法的订单状态流转。'
+        "
       >
         <template #actions>
           <OrderModeSwitch
+            v-if="isSuperAdmin"
             :model-value="state.mode.value"
             :exporting="state.exportState.exporting.value"
             @update:model-value="state.switchMode"

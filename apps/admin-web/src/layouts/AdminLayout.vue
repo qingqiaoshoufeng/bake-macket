@@ -3,18 +3,19 @@ import { ElButton, ElMenu, ElMenuItem, ElMenuItemGroup } from 'element-plus';
 import { computed } from 'vue';
 import { RouterView, useRoute, useRouter } from 'vue-router';
 
-import { ADMIN_NAV_GROUPS } from '../config/navigation.js';
+import { visibleAdminNavGroups } from '../config/navigation.js';
 import { useAdminAuthStore } from '../stores/admin-auth.js';
 
 const adminAuth = useAdminAuthStore();
 const router = useRouter();
 const route = useRoute();
-const navItems = ADMIN_NAV_GROUPS.flatMap(({ items }) => items);
+const navGroups = computed(() => visibleAdminNavGroups(adminAuth.session));
+const navItems = computed(() => navGroups.value.flatMap(({ items }) => items));
 
 const layoutMode = computed(() => route.meta.layoutMode ?? 'document');
 const activePath = computed(
   () =>
-    navItems
+    navItems.value
       .map(({ path }) => path)
       .filter(
         (path) => route.path === path || route.path.startsWith(`${path}/`),
@@ -29,16 +30,20 @@ const pageTitle = computed(() => {
 
   return (
     matchedTitle ??
-    navItems.find(({ path }) => path === route.path)?.label ??
+    navItems.value.find(({ path }) => path === route.path)?.label ??
     '概览'
   );
 });
 const greeting = computed(() => {
-  const name = adminAuth.profile?.displayName;
-  if (name) return `你好,${name}`;
-  const email = adminAuth.profile?.email;
-  return email ? `你好,${email}` : '你好,管理员';
+  const identifier = adminAuth.profile?.identifier;
+  return identifier ? `你好,${identifier}` : '你好,管理员';
 });
+
+async function onChangePassword(): Promise<void> {
+  if (route.path !== '/admin-password') {
+    await router.push('/admin-password');
+  }
+}
 
 async function onLogout(): Promise<void> {
   adminAuth.clearSession();
@@ -74,7 +79,7 @@ async function onSelect(path: string): Promise<void> {
           @select="(index) => onSelect(String(index))"
         >
           <ElMenuItemGroup
-            v-for="group in ADMIN_NAV_GROUPS"
+            v-for="group in navGroups"
             :key="group.label"
             class="admin-layout__nav-group"
           >
@@ -120,6 +125,14 @@ async function onSelect(path: string): Promise<void> {
         </div>
         <div class="admin-layout__topbar-user">
           <span class="admin-layout__greeting">{{ greeting }}</span>
+          <ElButton
+            plain
+            size="small"
+            data-testid="admin-change-password"
+            @click="onChangePassword"
+          >
+            修改密码
+          </ElButton>
           <ElButton
             type="primary"
             plain
@@ -296,6 +309,16 @@ async function onSelect(path: string): Promise<void> {
 
 .admin-layout__nav-icon[data-icon='order'] {
   border-radius: 3px 3px 7px 7px;
+}
+
+.admin-layout__nav-icon[data-icon='user'] {
+  border-radius: 50%;
+  box-shadow: 0 5px 0 -2px currentcolor;
+}
+
+.admin-layout__nav-icon[data-icon='printer'],
+.admin-layout__nav-icon[data-icon='print-history'] {
+  border-radius: 4px;
 }
 
 .admin-layout__nav-icon[data-icon='membership'] {

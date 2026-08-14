@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "types": ["miniprogram-api-typings", "vitest/globals", "node"]
+  },
+  "include": [
+    "app.ts",
+    "config/**/*.d.ts",
+    "admin/**/*.ts",
+    "pages/**/*.ts",
+    "scripts/**/*.mjs",
+    "utils/**/*.ts",
+    "types/**/*.d.ts"
+  ],
+  "exclude": ["node_modules"]
+}

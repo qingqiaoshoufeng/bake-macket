@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 
 import {
+  AdminRole,
   ApiErrorCode,
   HomepageDraftStatus,
   HomepageLinkType,
@@ -33,16 +34,7 @@ import { HomepageDraft } from '../src/database/entities/homepage-draft.entity.js
 import { HomepagePage } from '../src/database/entities/homepage-page.entity.js';
 import { Product } from '../src/database/entities/product.entity.js';
 import * as entities from '../src/database/entities/index.js';
-import { InitialSchema1718000000000 } from '../src/database/migrations/0001-initial-schema.js';
-import { ProductSortOrder1718000000001 } from '../src/database/migrations/0002-product-sort-order.js';
-import { Task12AdminMediaAndOrderIndexes1718000000002 } from '../src/database/migrations/0003-task12-admin-media-and-order-indexes.js';
-import { SkuStockVersion1718000000003 } from '../src/database/migrations/0004-sku-stock-version.js';
-import { MembershipAndOrderPricing1718000000004 } from '../src/database/migrations/0005-membership-and-order-pricing.js';
-import { MembershipEntitlementSegments1718000000005 } from '../src/database/migrations/0006-membership-entitlement-segments.js';
-import { DefaultMembershipLevels1718000000006 } from '../src/database/migrations/0007-default-membership-levels.js';
-import { OrderItemSourceIds1718000000007 } from '../src/database/migrations/0008-order-item-source-ids.js';
-import { HomepagePages1718000000008 } from '../src/database/migrations/0009-homepage-pages.js';
-import { HomepageMultipleDrafts1718000000009 } from '../src/database/migrations/0010-homepage-multiple-drafts.js';
+import { DATABASE_MIGRATIONS } from '../src/database/migrations/index.js';
 import { HomepageModule } from '../src/homepage/homepage.module.js';
 import {
   createDockerRootSqlExecutor,
@@ -244,7 +236,7 @@ describe.sequential('Admin homepage drafts (e2e)', () => {
         TypeOrmModule.forRoot({
           type: 'mysql',
           host: process.env.TEST_MYSQL_HOST ?? '127.0.0.1',
-          port: Number(process.env.TEST_MYSQL_PORT ?? 3306),
+          port: Number(process.env.TEST_MYSQL_PORT ?? 44306),
           database: DATABASE_NAME,
           username: APP_USER,
           password: process.env.TEST_MYSQL_APP_PASSWORD ?? 'bake_app_password',
@@ -252,19 +244,9 @@ describe.sequential('Admin homepage drafts (e2e)', () => {
           timezone: 'Z',
           synchronize: false,
           entities: Object.values(entities),
-          migrations: [
-            InitialSchema1718000000000,
-            ProductSortOrder1718000000001,
-            Task12AdminMediaAndOrderIndexes1718000000002,
-            SkuStockVersion1718000000003,
-            MembershipAndOrderPricing1718000000004,
-            MembershipEntitlementSegments1718000000005,
-            DefaultMembershipLevels1718000000006,
-            OrderItemSourceIds1718000000007,
-            HomepagePages1718000000008,
-            HomepageMultipleDrafts1718000000009,
-          ],
+          migrations: [...DATABASE_MIGRATIONS],
           migrationsTableName: 'migrations',
+          migrationsTransactionMode: 'each',
           migrationsRun: true,
           retryAttempts: 1,
         }),
@@ -288,18 +270,25 @@ describe.sequential('Admin homepage drafts (e2e)', () => {
     const adminUser = await dataSource.getRepository(AdminUser).save(
       dataSource.getRepository(AdminUser).create({
         username: `homepage-admin-${process.pid}`,
+        role: AdminRole.SUPER_ADMIN,
+        linkedUserId: null,
         passwordHash: 'test-only',
         isActive: true,
+        mustChangePassword: false,
+        tokenVersion: 1,
       }),
     );
     adminId = adminUser.id;
     adminToken = await app.get(JwtService).signAsync(
       {
         sub: adminId,
-        email: 'homepage-admin@example.test',
         aud: JWT_ADMIN_AUDIENCE,
+        role: AdminRole.SUPER_ADMIN,
+        tokenVersion: 1,
+        linkedUserId: null,
+        mustChangePassword: false,
       },
-      { secret: ADMIN_SECRET },
+      { secret: ADMIN_SECRET, expiresIn: 3_600 },
     );
     initialDraft = (await dataSource.getRepository(HomepageDraft).findOneBy({
       name: '当前首页',

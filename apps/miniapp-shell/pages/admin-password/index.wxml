@@ -1,0 +1,39 @@
+<view class="password-page">
+  <view class="password-card">
+    <text class="password-card__title">{{mode === 'initial' ? '首次设置新密码' : '修改操作密码'}}</text>
+    <text class="password-card__copy">{{mode === 'initial' ? '请使用临时密码完成首次改密。' : '请输入当前密码并设置新密码。'}}</text>
+
+    <input
+      class="password-input"
+      password
+      value="{{form.currentPassword}}"
+      data-field="currentPassword"
+      placeholder="{{mode === 'initial' ? '临时密码' : '当前密码'}}"
+      bindinput="onInput"
+    />
+    <input
+      class="password-input"
+      password
+      value="{{form.newPassword}}"
+      data-field="newPassword"
+      placeholder="新密码"
+      bindinput="onInput"
+    />
+    <input
+      class="password-input"
+      password
+      value="{{form.confirmPassword}}"
+      data-field="confirmPassword"
+      placeholder="确认新密码"
+      bindinput="onInput"
+    />
+
+    <button
+      class="password-submit"
+      type="primary"
+      loading="{{submitting}}"
+      disabled="{{submitting}}"
+      bindtap="onSubmit"
+    >确认修改</button>
+  </view>
+</view>

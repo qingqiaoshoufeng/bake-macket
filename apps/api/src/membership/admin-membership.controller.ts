@@ -17,6 +17,7 @@ import {
   type AdminMembershipLevelListResult,
 } from '@bake-mall/contracts';
 
+import { AdminPermissionGuard } from '../auth/admin-permission.guard.js';
 import { JwtAdminGuard } from '../auth/admin-jwt.guard.js';
 import type { AuthenticatedAdmin } from '../auth/auth.types.js';
 import { CurrentAdmin } from '../auth/current-user.decorator.js';
@@ -28,7 +29,7 @@ import {
 import { MembershipService } from './membership.service.js';
 
 @Controller('admin/membership-levels')
-@UseGuards(JwtAdminGuard)
+@UseGuards(JwtAdminGuard, AdminPermissionGuard)
 export class AdminMembershipController {
   constructor(private readonly membership: MembershipService) {}
 

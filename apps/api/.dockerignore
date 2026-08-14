@@ -1,0 +1,10 @@
+node_modules
+dist
+coverage
+.env
+.env.*
+!.env.production.example
+*.log
+.git
+.gitignore
+Dockerfile

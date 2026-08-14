@@ -6,6 +6,7 @@ import type {
   SaveHomepageDraftRequest,
 } from '@bake-mall/contracts';
 
+import { AdminPermissionGuard } from '../auth/admin-permission.guard.js';
 import { JwtAdminGuard } from '../auth/admin-jwt.guard.js';
 import type { AuthenticatedAdmin } from '../auth/auth.types.js';
 import { CurrentAdmin } from '../auth/current-user.decorator.js';
@@ -14,7 +15,7 @@ import { SaveHomepageDraftDto } from './dto/save-homepage-draft.dto.js';
 import { HomepageService } from './homepage.service.js';
 
 @Controller('admin/homepage')
-@UseGuards(JwtAdminGuard)
+@UseGuards(JwtAdminGuard, AdminPermissionGuard)
 export class AdminHomepageController {
   constructor(private readonly homepage: HomepageService) {}
 

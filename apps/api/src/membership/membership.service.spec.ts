@@ -217,7 +217,7 @@ describe('MembershipService level management', () => {
     expect(transaction).toHaveBeenCalledOnce();
     expect(audit.record).toHaveBeenCalledWith(
       expect.objectContaining({
-        adminUserId: 'admin-1',
+        actor: { type: 'ADMIN', adminUserId: 'admin-1' },
         targetEntity: 'membership_levels',
         targetId: 'level-1',
         action: 'MEMBERSHIP_LEVEL_CREATED',
@@ -376,7 +376,7 @@ describe('MembershipService level management', () => {
     expect(levelRepository.delete).toHaveBeenCalledWith('level-1');
     expect(audit.record).toHaveBeenCalledWith(
       expect.objectContaining({
-        adminUserId: 'admin-1',
+        actor: { type: 'ADMIN', adminUserId: 'admin-1' },
         targetId: 'level-1',
         action: 'MEMBERSHIP_LEVEL_DELETED',
       }),

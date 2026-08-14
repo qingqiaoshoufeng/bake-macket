@@ -565,7 +565,7 @@ export class HomepageService {
         );
         await this.audit.record(
           {
-            adminUserId,
+            actor: { type: 'ADMIN', adminUserId },
             targetEntity: 'homepage_drafts',
             targetId: draft.id,
             action: 'HOMEPAGE_DRAFT_CREATED',
@@ -643,7 +643,7 @@ export class HomepageService {
       const saved = await this.requireDraft(id, page.id, drafts);
       await this.audit.record(
         {
-          adminUserId,
+          actor: { type: 'ADMIN', adminUserId },
           targetEntity: 'homepage_drafts',
           targetId: saved.id,
           action: 'HOMEPAGE_DRAFT_SAVED',
@@ -700,7 +700,7 @@ export class HomepageService {
         const renamed = await this.requireDraft(id, page.id, drafts);
         await this.audit.record(
           {
-            adminUserId,
+            actor: { type: 'ADMIN', adminUserId },
             targetEntity: 'homepage_drafts',
             targetId: renamed.id,
             action: 'HOMEPAGE_DRAFT_RENAMED',
@@ -737,7 +737,7 @@ export class HomepageService {
       await drafts.delete({ id: draft.id, homepagePageId: page.id });
       await this.audit.record(
         {
-          adminUserId,
+          actor: { type: 'ADMIN', adminUserId },
           targetEntity: 'homepage_drafts',
           targetId: draft.id,
           action: 'HOMEPAGE_DRAFT_DELETED',
@@ -805,7 +805,7 @@ export class HomepageService {
       const saved = await this.requireLegacyDraft(page.id, drafts);
       await this.audit.record(
         {
-          adminUserId,
+          actor: { type: 'ADMIN', adminUserId },
           targetEntity: 'homepage_drafts',
           targetId: saved.id,
           action: 'HOMEPAGE_DRAFT_SAVED',
@@ -868,7 +868,7 @@ export class HomepageService {
       const saved = await pages.save(page);
       await this.audit.record(
         {
-          adminUserId,
+          actor: { type: 'ADMIN', adminUserId },
           targetEntity: 'homepage_pages',
           targetId: saved.id,
           action: 'HOMEPAGE_PUBLISHED',

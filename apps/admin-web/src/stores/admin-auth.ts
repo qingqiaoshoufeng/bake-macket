@@ -1,122 +1,187 @@
+import {
+  AdminPermission,
+  AdminRole,
+  OPERATOR_PERMISSIONS,
+  SUPER_ADMIN_PERMISSIONS,
+  type AdminLoginRequest,
+  type AdminSessionView,
+} from '@bake-mall/contracts';
 import { defineStore } from 'pinia';
 
-import type { AuthSessionView } from '@bake-mall/contracts';
-
 import { apiClient } from '../api/http.js';
+import {
+  ADMIN_SESSION_STORAGE_KEY,
+  clearAdminSessionStorage,
+  LEGACY_ADMIN_TOKEN_STORAGE_KEY,
+} from '../config/session-storage.js';
 import { loginAsAdmin } from '../views/login/api/index.js';
 
-/**
- * Storage key for the merchant administrator's bearer token. Kept separate
- * from the H5 customer's `bake_user_token` so the two audiences never share
- * credentials. `sessionStorage` is intentional: an unattended merchant kiosk
- * should not silently re-authenticate on the next page load.
- */
-const TOKEN_STORAGE_KEY = 'bake_admin_token';
-
-/**
- * Profile displayed by the admin layout's user menu. Built from the email
- * submitted during login because `AuthSessionView` intentionally contains
- * only session data and there is no `/admin/auth/me` round-trip yet.
- */
 export type AdminProfileView = {
-  email: string;
-  displayName?: string;
+  readonly identifier: string;
 };
 
-type AdminLoginResponse = AuthSessionView;
+type PersistedAdminAuth = {
+  readonly session: AdminSessionView;
+  readonly profile: AdminProfileView;
+};
 
 type AdminAuthState = {
-  accessToken: string | null;
+  session: AdminSessionView | null;
   profile: AdminProfileView | null;
 };
 
-/**
- * Merchant administrator authentication state.
- *
- * - The store is the single owner of the bearer token. `apiClient` calls
- *   `setAccessToken` at boot and on login/logout so every admin request
- *   picks up the latest value without prop-drilling.
- * - `requireAdminAuth(redirectPath)` is the contract used by the router:
- *   it returns the `/login?redirect=<encoded path>` URL whenever the
- *   session is missing, or `null` when the protected page may render.
- * - The H5 customer store deliberately lives next to this one — sharing the
- *   bearer state would re-introduce the cross-audience bug the spec calls
- *   out as a security boundary.
- */
+const adminPermissions = new Set(Object.values(AdminPermission));
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function hasExactPermissions(
+  value: readonly AdminPermission[],
+  expected: readonly AdminPermission[],
+): boolean {
+  return (
+    value.length === expected.length &&
+    expected.every((permission) => value.includes(permission))
+  );
+}
+
+function isAdminSession(
+  value: unknown,
+  nowMs: number,
+): value is AdminSessionView {
+  if (!isRecord(value)) return false;
+  const expiresAtMs =
+    typeof value.expiresAt === 'string'
+      ? Date.parse(value.expiresAt)
+      : Number.NaN;
+  if (
+    typeof value.accessToken !== 'string' ||
+    value.accessToken.length === 0 ||
+    !Number.isFinite(expiresAtMs) ||
+    expiresAtMs <= nowMs ||
+    !Object.values(AdminRole).includes(value.role as AdminRole) ||
+    !Array.isArray(value.permissions) ||
+    !value.permissions.every((permission) =>
+      adminPermissions.has(permission as AdminPermission),
+    ) ||
+    typeof value.mustChangePassword !== 'boolean'
+  ) {
+    return false;
+  }
+
+  const permissions = value.permissions as readonly AdminPermission[];
+  if (value.mustChangePassword) {
+    return value.role === AdminRole.OPERATOR && permissions.length === 0;
+  }
+
+  if (value.role === AdminRole.OPERATOR) {
+    return hasExactPermissions(permissions, OPERATOR_PERMISSIONS);
+  }
+
+  return hasExactPermissions(permissions, SUPER_ADMIN_PERMISSIONS);
+}
+
+function isAdminProfile(value: unknown): value is AdminProfileView {
+  return (
+    isRecord(value) &&
+    typeof value.identifier === 'string' &&
+    value.identifier.trim().length > 0
+  );
+}
+
+function parsePersistedAdminAuth(
+  value: string,
+  nowMs: number,
+): PersistedAdminAuth | null {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (
+      !isRecord(parsed) ||
+      !isAdminSession(parsed.session, nowMs) ||
+      !isAdminProfile(parsed.profile)
+    ) {
+      return null;
+    }
+    return {
+      session: parsed.session,
+      profile: { identifier: parsed.profile.identifier },
+    };
+  } catch {
+    return null;
+  }
+}
+
 export const useAdminAuthStore = defineStore('admin-auth', {
   state: (): AdminAuthState => ({
-    accessToken: null,
+    session: null,
     profile: null,
   }),
   getters: {
-    isAuthenticated: (state) => Boolean(state.accessToken),
+    accessToken: (state): string | null => state.session?.accessToken ?? null,
+    role: (state): AdminRole | null => state.session?.role ?? null,
+    permissions: (state): readonly AdminPermission[] =>
+      state.session?.permissions ?? [],
+    mustChangePassword: (state): boolean =>
+      state.session?.mustChangePassword ?? false,
+    isAuthenticated: (state): boolean => state.session !== null,
   },
   actions: {
-    /**
-     * Restore the persisted session from `sessionStorage` and re-bind the
-     * bearer token on the shared `apiClient`. Called once from `main.ts`
-     * before the router mounts.
-     */
-    hydrate(): void {
+    hydrate(nowMs: number = Date.now()): void {
       if (typeof window === 'undefined') return;
-      try {
-        const token = window.sessionStorage.getItem(TOKEN_STORAGE_KEY);
-        if (token) {
-          this.accessToken = token;
-          apiClient.setAccessToken(token);
-        }
-      } catch {
-        // Corrupted storage shouldn't block app boot — drop and continue.
-        this.accessToken = null;
+      const persistedValue = window.sessionStorage.getItem(
+        ADMIN_SESSION_STORAGE_KEY,
+      );
+      const persisted = persistedValue
+        ? parsePersistedAdminAuth(persistedValue, nowMs)
+        : null;
+      if (!persisted) {
+        this.clearSession();
+        return;
       }
+      this.session = persisted.session;
+      this.profile = persisted.profile;
+      apiClient.setAccessToken(persisted.session.accessToken);
+      window.sessionStorage.removeItem(LEGACY_ADMIN_TOKEN_STORAGE_KEY);
     },
 
-    /**
-     * Exchange an email/password pair with `POST /admin/auth/login`. On
-     * success the issued token is persisted to `sessionStorage` and bound
-     * on the shared HTTP client so subsequent admin requests authenticate
-     * automatically.
-     */
-    async loginAsAdmin(
-      email: string,
-      password: string,
-    ): Promise<AdminLoginResponse> {
-      const response = await loginAsAdmin({ email, password });
-      this.applySession(response, email);
+    async loginAsAdmin(request: AdminLoginRequest): Promise<AdminSessionView> {
+      const response = await loginAsAdmin(request);
+      const identifier =
+        request.kind === 'SUPER_ADMIN' ? request.email : request.phone;
+      this.applySession(response, { identifier });
       return response;
     },
 
-    /**
-     * Persist the issued token, build the admin profile from the submitted
-     * email, and forward the bearer token to the shared HTTP client.
-     */
-    applySession(session: AdminLoginResponse, email: string): void {
-      this.accessToken = session.accessToken;
-      this.profile = { email };
+    applySession(session: AdminSessionView, profile: AdminProfileView): void {
+      const nextProfile = { identifier: profile.identifier };
+      const persisted: PersistedAdminAuth = {
+        session,
+        profile: nextProfile,
+      };
       if (typeof window !== 'undefined') {
-        window.sessionStorage.setItem(TOKEN_STORAGE_KEY, session.accessToken);
+        window.sessionStorage.setItem(
+          ADMIN_SESSION_STORAGE_KEY,
+          JSON.stringify(persisted),
+        );
+        window.sessionStorage.removeItem(LEGACY_ADMIN_TOKEN_STORAGE_KEY);
       }
+      this.session = session;
+      this.profile = nextProfile;
       apiClient.setAccessToken(session.accessToken);
     },
 
-    /**
-     * Drop the admin session on logout or on a `401` (the HTTP client
-     * invokes the registered unauthorized handler).
-     */
     clearSession(): void {
-      this.accessToken = null;
+      this.session = null;
       this.profile = null;
-      if (typeof window !== 'undefined') {
-        window.sessionStorage.removeItem(TOKEN_STORAGE_KEY);
-      }
+      clearAdminSessionStorage();
       apiClient.setAccessToken(null);
     },
 
-    /**
-     * Guard helper used by the router: when the admin is anonymous returns
-     * the `/login?redirect=<encoded path>` URL the caller should navigate
-     * to; returns `null` when the protected page may render.
-     */
+    hasPermission(permission: AdminPermission): boolean {
+      return this.permissions.includes(permission);
+    },
+
     requireAdminAuth(redirectPath: string): string | null {
       if (this.isAuthenticated) return null;
       const normalised = redirectPath.startsWith('/')

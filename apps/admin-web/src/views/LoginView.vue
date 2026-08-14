@@ -3,17 +3,32 @@ import AdminBrandArt from './login/components/AdminBrandArt.vue';
 import AdminLoginForm from './login/components/AdminLoginForm.vue';
 import { useAdminLogin } from './login/hooks/useAdminLogin.js';
 
-const { email, password, submitting, showDevHint, submit } = useAdminLogin();
+const {
+  kind,
+  email,
+  phone,
+  password,
+  submitting,
+  showDevHint,
+  selectKind,
+  submit,
+} = useAdminLogin();
 </script>
 
 <template>
   <main class="admin-auth-page">
     <div class="admin-auth-page__form">
       <AdminLoginForm
-        v-model:email="email"
-        v-model:password="password"
+        :kind="kind"
+        :email="email"
+        :phone="phone"
+        :password="password"
         :submitting="submitting"
         :show-dev-hint="showDevHint"
+        @update:email="email = $event"
+        @update:phone="phone = $event"
+        @update:password="password = $event"
+        @select-kind="selectKind"
         @submit="submit"
       />
     </div>

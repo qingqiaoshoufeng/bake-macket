@@ -1,0 +1,18 @@
+{
+  "pages": [
+    "pages/index/index",
+    "pages/phone-auth/index",
+    "pages/admin-home/index",
+    "pages/admin-password/index",
+    "pages/admin-users/index",
+    "pages/admin-printers/index"
+  ],
+  "window": {
+    "navigationBarBackgroundColor": "#fffaf3",
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "烘焙商城",
+    "backgroundColor": "#fffaf3"
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}

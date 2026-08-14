@@ -1,0 +1,55 @@
+.admin-page {
+  min-height: 100vh;
+  box-sizing: border-box;
+  padding: 48rpx 32rpx;
+  background: linear-gradient(180deg, #fff6ef 0%, #fffaf3 100%);
+}
+
+.admin-hero {
+  display: flex;
+  flex-direction: column;
+  padding: 40rpx;
+  border-radius: 28rpx;
+  background: #f8dfd6;
+}
+
+.admin-hero__eyebrow {
+  color: #b77966;
+  font-size: 22rpx;
+  letter-spacing: 4rpx;
+}
+
+.admin-hero__title {
+  margin-top: 12rpx;
+  color: #533f38;
+  font-size: 48rpx;
+  font-weight: 700;
+}
+
+.admin-hero__copy {
+  margin-top: 16rpx;
+  color: #755f57;
+  font-size: 26rpx;
+}
+
+.admin-navigation {
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+  margin-top: 32rpx;
+}
+
+.admin-navigation__item {
+  margin: 0;
+  border: 1rpx solid #eedbd0;
+  border-radius: 20rpx;
+  background: #ffffff;
+  color: #5d4b44;
+  text-align: left;
+}
+
+.admin-page__exit {
+  margin-top: 40rpx;
+  background: transparent;
+  color: #9b796d;
+}

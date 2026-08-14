@@ -1,6 +1,10 @@
 import { defineStore } from 'pinia';
 
-import type { AuthSessionView, UserProfileView } from '@bake-mall/contracts';
+import type {
+  AuthSessionView,
+  CustomerAuthSessionView,
+  UserProfileView,
+} from '@bake-mall/contracts';
 
 import { apiClient } from '../api/http.js';
 import { useAddressesStore } from './addresses.js';
@@ -9,10 +13,12 @@ import { useOrdersStore } from './orders.js';
 import { advanceSession } from './session.js';
 
 const TOKEN_STORAGE_KEY = 'bake_user_token';
+const EXPIRES_AT_STORAGE_KEY = 'bake_user_expires_at';
 const PROFILE_STORAGE_KEY = 'bake_user_profile';
 
 type AuthState = {
   accessToken: string | null;
+  expiresAt: string | null;
   profile: UserProfileView | null;
 };
 
@@ -34,8 +40,8 @@ function sessionIdentityChanged(
 /**
  * Customer-facing authentication state.
  *
- * - `accessToken` and `profile` are mirrored into `localStorage` so a page
- *   reload preserves the session; nothing sensitive (phone number is masked
+ * - The session and `profile` are mirrored into `localStorage` so a page
+ *   reload preserves them; nothing sensitive (phone number is masked
  *   by the API) lives in the payload.
  * - The store is the single owner of the bearer token. `apiClient` calls
  *   `setAccessToken` at boot and on login/logout so every request picks up
@@ -47,6 +53,7 @@ function sessionIdentityChanged(
 export const useAuthStore = defineStore('auth', {
   state: (): AuthState => ({
     accessToken: null,
+    expiresAt: null,
     profile: null,
   }),
   getters: {
@@ -64,6 +71,7 @@ export const useAuthStore = defineStore('auth', {
       if (typeof window === 'undefined') return;
       try {
         const token = window.localStorage.getItem(TOKEN_STORAGE_KEY);
+        const expiresAt = window.localStorage.getItem(EXPIRES_AT_STORAGE_KEY);
         const profileRaw = window.localStorage.getItem(PROFILE_STORAGE_KEY);
         const persistedProfile = profileRaw
           ? (JSON.parse(profileRaw) as UserProfileView)
@@ -80,11 +88,13 @@ export const useAuthStore = defineStore('auth', {
           resetUserDomainStores();
         }
         this.accessToken = token;
+        this.expiresAt = expiresAt;
         this.profile = persistedProfile;
         apiClient.setAccessToken(token);
       } catch {
         // Corrupted storage shouldn't block app boot — drop and continue.
         this.accessToken = null;
+        this.expiresAt = null;
         this.profile = null;
       }
     },
@@ -106,15 +116,22 @@ export const useAuthStore = defineStore('auth', {
         resetUserDomainStores();
       }
       this.accessToken = session.accessToken;
+      this.expiresAt = session.expiresAt;
       this.profile = profile;
       if (typeof window !== 'undefined') {
         window.localStorage.setItem(TOKEN_STORAGE_KEY, session.accessToken);
+        window.localStorage.setItem(EXPIRES_AT_STORAGE_KEY, session.expiresAt);
         window.localStorage.setItem(
           PROFILE_STORAGE_KEY,
           JSON.stringify(profile),
         );
       }
       apiClient.setAccessToken(session.accessToken);
+    },
+
+    /** Apply the complete customer session returned by WeChat endpoints atomically. */
+    applyCustomerSession(session: CustomerAuthSessionView): void {
+      this.applySession(session, session.profile);
     },
 
     /**
@@ -145,9 +162,11 @@ export const useAuthStore = defineStore('auth', {
         resetUserDomainStores();
       }
       this.accessToken = null;
+      this.expiresAt = null;
       this.profile = null;
       if (typeof window !== 'undefined') {
         window.localStorage.removeItem(TOKEN_STORAGE_KEY);
+        window.localStorage.removeItem(EXPIRES_AT_STORAGE_KEY);
         window.localStorage.removeItem(PROFILE_STORAGE_KEY);
       }
       apiClient.setAccessToken(null);

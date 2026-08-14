@@ -12,6 +12,8 @@ import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { AuthModule } from '../src/auth/auth.module.js';
+import { AdminRole } from '@bake-mall/contracts';
+
 import {
   JWT_ADMIN_AUDIENCE,
   JWT_USER_AUDIENCE,
@@ -29,6 +31,7 @@ import { Category } from '../src/database/entities/category.entity.js';
 import { Product } from '../src/database/entities/product.entity.js';
 import { Sku } from '../src/database/entities/sku.entity.js';
 import { User } from '../src/database/entities/user.entity.js';
+import { UserIdentityService } from '../src/users/user-identity.service.js';
 
 let fakeDataSourceRef: unknown;
 
@@ -149,6 +152,18 @@ function memoryRepository<T extends { id?: string }>() {
       if (index >= 0) records.splice(index, 1);
       return { affected: index >= 0 ? 1 : 0 };
     },
+    createQueryBuilder: () => {
+      let id: string | undefined;
+      const builder = {
+        setLock: () => builder,
+        where: (_sql: string, parameters: { userId?: string }) => {
+          id = parameters.userId;
+          return builder;
+        },
+        getOne: async () => records.find((record) => record.id === id) ?? null,
+      };
+      return builder;
+    },
   };
 }
 
@@ -178,14 +193,27 @@ describe('Customer domain (e2e)', () => {
     productRepo = memoryRepository<Product>();
     bannerRepo = memoryRepository<Banner>();
     await userRepo.save({
-      id: 'user-1',
+      id: '1',
       phone: '13800000000',
       phoneVerified: true,
+      isActive: true,
+      mergedIntoUserId: null,
+      tokenVersion: 1,
       nickname: 'Cake Fan',
       avatarUrl: null,
       wechatOpenid: null,
       wechatUnionid: null,
     } as User);
+    await adminRepo.save({
+      id: '2',
+      username: 'admin@example.test',
+      role: AdminRole.SUPER_ADMIN,
+      linkedUserId: null,
+      passwordHash: 'test-password-hash',
+      isActive: true,
+      mustChangePassword: false,
+      tokenVersion: 1,
+    } as AdminUser);
     await categoryRepo.save({
       id: 'category-1',
       name: 'Cakes',
@@ -216,8 +244,17 @@ describe('Customer domain (e2e)', () => {
       [Banner, bannerRepo],
       [Category, categoryRepo],
       [Product, productRepo],
+      [User, userRepo],
+      [AdminUser, adminRepo],
+      [CartItem, cartRepo],
+      [Sku, skuRepo],
     ]);
+    const fallbackRepo = memoryRepository<{ id?: string }>();
     const dataSource = {
+      entityMetadatas: [],
+      options: { type: 'mysql' },
+      getRepository: (entity: unknown) =>
+        repositories.get(entity) ?? fallbackRepo,
       transaction: async <T>(
         callback: (manager: {
           getRepository: (entity: unknown) => object;
@@ -229,9 +266,11 @@ describe('Customer domain (e2e)', () => {
         }),
     };
     fakeDataSourceRef = dataSource;
+    const identities = new UserIdentityService(dataSource as never);
     const addressService = new AddressService(
       dataSource as never,
       addressRepo as never,
+      identities as never,
     );
     const moduleRef = await Test.createTestingModule({
       imports: [
@@ -290,16 +329,24 @@ describe('Customer domain (e2e)', () => {
     const config = app.get<ConfigService<AppConfig, true>>(ConfigService);
     userHeaders = {
       Authorization: `Bearer ${await jwt.signAsync(
-        { sub: 'user-1', phone: '13800000000', aud: JWT_USER_AUDIENCE },
+        {
+          sub: '1',
+          phone: '13800000000',
+          aud: JWT_USER_AUDIENCE,
+          tokenVersion: 1,
+        },
         { secret: config.get('appEnv', { infer: true }).JWT_USER_SECRET },
       )}`,
     };
     adminHeaders = {
       Authorization: `Bearer ${await jwt.signAsync(
         {
-          sub: 'admin-1',
-          email: 'admin@example.test',
+          sub: '2',
           aud: JWT_ADMIN_AUDIENCE,
+          role: AdminRole.SUPER_ADMIN,
+          tokenVersion: 1,
+          linkedUserId: null,
+          mustChangePassword: false,
         },
         { secret: config.get('appEnv', { infer: true }).JWT_ADMIN_SECRET },
       )}`,

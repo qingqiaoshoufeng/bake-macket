@@ -476,7 +476,7 @@ export class OrdersService {
       const noRestock = nextStatus === OrderStatus.CANCELLED;
       await this.audit.record(
         {
-          adminUserId,
+          actor: { type: 'ADMIN', adminUserId },
           targetEntity: 'orders',
           targetId: savedOrder.id,
           action: noRestock ? 'ORDER_CANCELLED' : 'ORDER_STATUS_CHANGED',

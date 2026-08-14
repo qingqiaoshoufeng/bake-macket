@@ -29,7 +29,10 @@ import {
   toPaginatedView,
 } from '../common/query/admin-query.helpers.js';
 import { HtmlSanitizerService } from '../content/html-sanitizer.service.js';
-import { AuditLog } from '../database/entities/audit-log.entity.js';
+import {
+  AuditActorType,
+  AuditLog,
+} from '../database/entities/audit-log.entity.js';
 import { Category } from '../database/entities/category.entity.js';
 import { ProductImage } from '../database/entities/product-image.entity.js';
 import { Product } from '../database/entities/product.entity.js';
@@ -501,7 +504,9 @@ export class CatalogService {
 
       await auditRepository.save(
         auditRepository.create({
+          actorType: AuditActorType.ADMIN,
           adminUserId,
+          userId: null,
           targetEntity: 'product',
           targetId: savedProduct.id,
           action: id ? 'PRODUCT_UPDATED' : 'PRODUCT_CREATED',

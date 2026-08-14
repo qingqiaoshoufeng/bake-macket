@@ -11,6 +11,11 @@ const requiredFiles = [
   '.env.development.example',
   '.env.production.example',
   'infra/docker-compose.dev.yml',
+  'apps/merchant-terminal/package.json',
+  'apps/merchant-terminal/src/manifest.json',
+  'apps/merchant-terminal/src/pages.json',
+  'apps/merchant-terminal/src/main.ts',
+  'apps/merchant-terminal/src/App.vue',
 ];
 
 for (const file of requiredFiles) {
@@ -53,6 +58,18 @@ if (!packageJson.scripts?.lint?.startsWith('eslint ')) {
   throw new Error('pnpm lint must run root ESLint so Vue SFCs are linted');
 }
 
+const apiPackageJson = JSON.parse(
+  readFileSync('apps/api/package.json', 'utf8'),
+);
+if (!apiPackageJson.scripts?.test?.includes('--maxWorkers=1')) {
+  throw new Error('API exact test command must run with --maxWorkers=1');
+}
+if (
+  !apiPackageJson.scripts?.['test:e2e']?.includes('...process.argv.slice(1)')
+) {
+  throw new Error('API test:e2e command must append requested test files');
+}
+
 const eslintConfig = readFileSync('eslint.config.mjs', 'utf8');
 for (const requiredSnippet of [
   'eslint-plugin-vue',
@@ -67,6 +84,7 @@ for (const requiredSnippet of [
 const environment = Object.fromEntries(
   readFileSync('.env.development.example', 'utf8')
     .split('\n')
+    .map((line) => line.trim())
     .filter((line) => line && !line.startsWith('#'))
     .map((line) => line.split('=', 2)),
 );

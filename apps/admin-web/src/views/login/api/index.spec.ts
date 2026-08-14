@@ -16,6 +16,7 @@ describe('login api', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const response = await loginAsAdmin({
+      kind: 'SUPER_ADMIN',
       email: 'admin@example.com',
       password: 'admin-password',
     });
@@ -25,6 +26,7 @@ describe('login api', () => {
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toContain('/api/v1/admin/auth/login');
     expect(JSON.parse(init.body as string)).toEqual({
+      kind: 'SUPER_ADMIN',
       email: 'admin@example.com',
       password: 'admin-password',
     });

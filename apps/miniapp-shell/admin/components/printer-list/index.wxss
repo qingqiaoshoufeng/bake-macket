@@ -1,0 +1,50 @@
+.printer-list__empty,
+.printer-card {
+  padding: 24rpx;
+  border: 1rpx solid #f0dcd3;
+  border-radius: 20rpx;
+  background: #ffffff;
+}
+
+.printer-card + .printer-card {
+  margin-top: 20rpx;
+}
+
+.printer-card__head,
+.printer-card__actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12rpx;
+}
+
+.printer-card__head {
+  justify-content: space-between;
+}
+
+.printer-card__name {
+  color: #5a4038;
+  font-size: 32rpx;
+  font-weight: 600;
+}
+
+.printer-card__online {
+  color: #5f9477;
+  font-size: 24rpx;
+}
+
+.printer-card__meta {
+  display: block;
+  margin-top: 10rpx;
+  color: #806d65;
+  font-size: 24rpx;
+}
+
+.printer-card__actions {
+  margin-top: 20rpx;
+}
+
+.printer-list__empty {
+  color: #8b746b;
+  text-align: center;
+}

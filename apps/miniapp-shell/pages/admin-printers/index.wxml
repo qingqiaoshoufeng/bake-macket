@@ -1,0 +1,135 @@
+<view class="printers-page">
+  <view class="printers-toolbar">
+    <view>
+      <text class="printers-title">云打印机</text>
+      <text class="printers-copy">管理绑定、验证、恢复和在线状态。</text>
+    </view>
+    <button size="mini" bindtap="onOpenBind">绑定打印机</button>
+  </view>
+
+  <view wx:if="{{manualContinueRequired}}" class="printers-notice">
+    <text
+      >检测到未确认的设备操作，不会自动重放。请重新填写必要信息后手动继续。</text
+    >
+    <button
+      wx:for="{{operations}}"
+      wx:key="idempotencyKey"
+      size="mini"
+      data-operation="{{item.operation}}"
+      data-printer-id="{{item.resourceId}}"
+      bindtap="onContinue"
+    >
+      继续 {{item.operation}}
+    </button>
+  </view>
+
+  <view wx:if="{{error}}" class="printers-error">
+    <text>{{error}}</text>
+    <button size="mini" bindtap="onRetry">刷新</button>
+  </view>
+
+  <printer-list
+    printers="{{printerRows}}"
+    bind:printeraction="onPrinterAction"
+  />
+
+  <view class="printers-pagination">
+    <button
+      size="mini"
+      disabled="{{loading || page <= 1}}"
+      bindtap="onPreviousPage"
+    >
+      上一页
+    </button>
+    <text>第 {{page}} 页，共 {{total}} 台</text>
+    <button
+      size="mini"
+      disabled="{{loading || page * pageSize >= total}}"
+      bindtap="onNextPage"
+    >
+      下一页
+    </button>
+  </view>
+
+  <view wx:if="{{dialog.kind}}" class="dialog-mask">
+    <view class="dialog-card">
+      <block wx:if="{{dialog.kind === 'bind'}}">
+        <text class="dialog-title">绑定打印机</text>
+        <input
+          value="{{forms.bind.serialNumber}}"
+          placeholder="打印机 SN"
+          data-field="serialNumber"
+          bindinput="onBindInput"
+        />
+        <input
+          value="{{forms.bind.displayName}}"
+          placeholder="显示名称"
+          data-field="displayName"
+          bindinput="onBindInput"
+        />
+        <input
+          password
+          value="{{forms.bind.operationPassword}}"
+          placeholder="操作密码"
+          data-field="operationPassword"
+          bindinput="onBindInput"
+        />
+        <button bindtap="onSubmitBind">提交绑定</button>
+      </block>
+
+      <block wx:elif="{{dialog.kind === 'verify'}}">
+        <text class="dialog-title">输入设备打印的验证码</text>
+        <text wx:if="{{forms.verify.challengeId && remainingAttempts > 0}}"
+          >剩余 {{countdownSeconds}} 秒，可尝试 {{remainingAttempts}} 次</text
+        >
+        <text wx:elif="{{remainingAttempts <= 0}}"
+          >验证码尝试次数已耗尽，请重发验证码</text
+        >
+        <text wx:else>验证码元数据缺失，请先刷新列表</text>
+        <input
+          value="{{forms.verify.code}}"
+          placeholder="验证码"
+          data-field="code"
+          bindinput="onVerifyInput"
+        />
+        <input
+          password
+          value="{{forms.verify.operationPassword}}"
+          placeholder="操作密码"
+          data-field="operationPassword"
+          bindinput="onVerifyInput"
+        />
+        <button
+          disabled="{{!forms.verify.challengeId || countdownSeconds <= 0 || remainingAttempts <= 0}}"
+          bindtap="onSubmitVerify"
+        >
+          确认验证
+        </button>
+      </block>
+
+      <block wx:elif="{{dialog.kind === 'recovery'}}">
+        <text class="dialog-title">恢复设备状态</text>
+        <input
+          password
+          value="{{forms.recoveryPassword}}"
+          placeholder="操作密码"
+          bindinput="onRecoveryInput"
+        />
+        <button bindtap="onSubmitRecovery">确认执行</button>
+      </block>
+
+      <block wx:elif="{{dialog.kind === 'rename'}}">
+        <text class="dialog-title">重命名打印机</text>
+        <input
+          value="{{forms.rename.displayName}}"
+          maxlength="128"
+          placeholder="1–64 个 Unicode 字符"
+          bindinput="onRenameInput"
+        />
+        <button bindtap="onSubmitRename">保存名称</button>
+      </block>
+
+      <button class="dialog-cancel" bindtap="onCloseDialog">取消</button>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,16 @@
+<view class="shell">
+  <view wx:if="{{!showWebView}}" class="loading-state">正在连接商城…</view>
+  <web-view
+    wx:if="{{showWebView}}"
+    src="{{h5Url}}"
+    data-delivery-id="{{deliveryId}}"
+    bindload="onWebViewLoad"
+    binderror="onWebViewError"
+  >
+    <cover-view
+      wx:if="{{adminEligible}}"
+      class="admin-entry"
+      bindtap="onEnterAdmin"
+    >门店管理</cover-view>
+  </web-view>
+</view>

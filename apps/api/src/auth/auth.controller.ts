@@ -7,12 +7,21 @@ import {
   UseGuards,
 } from '@nestjs/common';
 
+import type {
+  AuthSessionView,
+  WechatLoginResponse,
+  WechatPhoneResponse,
+} from '@bake-mall/contracts';
+
 import { CurrentUser } from './current-user.decorator.js';
 import { BindPhoneDto } from './dto/bind-phone.dto.js';
 import { DevLoginDto } from './dto/dev-login.dto.js';
 import { DevSendCodeDto } from './dto/dev-send-code.dto.js';
+import { WechatLoginDto } from './dto/wechat-login.dto.js';
+import { WechatPhoneDto } from './dto/wechat-phone.dto.js';
 import { JwtUserGuard } from './user-jwt.guard.js';
 import { UserAuthService } from './user-auth.service.js';
+import { WechatAuthService } from './wechat-auth.service.js';
 import type { AuthenticatedUser } from './auth.types.js';
 
 /**
@@ -28,7 +37,10 @@ import type { AuthenticatedUser } from './auth.types.js';
  */
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly userAuth: UserAuthService) {}
+  constructor(
+    private readonly userAuth: UserAuthService,
+    private readonly wechatAuth: WechatAuthService,
+  ) {}
 
   @Post('dev/send-code')
   @HttpCode(HttpStatus.OK)
@@ -39,8 +51,26 @@ export class AuthController {
 
   @Post('dev/login')
   @HttpCode(HttpStatus.OK)
-  async login(@Body() body: DevLoginDto) {
+  async login(@Body() body: DevLoginDto): Promise<AuthSessionView> {
     return this.userAuth.loginWithDevelopmentCode(body.phone, body.code);
+  }
+
+  @Post('wechat/login')
+  @HttpCode(HttpStatus.OK)
+  async wechatLogin(
+    @Body() body: WechatLoginDto,
+  ): Promise<WechatLoginResponse> {
+    return this.wechatAuth.loginWithWechatCode(body.code);
+  }
+
+  @Post('wechat/phone')
+  @UseGuards(JwtUserGuard)
+  @HttpCode(HttpStatus.OK)
+  async wechatPhone(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: WechatPhoneDto,
+  ): Promise<WechatPhoneResponse> {
+    return this.wechatAuth.bindWechatPhone(user, body.code);
   }
 
   @Post('bind-phone')
@@ -49,7 +79,7 @@ export class AuthController {
   async bindPhone(
     @CurrentUser() user: AuthenticatedUser,
     @Body() body: BindPhoneDto,
-  ) {
+  ): Promise<AuthSessionView> {
     return this.userAuth.bindPhone(user, body.phone, body.code);
   }
 }

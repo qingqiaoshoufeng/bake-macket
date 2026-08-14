@@ -40,7 +40,7 @@ function dataSource(): DataSource {
   return new DataSource({
     type: 'mysql',
     host: process.env.TEST_MYSQL_HOST ?? '127.0.0.1',
-    port: Number(process.env.TEST_MYSQL_PORT ?? 3306),
+    port: Number(process.env.TEST_MYSQL_PORT ?? 44306),
     database: DATABASE_NAME,
     username: APP_USER,
     password: process.env.TEST_MYSQL_APP_PASSWORD ?? 'bake_app_password',

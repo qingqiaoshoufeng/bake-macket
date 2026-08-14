@@ -1,3 +1,4 @@
+import { AdminPermission, AdminRole } from '@bake-mall/contracts';
 import {
   createRouter,
   createWebHistory,
@@ -85,7 +86,49 @@ const routes: RouteRecordRaw[] = [
         path: 'orders',
         name: 'admin-orders',
         component: () => import('../views/orders/OrdersView.vue'),
-        meta: { title: '订单管理', layoutMode: 'workspace' },
+        meta: {
+          title: '订单管理',
+          layoutMode: 'workspace',
+          requiredPermission: AdminPermission.ORDER_READ,
+        },
+      },
+      {
+        path: 'users',
+        name: 'admin-users',
+        component: () => import('../views/users/UsersView.vue'),
+        meta: {
+          title: '用户管理',
+          layoutMode: 'workspace',
+          requiredPermission: AdminPermission.USER_READ,
+        },
+      },
+      {
+        path: 'printing/devices',
+        name: 'admin-printing-devices',
+        component: () =>
+          import('../views/printing-devices/PrintingDevicesView.vue'),
+        meta: {
+          title: '打印设备',
+          layoutMode: 'workspace',
+          requiredPermission: AdminPermission.PRINT_DEVICE_MANAGE,
+        },
+      },
+      {
+        path: 'printing/batches',
+        name: 'admin-printing-batches',
+        component: () => import('../views/PlaceholderView.vue'),
+        meta: {
+          title: '打印记录',
+          layoutMode: 'document',
+          requiredPermission: AdminPermission.PRINT_HISTORY_READ,
+        },
+      },
+      {
+        path: 'admin-password',
+        name: 'admin-password',
+        component: () =>
+          import('../views/admin-password/AdminPasswordView.vue'),
+        meta: { title: '修改密码', layoutMode: 'document' },
       },
       {
         path: 'membership-cards',
@@ -145,11 +188,26 @@ router.beforeEach((to) => {
   if (to.meta.requiresAdminAuth) {
     const target = adminAuth.requireAdminAuth(to.fullPath);
     if (target) return target;
+    if (adminAuth.mustChangePassword && to.name !== 'admin-password') {
+      return '/admin-password';
+    }
+    if (
+      adminAuth.role === AdminRole.OPERATOR &&
+      to.name !== 'admin-password' &&
+      (to.name === 'admin-dashboard' ||
+        !to.meta.requiredPermission ||
+        !adminAuth.hasPermission(to.meta.requiredPermission))
+    ) {
+      return to.path === '/orders' ? true : '/orders';
+    }
   }
   if (to.name === 'admin-login' && adminAuth.isAuthenticated) {
+    if (adminAuth.mustChangePassword) return '/admin-password';
+    const fallback =
+      adminAuth.role === AdminRole.OPERATOR ? '/orders' : '/dashboard';
     const redirect =
-      typeof to.query.redirect === 'string' ? to.query.redirect : '/dashboard';
-    return redirect.startsWith('/') ? redirect : '/dashboard';
+      typeof to.query.redirect === 'string' ? to.query.redirect : fallback;
+    return redirect.startsWith('/') ? redirect : fallback;
   }
   return true;
 });
@@ -159,5 +217,6 @@ declare module 'vue-router' {
     requiresAdminAuth?: boolean;
     title?: string;
     layoutMode?: 'workspace' | 'document';
+    requiredPermission?: AdminPermission;
   }
 }

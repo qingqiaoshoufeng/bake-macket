@@ -2,8 +2,10 @@ import 'reflect-metadata';
 
 import {
   AdminOrderExportView,
+  AdminRole,
   FulfillmentType,
   OrderStatus,
+  SUPER_ADMIN_PERMISSIONS,
 } from '@bake-mall/contracts';
 import {
   type ExecutionContext,
@@ -30,14 +32,7 @@ import { Order } from '../src/database/entities/order.entity.js';
 import { Product } from '../src/database/entities/product.entity.js';
 import { Sku } from '../src/database/entities/sku.entity.js';
 import { User } from '../src/database/entities/user.entity.js';
-import { InitialSchema1718000000000 } from '../src/database/migrations/0001-initial-schema.js';
-import { ProductSortOrder1718000000001 } from '../src/database/migrations/0002-product-sort-order.js';
-import { Task12AdminMediaAndOrderIndexes1718000000002 } from '../src/database/migrations/0003-task12-admin-media-and-order-indexes.js';
-import { SkuStockVersion1718000000003 } from '../src/database/migrations/0004-sku-stock-version.js';
-import { MembershipAndOrderPricing1718000000004 } from '../src/database/migrations/0005-membership-and-order-pricing.js';
-import { MembershipEntitlementSegments1718000000005 } from '../src/database/migrations/0006-membership-entitlement-segments.js';
-import { DefaultMembershipLevels1718000000006 } from '../src/database/migrations/0007-default-membership-levels.js';
-import { OrderItemSourceIds1718000000007 } from '../src/database/migrations/0008-order-item-source-ids.js';
+import { DATABASE_MIGRATIONS } from '../src/database/migrations/index.js';
 import { OrdersModule } from '../src/orders/orders.module.js';
 import {
   createDockerRootSqlExecutor,
@@ -102,7 +97,7 @@ describe.sequential(
             TypeOrmModule.forRoot({
               type: 'mysql',
               host: process.env.TEST_MYSQL_HOST ?? '127.0.0.1',
-              port: Number(process.env.TEST_MYSQL_PORT ?? 3306),
+              port: Number(process.env.TEST_MYSQL_PORT ?? 44306),
               database: DATABASE_NAME,
               username: APP_USER,
               password:
@@ -111,17 +106,9 @@ describe.sequential(
               timezone: 'Z',
               synchronize: false,
               entities: Object.values(entities),
-              migrations: [
-                InitialSchema1718000000000,
-                ProductSortOrder1718000000001,
-                Task12AdminMediaAndOrderIndexes1718000000002,
-                SkuStockVersion1718000000003,
-                MembershipAndOrderPricing1718000000004,
-                MembershipEntitlementSegments1718000000005,
-                DefaultMembershipLevels1718000000006,
-                OrderItemSourceIds1718000000007,
-              ],
+              migrations: [...DATABASE_MIGRATIONS],
               migrationsTableName: 'migrations',
+              migrationsTransactionMode: 'each',
               migrationsRun: true,
               retryAttempts: 1,
             }),
@@ -132,11 +119,22 @@ describe.sequential(
           .useValue({
             canActivate(context: ExecutionContext): boolean {
               const httpRequest = context.switchToHttp().getRequest<{
-                admin?: { id: string; email: string };
+                admin?: {
+                  id: string;
+                  username: string;
+                  role: AdminRole;
+                  linkedUserId: null;
+                  mustChangePassword: false;
+                  permissions: typeof SUPER_ADMIN_PERMISSIONS;
+                };
               }>();
               httpRequest.admin = {
                 id: adminId,
-                email: 'export-admin@example.test',
+                username: 'export-admin@example.test',
+                role: AdminRole.SUPER_ADMIN,
+                linkedUserId: null,
+                mustChangePassword: false,
+                permissions: SUPER_ADMIN_PERMISSIONS,
               };
               return true;
             },
@@ -158,9 +156,13 @@ describe.sequential(
 
         const admin = await initializedDataSource.getRepository(AdminUser).save(
           initializedDataSource.getRepository(AdminUser).create({
-            username: `export-admin-${process.pid}`,
+            username: `export-admin-${process.pid}@example.test`,
+            role: AdminRole.SUPER_ADMIN,
+            linkedUserId: null,
             passwordHash: 'test-only',
             isActive: true,
+            mustChangePassword: false,
+            tokenVersion: 1,
           }),
         );
         adminId = admin.id;

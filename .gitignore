@@ -10,3 +10,22 @@ coverage/
 !.env.production.example
 # TypeScript incremental build cache (emitted next to tsconfig files).
 *.tsbuildinfo
+
+# Generated miniapp URL config and developer-specific WeChat settings.
+apps/miniapp-shell/config/h5.generated.js
+apps/miniapp-shell/config/api.generated.js
+apps/miniapp-shell/project.private.config.json
+
+# Local HBuilderX Android pack config may contain signing credentials.
+apps/merchant-terminal/pack.local.json
+
+# Playwright generated artifacts.
+playwright-report/
+test-results/
+.playwright-mcp/
+
+# Local verification reports and downloaded vendor references.
+admin-test-report.json
+apps/api/.vitest-api-*.json
+.xpyun-api-v*.pdf
+.xpyun-api-v*.txt

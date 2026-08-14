@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { AuditModule } from '../audit/audit.module.js';
+import { AuthModule } from '../auth/auth.module.js';
 import { MediaAssetPolicyService } from '../catalog/media-asset-policy.service.js';
 import { Category } from '../database/entities/category.entity.js';
 import { HomepageDraft } from '../database/entities/homepage-draft.entity.js';
@@ -16,6 +17,7 @@ import { PublicHomepageController } from './public-homepage.controller.js';
   imports: [
     TypeOrmModule.forFeature([HomepagePage, HomepageDraft, Product, Category]),
     AuditModule,
+    AuthModule,
   ],
   controllers: [
     AdminHomepageController,

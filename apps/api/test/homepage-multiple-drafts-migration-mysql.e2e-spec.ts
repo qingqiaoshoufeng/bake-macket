@@ -6,16 +6,7 @@ import { DataSource, type MigrationInterface } from 'typeorm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import * as entities from '../src/database/entities/index.js';
-import { InitialSchema1718000000000 } from '../src/database/migrations/0001-initial-schema.js';
-import { ProductSortOrder1718000000001 } from '../src/database/migrations/0002-product-sort-order.js';
-import { Task12AdminMediaAndOrderIndexes1718000000002 } from '../src/database/migrations/0003-task12-admin-media-and-order-indexes.js';
-import { SkuStockVersion1718000000003 } from '../src/database/migrations/0004-sku-stock-version.js';
-import { MembershipAndOrderPricing1718000000004 } from '../src/database/migrations/0005-membership-and-order-pricing.js';
-import { MembershipEntitlementSegments1718000000005 } from '../src/database/migrations/0006-membership-entitlement-segments.js';
-import { DefaultMembershipLevels1718000000006 } from '../src/database/migrations/0007-default-membership-levels.js';
-import { OrderItemSourceIds1718000000007 } from '../src/database/migrations/0008-order-item-source-ids.js';
-import { HomepagePages1718000000008 } from '../src/database/migrations/0009-homepage-pages.js';
-import { HomepageMultipleDrafts1718000000009 } from '../src/database/migrations/0010-homepage-multiple-drafts.js';
+import { migrationsThrough } from '../src/database/migrations/index.js';
 import {
   createDockerRootSqlExecutor,
   mysqlTestDatabaseState,
@@ -25,21 +16,12 @@ import {
 const DATABASE_NAME = `bake_mall_homepage_migration_${process.pid}_${randomUUID().replaceAll('-', '').slice(0, 8)}`;
 const APP_USER = process.env.TEST_MYSQL_APP_USER ?? 'bake_app';
 const DATABASE_OPTIONS = { databaseName: DATABASE_NAME, appUser: APP_USER };
-const MIGRATIONS_TO_0009: Array<new () => MigrationInterface> = [
-  InitialSchema1718000000000,
-  ProductSortOrder1718000000001,
-  Task12AdminMediaAndOrderIndexes1718000000002,
-  SkuStockVersion1718000000003,
-  MembershipAndOrderPricing1718000000004,
-  MembershipEntitlementSegments1718000000005,
-  DefaultMembershipLevels1718000000006,
-  OrderItemSourceIds1718000000007,
-  HomepagePages1718000000008,
-];
-const ALL_MIGRATIONS = [
-  ...MIGRATIONS_TO_0009,
-  HomepageMultipleDrafts1718000000009,
-];
+const MIGRATIONS_TO_0009 = migrationsThrough(
+  'HomepagePages1718000000008',
+) as Array<new () => MigrationInterface>;
+const ALL_MIGRATIONS = migrationsThrough(
+  'HomepageMultipleDrafts1718000000009',
+) as Array<new () => MigrationInterface>;
 const DRAFT_UPDATED_AT = '2026-07-31 08:04:00';
 const PUBLISHED_AT = '2026-07-30 07:03:00';
 
@@ -76,7 +58,7 @@ function createDataSource(
   return new DataSource({
     type: 'mysql',
     host: process.env.TEST_MYSQL_HOST ?? '127.0.0.1',
-    port: Number(process.env.TEST_MYSQL_PORT ?? 3306),
+    port: Number(process.env.TEST_MYSQL_PORT ?? 44306),
     database: DATABASE_NAME,
     username: APP_USER,
     password: process.env.TEST_MYSQL_APP_PASSWORD ?? 'bake_app_password',

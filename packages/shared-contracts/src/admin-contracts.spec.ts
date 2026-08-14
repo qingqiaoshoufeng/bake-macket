@@ -3,12 +3,17 @@ import { describe, expect, it } from 'vitest';
 import {
   AdminOrderExportView,
   AdminOrderSupplyMatchType,
+  AdminPermission,
+  AdminRole,
   ApiErrorCode,
   BannerTargetType,
   FulfillmentType,
+  OPERATOR_PERMISSIONS,
+  SUPER_ADMIN_PERMISSIONS,
   OrderStatus,
   SUPPLY_ORDER_STATUSES,
   type AdminBannerView,
+  type AdminSessionView,
   type AdminOrderExportQuery,
   type AdminOrderListItem,
   type AdminOrderListQuery,
@@ -16,6 +21,7 @@ import {
   type AdminOrderSupplyDetailResult,
   type AdminOrderSupplyResult,
   type AdminProductDetailView,
+  type AdminUserListItem,
   type MediaAsset,
   type OrderStatusUpdateResult,
   type PresignUploadResponse,
@@ -53,6 +59,103 @@ const product: AdminProductDetailView = {
   createdAt: '2026-07-16T00:00:00.000Z',
   updatedAt: '2026-07-16T00:00:00.000Z',
 };
+
+describe('admin identity contracts', () => {
+  it('locks the operator permission allowlist in contract order', () => {
+    expect(AdminRole).toEqual({
+      SUPER_ADMIN: 'SUPER_ADMIN',
+      OPERATOR: 'OPERATOR',
+    });
+    expect(AdminPermission).toEqual({
+      ORDER_READ: 'ORDER_READ',
+      ORDER_STATUS_UPDATE: 'ORDER_STATUS_UPDATE',
+      USER_READ: 'USER_READ',
+      USER_CREATE: 'USER_CREATE',
+      PRINT_DEVICE_MANAGE: 'PRINT_DEVICE_MANAGE',
+      PRINT_EXECUTE: 'PRINT_EXECUTE',
+      PRINT_HISTORY_READ: 'PRINT_HISTORY_READ',
+      SELF_PASSWORD_CHANGE: 'SELF_PASSWORD_CHANGE',
+    });
+    expect(OPERATOR_PERMISSIONS).toEqual([
+      AdminPermission.ORDER_READ,
+      AdminPermission.ORDER_STATUS_UPDATE,
+      AdminPermission.USER_READ,
+      AdminPermission.USER_CREATE,
+      AdminPermission.PRINT_DEVICE_MANAGE,
+      AdminPermission.PRINT_EXECUTE,
+      AdminPermission.PRINT_HISTORY_READ,
+      AdminPermission.SELF_PASSWORD_CHANGE,
+    ]);
+    expect(Object.isFrozen(OPERATOR_PERMISSIONS)).toBe(true);
+    expect(SUPER_ADMIN_PERMISSIONS).toEqual(OPERATOR_PERMISSIONS);
+    expect(Object.isFrozen(SUPER_ADMIN_PERMISSIONS)).toBe(true);
+  });
+
+  it('discriminates restricted and full admin sessions', () => {
+    const restricted: AdminSessionView = {
+      accessToken: 'restricted-token',
+      expiresAt: '2026-08-04T00:00:00.000Z',
+      role: AdminRole.OPERATOR,
+      permissions: [],
+      mustChangePassword: true,
+    };
+    const operator: AdminSessionView = {
+      accessToken: 'operator-token',
+      expiresAt: '2026-08-04T00:00:00.000Z',
+      role: AdminRole.OPERATOR,
+      permissions: OPERATOR_PERMISSIONS,
+      mustChangePassword: false,
+    };
+    const superAdmin: AdminSessionView = {
+      accessToken: 'super-admin-token',
+      expiresAt: '2026-08-04T00:00:00.000Z',
+      role: AdminRole.SUPER_ADMIN,
+      permissions: SUPER_ADMIN_PERMISSIONS,
+      mustChangePassword: false,
+    };
+
+    expect(restricted.permissions).toEqual([]);
+    expect(operator.permissions).toEqual(OPERATOR_PERMISSIONS);
+    expect(superAdmin.role).toBe(AdminRole.SUPER_ADMIN);
+  });
+
+  it('exposes only a masked phone in admin user list items', () => {
+    const item: AdminUserListItem = {
+      id: 'user-1',
+      nickname: '张三',
+      phoneMasked: '138****0000',
+      phoneVerified: true,
+      createdAt: '2026-08-04T00:00:00.000Z',
+      isOperator: false,
+      operatorActive: false,
+      mustChangePassword: false,
+    };
+
+    expect(item.phoneMasked).toBe('138****0000');
+    expect(item).not.toHaveProperty('phone');
+  });
+
+  it('defines unique identity and authorization error codes', () => {
+    const identityCodes = [
+      ApiErrorCode.USER_MERGE_REQUIRES_MANUAL_REVIEW,
+      ApiErrorCode.WECHAT_IDENTITY_CONFLICT,
+      ApiErrorCode.ADMIN_USER_CONFLICT,
+      ApiErrorCode.ADMIN_PASSWORD_CHANGE_REQUIRED,
+      ApiErrorCode.ADMIN_PASSWORD_POLICY_VIOLATION,
+      ApiErrorCode.ADMIN_VERIFICATION_FAILED,
+      ApiErrorCode.ADMIN_VERIFICATION_RATE_LIMITED,
+      ApiErrorCode.ADMIN_PERMISSION_DENIED,
+      ApiErrorCode.WECHAT_CREDENTIAL_REPLAYED,
+      ApiErrorCode.WECHAT_CREDENTIAL_IN_PROGRESS,
+    ];
+
+    expect(new Set(identityCodes).size).toBe(identityCodes.length);
+    expect(identityCodes).not.toContain(undefined);
+    expect(new Set(Object.values(ApiErrorCode)).size).toBe(
+      Object.values(ApiErrorCode).length,
+    );
+  });
+});
 
 describe('Task 12 admin contracts', () => {
   it('keeps upload destinations separate from public media URLs', () => {

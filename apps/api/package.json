@@ -10,11 +10,12 @@
     "start:dev": "nest start --watch",
     "lint": "eslint src test",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run --config vitest.config.ts",
+    "test": "vitest run --config vitest.config.ts --maxWorkers=1",
     "test:e2e": "node -e \"process.argv = [process.argv[0], 'vitest', 'run', '--config', 'vitest.config.ts', '--root', '.', '--dir', '.', '--exclude', 'src/**', ...process.argv.slice(1)]; import('vitest/vitest.mjs')\"",
     "typeorm": "typeorm-ts-node-commonjs -d src/database/data-source.ts",
     "migration:generate": "npm run typeorm -- migration:generate",
     "migration:run": "npm run typeorm -- migration:run",
+    "migration:run:prod": "node dist/database/run-migrations.js",
     "migration:revert": "npm run typeorm -- migration:revert"
   },
   "dependencies": {

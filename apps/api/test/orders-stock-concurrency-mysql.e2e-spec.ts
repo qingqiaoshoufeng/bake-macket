@@ -2,7 +2,6 @@ import 'reflect-metadata';
 
 import { ApiErrorCode, FulfillmentType } from '@bake-mall/contracts';
 import { randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
 import { DataSource, type EntityManager, In } from 'typeorm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -17,16 +16,7 @@ import { OrderItem } from '../src/database/entities/order-item.entity.js';
 import { Product } from '../src/database/entities/product.entity.js';
 import { Sku } from '../src/database/entities/sku.entity.js';
 import { User } from '../src/database/entities/user.entity.js';
-import { InitialSchema1718000000000 } from '../src/database/migrations/0001-initial-schema.js';
-import { ProductSortOrder1718000000001 } from '../src/database/migrations/0002-product-sort-order.js';
-import { Task12AdminMediaAndOrderIndexes1718000000002 } from '../src/database/migrations/0003-task12-admin-media-and-order-indexes.js';
-import { SkuStockVersion1718000000003 } from '../src/database/migrations/0004-sku-stock-version.js';
-import { MembershipAndOrderPricing1718000000004 } from '../src/database/migrations/0005-membership-and-order-pricing.js';
-import { MembershipEntitlementSegments1718000000005 } from '../src/database/migrations/0006-membership-entitlement-segments.js';
-import { DefaultMembershipLevels1718000000006 } from '../src/database/migrations/0007-default-membership-levels.js';
-import { OrderItemSourceIds1718000000007 } from '../src/database/migrations/0008-order-item-source-ids.js';
-import { HomepagePages1718000000008 } from '../src/database/migrations/0009-homepage-pages.js';
-import { HomepageMultipleDrafts1718000000009 } from '../src/database/migrations/0010-homepage-multiple-drafts.js';
+import { DATABASE_MIGRATIONS } from '../src/database/migrations/index.js';
 import { IdempotencyService } from '../src/idempotency/idempotency.service.js';
 import { MembershipCreditService } from '../src/membership/membership-credit.service.js';
 import { OrderQuoteTokenService } from '../src/membership/order-quote-token.service.js';
@@ -39,7 +29,6 @@ import {
 
 const DATABASE_NAME = `bake_mall_order_stock_${process.pid}_${randomUUID().replaceAll('-', '').slice(0, 8)}`;
 const APP_USER = process.env.TEST_MYSQL_APP_USER ?? 'bake_app';
-const migrationSpecSource = readFileSync(__filename, 'utf8');
 const DATABASE_OPTIONS = { databaseName: DATABASE_NAME, appUser: APP_USER };
 
 function errorCode(error: unknown): unknown {
@@ -98,12 +87,6 @@ function dataSourceWithTransactionBarrier(source: DataSource): DataSource {
   });
 }
 
-it('registers HomepageMultipleDrafts immediately after HomepagePages', () => {
-  expect(migrationSpecSource).toMatch(
-    /migrations:\s*\[[\s\S]*?HomepagePages1718000000008,\s*HomepageMultipleDrafts1718000000009,/,
-  );
-});
-
 describe.sequential('order stock concurrency (MySQL)', () => {
   const rootSql = createDockerRootSqlExecutor();
   let cleanupDatabase: (() => void) | undefined;
@@ -121,7 +104,7 @@ describe.sequential('order stock concurrency (MySQL)', () => {
       database = new DataSource({
         type: 'mysql',
         host: process.env.TEST_MYSQL_HOST ?? '127.0.0.1',
-        port: Number(process.env.TEST_MYSQL_PORT ?? 3306),
+        port: Number(process.env.TEST_MYSQL_PORT ?? 44306),
         database: DATABASE_NAME,
         username: APP_USER,
         password: process.env.TEST_MYSQL_APP_PASSWORD ?? 'bake_app_password',
@@ -129,19 +112,9 @@ describe.sequential('order stock concurrency (MySQL)', () => {
         timezone: 'Z',
         synchronize: false,
         entities: Object.values(entities),
-        migrations: [
-          InitialSchema1718000000000,
-          ProductSortOrder1718000000001,
-          Task12AdminMediaAndOrderIndexes1718000000002,
-          SkuStockVersion1718000000003,
-          MembershipAndOrderPricing1718000000004,
-          MembershipEntitlementSegments1718000000005,
-          DefaultMembershipLevels1718000000006,
-          OrderItemSourceIds1718000000007,
-          HomepagePages1718000000008,
-          HomepageMultipleDrafts1718000000009,
-        ],
+        migrations: [...DATABASE_MIGRATIONS],
         migrationsTableName: 'migrations',
+        migrationsTransactionMode: 'each',
       });
       await database.initialize();
       await database.runMigrations();

@@ -5,6 +5,7 @@ import { MembershipEntitlementSegmentKind } from '@bake-mall/contracts';
 import { describe, expect, it, vi } from 'vitest';
 
 import { MembershipEntitlementSegments1718000000005 } from './0006-membership-entitlement-segments.js';
+import { DATABASE_MIGRATIONS } from './index.js';
 
 const PROJECT_ROOT = resolve(__dirname, '../../../../..');
 
@@ -281,8 +282,11 @@ describe('MembershipEntitlementSegments migration', () => {
     const entityName = 'MembershipEntitlementSegment';
 
     for (const runtimeSource of [dataSource, databaseModule]) {
-      expect(runtimeSource).toContain(migrationName);
+      expect(runtimeSource).toContain('DATABASE_MIGRATIONS');
     }
+    expect(DATABASE_MIGRATIONS.map(({ name }) => name)).toContain(
+      migrationName,
+    );
     expect(entityIndex).toContain(entityName);
     expect(membershipModule).toContain(entityName);
   });

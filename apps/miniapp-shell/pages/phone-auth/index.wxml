@@ -1,0 +1,14 @@
+<view class="phone-auth-page">
+  <view class="phone-auth-card">
+    <text class="phone-auth-title">绑定微信手机号</text>
+    <text class="phone-auth-copy">请点击下方按钮授权。本页只暂存一次性手机号凭证，返回商城后立即消费。</text>
+    <button
+      class="phone-auth-button"
+      type="primary"
+      open-type="getPhoneNumber"
+      bindgetphonenumber="onGetPhoneNumber"
+      disabled="{{!authorizationEnabled}}"
+    >授权微信手机号</button>
+    <button class="phone-auth-cancel" bindtap="onCancel">暂不授权</button>
+  </view>
+</view>

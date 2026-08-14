@@ -106,6 +106,23 @@ export class MembershipPurchaseService {
       return await this.dataSource.transaction(async (manager) => {
         const levels = manager.getRepository(MembershipLevel);
         const purchases = manager.getRepository(MembershipPurchaseOrder);
+        const users = manager.getRepository(User);
+        const user = await users.findOne({
+          where: { id: userId },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (
+          !user ||
+          !user.isActive ||
+          user.mergedIntoUserId !== null ||
+          !user.phone ||
+          user.phoneVerified !== true
+        ) {
+          throw new ForbiddenException({
+            code: ApiErrorCode.PHONE_REQUIRED,
+            message: '购卡前需要已验证的手机号',
+          });
+        }
         const level = await levels.findOneBy({ id: request.levelId });
         if (!level) throw this.levelNotFound();
         if (!level.isActive) {
@@ -407,7 +424,7 @@ export class MembershipPurchaseService {
       });
       await this.audit.record(
         {
-          adminUserId,
+          actor: { type: 'ADMIN', adminUserId },
           targetEntity: 'membership_purchase_orders',
           targetId: purchase.id,
           action: 'MEMBERSHIP_PURCHASE_VOIDED',

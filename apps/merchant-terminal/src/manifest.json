@@ -1,0 +1,16 @@
+{
+  "name": "烘焙商城商家终端",
+  "appid": "__UNI__BAKEMALL_TERMINAL",
+  "description": "烘焙商城 Android 商家打印终端",
+  "versionName": "0.1.0",
+  "versionCode": "1",
+  "transformPx": false,
+  "app-plus": {
+    "distribute": {
+      "android": {
+        "packagename": "com.bakemall.merchantterminal",
+        "schemes": "bakemall-terminal"
+      }
+    }
+  }
+}

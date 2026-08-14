@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 
 import {
+  AdminRole,
   HomepageLinkType,
   HomepageSectionType,
   type HomepageDraftConfig,
@@ -15,16 +16,7 @@ import { AuditLog } from '../src/database/entities/audit-log.entity.js';
 import { HomepageDraft } from '../src/database/entities/homepage-draft.entity.js';
 import { HomepagePage } from '../src/database/entities/homepage-page.entity.js';
 import * as entities from '../src/database/entities/index.js';
-import { InitialSchema1718000000000 } from '../src/database/migrations/0001-initial-schema.js';
-import { ProductSortOrder1718000000001 } from '../src/database/migrations/0002-product-sort-order.js';
-import { Task12AdminMediaAndOrderIndexes1718000000002 } from '../src/database/migrations/0003-task12-admin-media-and-order-indexes.js';
-import { SkuStockVersion1718000000003 } from '../src/database/migrations/0004-sku-stock-version.js';
-import { MembershipAndOrderPricing1718000000004 } from '../src/database/migrations/0005-membership-and-order-pricing.js';
-import { MembershipEntitlementSegments1718000000005 } from '../src/database/migrations/0006-membership-entitlement-segments.js';
-import { DefaultMembershipLevels1718000000006 } from '../src/database/migrations/0007-default-membership-levels.js';
-import { OrderItemSourceIds1718000000007 } from '../src/database/migrations/0008-order-item-source-ids.js';
-import { HomepagePages1718000000008 } from '../src/database/migrations/0009-homepage-pages.js';
-import { HomepageMultipleDrafts1718000000009 } from '../src/database/migrations/0010-homepage-multiple-drafts.js';
+import { DATABASE_MIGRATIONS } from '../src/database/migrations/index.js';
 import { HomepageService } from '../src/homepage/homepage.service.js';
 import {
   createDockerRootSqlExecutor,
@@ -208,7 +200,7 @@ describe.sequential('homepage draft publication concurrency (MySQL)', () => {
       database = new DataSource({
         type: 'mysql',
         host: process.env.TEST_MYSQL_HOST ?? '127.0.0.1',
-        port: Number(process.env.TEST_MYSQL_PORT ?? 3306),
+        port: Number(process.env.TEST_MYSQL_PORT ?? 44306),
         database: DATABASE_NAME,
         username: APP_USER,
         password: process.env.TEST_MYSQL_APP_PASSWORD ?? 'bake_app_password',
@@ -216,27 +208,21 @@ describe.sequential('homepage draft publication concurrency (MySQL)', () => {
         timezone: 'Z',
         synchronize: false,
         entities: Object.values(entities),
-        migrations: [
-          InitialSchema1718000000000,
-          ProductSortOrder1718000000001,
-          Task12AdminMediaAndOrderIndexes1718000000002,
-          SkuStockVersion1718000000003,
-          MembershipAndOrderPricing1718000000004,
-          MembershipEntitlementSegments1718000000005,
-          DefaultMembershipLevels1718000000006,
-          OrderItemSourceIds1718000000007,
-          HomepagePages1718000000008,
-          HomepageMultipleDrafts1718000000009,
-        ],
+        migrations: [...DATABASE_MIGRATIONS],
         migrationsTableName: 'migrations',
+        migrationsTransactionMode: 'each',
       });
       await database.initialize();
       await database.runMigrations();
       const admin = await database.getRepository(AdminUser).save(
         database.getRepository(AdminUser).create({
           username: `homepage-publish-${randomUUID()}`,
+          role: AdminRole.SUPER_ADMIN,
+          linkedUserId: null,
           passwordHash: 'test-only',
           isActive: true,
+          mustChangePassword: false,
+          tokenVersion: 1,
         }),
       );
       adminId = admin.id;

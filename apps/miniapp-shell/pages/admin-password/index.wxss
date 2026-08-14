@@ -1,0 +1,39 @@
+.password-page {
+  min-height: 100vh;
+  box-sizing: border-box;
+  padding: 48rpx 32rpx;
+  background: linear-gradient(180deg, #fff6ef 0%, #fffaf3 100%);
+}
+
+.password-card {
+  display: flex;
+  flex-direction: column;
+  gap: 24rpx;
+  padding: 36rpx;
+  border: 1rpx solid #f1dfd1;
+  border-radius: 28rpx;
+  background: #ffffff;
+  box-shadow: 0 12rpx 32rpx rgba(138, 102, 77, 0.08);
+}
+
+.password-card__title {
+  color: #533f38;
+  font-size: 40rpx;
+  font-weight: 700;
+}
+
+.password-card__copy {
+  color: #755f57;
+  font-size: 26rpx;
+}
+
+.password-input {
+  padding: 22rpx 24rpx;
+  border-radius: 16rpx;
+  background: #fff6ef;
+}
+
+.password-submit {
+  margin-top: 8rpx;
+  background: #b77966;
+}

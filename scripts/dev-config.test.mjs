@@ -8,6 +8,8 @@ const apiBuildConfig = readJson('apps/api/tsconfig.build.json');
 const h5ViteConfig = readFileSync('apps/h5-store/vite.config.ts', 'utf8');
 const adminViteConfig = readFileSync('apps/admin-web/vite.config.ts', 'utf8');
 const composeScript = readFileSync('scripts/compose.mjs', 'utf8');
+const developmentEnvTemplate = readFileSync('.env.development.example', 'utf8');
+const productionEnvTemplate = readFileSync('.env.production.example', 'utf8');
 
 assert.equal(
   rootPackage.scripts.dev,
@@ -20,8 +22,24 @@ assert.equal(
 );
 assert.match(h5ViteConfig, /strictPort:\s*true/);
 assert.match(h5ViteConfig, /H5_PORT/);
+assert.match(h5ViteConfig, /\.\.\.process\.env/);
 assert.match(h5ViteConfig, /12297oy2ga916\.vicp\.fun/);
 assert.match(adminViteConfig, /strictPort:\s*true/);
 assert.match(adminViteConfig, /ADMIN_PORT/);
+assert.match(adminViteConfig, /\.\.\.process\.env/);
 assert.match(adminViteConfig, /12297oy2ga916\.vicp\.fun/);
 assert.match(composeScript, /--env-file/);
+assert.match(
+  developmentEnvTemplate,
+  /^ADMIN_OPERATION_IDEMPOTENCY_SECRET=dev-only-admin-operation-idempotency-secret-do-not-use-in-prod$/mu,
+);
+assert.match(
+  productionEnvTemplate,
+  /^ADMIN_OPERATION_IDEMPOTENCY_SECRET=REPLACE_WITH_UNIQUE_ADMIN_OPERATION_IDEMPOTENCY_SECRET_AT_LEAST_32_CHARACTERS$/mu,
+);
+assert.match(
+  productionEnvTemplate,
+  /Emergency 0010\/0011 rollback confirmations only\. Keep all three at 0 in persistent configuration; never leave any at 1\./u,
+);
+assert.match(productionEnvTemplate, /^BAKE_MALL_IDENTITY_WRITERS_STOPPED=0$/mu);
+assert.match(productionEnvTemplate, /^BAKE_MALL_PRINTING_WRITERS_STOPPED=0$/mu);

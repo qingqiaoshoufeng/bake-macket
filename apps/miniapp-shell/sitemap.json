@@ -1,0 +1,4 @@
+{
+  "desc": "烘焙商城小程序页面索引",
+  "rules": [{ "action": "allow", "page": "*" }]
+}

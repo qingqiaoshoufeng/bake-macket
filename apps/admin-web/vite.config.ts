@@ -11,7 +11,7 @@ const allowedHosts = ['12297oy2ga916.vicp.fun'];
  * Shared contracts resolve directly to source so workspace changes are instant.
  */
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, repositoryRoot, '');
+  const env = { ...loadEnv(mode, repositoryRoot, ''), ...process.env };
   const apiPort = Number(env.PORT || 43015);
 
   return {

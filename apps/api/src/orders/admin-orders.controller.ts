@@ -11,12 +11,15 @@ import {
 } from '@nestjs/common';
 import {
   AdminOrderExportView,
+  AdminPermission,
   type AdminOrderExportQuery,
   type AdminOrderFilterQuery,
 } from '@bake-mall/contracts';
 import type { Response } from 'express';
 
 import { AuditService } from '../audit/audit.service.js';
+import { RequireAdminPermissions } from '../auth/admin-permission.decorator.js';
+import { AdminPermissionGuard } from '../auth/admin-permission.guard.js';
 import { JwtAdminGuard } from '../auth/admin-jwt.guard.js';
 import { CurrentAdmin } from '../auth/current-user.decorator.js';
 import type { AuthenticatedAdmin } from '../auth/auth.types.js';
@@ -76,7 +79,7 @@ function summarizeOrderFilters(query: AdminOrderExportQueryDto) {
  * 控制器不提供改写联系人、地址或订单商品内容的路由。
  */
 @Controller('admin/orders')
-@UseGuards(JwtAdminGuard)
+@UseGuards(JwtAdminGuard, AdminPermissionGuard)
 export class AdminOrdersController {
   constructor(
     private readonly orders: OrdersService,
@@ -86,6 +89,7 @@ export class AdminOrdersController {
   ) {}
 
   @Get()
+  @RequireAdminPermissions(AdminPermission.ORDER_READ)
   list(@Query() query: AdminOrderListQueryDto) {
     return this.orders.listAll(query);
   }
@@ -108,7 +112,7 @@ export class AdminOrdersController {
   ): Promise<StreamableFile> {
     const file = await this.orderExports.export(toExportQuery(query));
     await this.audit.record({
-      adminUserId: admin.id,
+      actor: { type: 'ADMIN', adminUserId: admin.id },
       targetEntity: 'ORDER_EXPORT',
       targetId: query.view,
       action: 'EXPORT',
@@ -127,11 +131,13 @@ export class AdminOrdersController {
   }
 
   @Get(':id')
+  @RequireAdminPermissions(AdminPermission.ORDER_READ)
   getOne(@Param('id') id: string) {
     return this.orders.getOne(id);
   }
 
   @Patch(':id/status')
+  @RequireAdminPermissions(AdminPermission.ORDER_STATUS_UPDATE)
   updateStatus(
     @CurrentAdmin() admin: AuthenticatedAdmin,
     @Param('id') id: string,

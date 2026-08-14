@@ -1,9 +1,15 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import {
+  Global,
+  INestApplication,
+  Module,
+  ValidationPipe,
+} from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
-import { getRepositoryToken } from '@nestjs/typeorm';
+import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
 import {
+  AdminRole,
   MembershipLevelStatus,
   MembershipTheme,
   type SaveMembershipLevelRequest,
@@ -37,6 +43,20 @@ import { User } from '../src/database/entities/user.entity.js';
 import { MembershipModule } from '../src/membership/membership.module.js';
 import { MembershipPurchaseService } from '../src/membership/membership-purchase.service.js';
 import { MembershipService } from '../src/membership/membership.service.js';
+
+let fakeDataSourceRef: unknown;
+
+@Global()
+@Module({
+  providers: [
+    {
+      provide: getDataSourceToken(),
+      useFactory: () => fakeDataSourceRef,
+    },
+  ],
+  exports: [getDataSourceToken()],
+})
+class FakeDatabaseModule {}
 
 const levelRequest: SaveMembershipLevelRequest = {
   code: 'GOLD',
@@ -161,6 +181,30 @@ describe('Membership levels (e2e)', () => {
     process.env.MYSQL_DATABASE = 'bake_mall_test';
     process.env.MYSQL_USER = 'bake_app_test';
 
+    const persistedAdmin = {
+      id: '1',
+      username: 'admin@example.test',
+      role: AdminRole.SUPER_ADMIN,
+      linkedUserId: null,
+      isActive: true,
+      mustChangePassword: false,
+      tokenVersion: 1,
+    } as AdminUser;
+    const userRepo = { findOne: vi.fn().mockResolvedValue(null) };
+    const adminRepo = {
+      findOne: vi.fn(async ({ where }: { where: { id?: string } }) =>
+        where.id === persistedAdmin.id ? persistedAdmin : null,
+      ),
+      findOneBy: vi.fn(),
+      create: vi.fn((value) => value),
+      save: vi.fn(async (value) => value),
+    };
+    fakeDataSourceRef = {
+      entityMetadatas: [],
+      options: { type: 'mysql' },
+      getRepository: (entity: typeof User | typeof AdminUser) =>
+        entity === User ? userRepo : adminRepo,
+    };
     const repositories = new Map<unknown, object>([
       [MembershipLevel, levels],
       [MembershipPurchaseOrder, purchases],
@@ -181,19 +225,17 @@ describe('Membership levels (e2e)', () => {
             return { appEnv: value };
           },
         }),
+        FakeDatabaseModule,
         AuthModule,
         MembershipModule,
       ],
     })
       .overrideProvider(getRepositoryToken(User))
-      .useValue({ findOneBy: vi.fn() })
+      .useValue(userRepo)
       .overrideProvider(getRepositoryToken(AdminUser))
-      .useValue({
-        findOneBy: vi.fn(),
-        findOne: vi.fn().mockResolvedValue(null),
-        create: vi.fn((value) => value),
-        save: vi.fn(async (value) => value),
-      })
+      .useValue(adminRepo)
+      .overrideProvider(getDataSourceToken())
+      .useValue(fakeDataSourceRef)
       .overrideProvider(getRepositoryToken(AuditLog))
       .useValue({})
       .overrideProvider(getRepositoryToken(MembershipLevel))
@@ -257,7 +299,14 @@ describe('Membership levels (e2e)', () => {
     const config = app.get<ConfigService<AppConfig, true>>(ConfigService);
     const env = config.get('appEnv', { infer: true });
     adminToken = await jwt.signAsync(
-      { sub: 'admin-1', email: 'admin@example.test', aud: JWT_ADMIN_AUDIENCE },
+      {
+        sub: persistedAdmin.id,
+        aud: JWT_ADMIN_AUDIENCE,
+        role: persistedAdmin.role,
+        tokenVersion: persistedAdmin.tokenVersion,
+        linkedUserId: persistedAdmin.linkedUserId,
+        mustChangePassword: persistedAdmin.mustChangePassword,
+      },
       { secret: env.JWT_ADMIN_SECRET },
     );
     userToken = await jwt.signAsync(

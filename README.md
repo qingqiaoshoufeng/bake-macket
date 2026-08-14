@@ -37,6 +37,12 @@ pnpm build
 
 Local defaults are API `43015`, H5 `43173`, Admin `43174`, MySQL `43306`, MinIO API `43900`, and MinIO Console `43901`, all on `127.0.0.1`. H5/Admin dev and preview accept `12297oy2ga916.vicp.fun`; change `allowedHosts` in both Vite configs if the tunnel hostname changes. Use `.env.production.example` as the API deployment contract; production frontends expect the deployment layer to route same-origin `/api/v1` requests to the API.
 
+## 运行手册
+
+- [本地开发](docs/runbook/local-development.md)：启动、端口、开发账号、MinIO、小程序开发者工具与 E2E。
+- [生产部署](docs/runbook/deployment.md)：生产变量、MySQL 迁移、API Docker、Nginx 路由、COS 与 TLS。
+- [微信小程序 H5 容器配置](docs/runbook/wechat-miniapp-setup.md)：受控 URL、域名配置、桥接协议和真机验收。
+
 ## TypeScript configuration
 
 Shared packages should extend `tsconfig.base.json`, which permits build output and does not impose browser globals. Vite browser applications should extend `tsconfig.browser.json`, which supplies DOM types and uses Vite-compatible module resolution.
