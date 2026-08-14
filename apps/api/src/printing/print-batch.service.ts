@@ -109,7 +109,7 @@ export class PrintBatchService {
         adminId: admin.id,
         operation: 'PRINT_BATCH_CREATE',
         key,
-        request,
+        request: { printerId: request.printerId },
       });
       if (claim.kind === 'REPLAY') {
         return replaySnapshot<CreatePrintBatchResult>(claim);
@@ -272,7 +272,10 @@ export class PrintBatchService {
         adminId: admin.id,
         operation: 'PRINT_SINGLE_CREATE',
         key,
-        request,
+        request: {
+          orderId: request.orderId,
+          printerId: request.printerId,
+        },
       });
       if (claim.kind === 'REPLAY') {
         return {
