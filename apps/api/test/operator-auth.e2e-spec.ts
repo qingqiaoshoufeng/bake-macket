@@ -16,6 +16,7 @@ import {
 import { ConfigModule } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { TypeOrmModule, getRepositoryToken } from '@nestjs/typeorm';
+import bcrypt from 'bcrypt';
 import { randomUUID } from 'node:crypto';
 import { DataSource } from 'typeorm';
 import request, { type Response } from 'supertest';
@@ -174,7 +175,7 @@ describe('OPERATOR auth (real MySQL e2e)', () => {
         database.getRepository(User).create({
           nickname: 'operator-e2e',
           avatarUrl: null,
-          wechatOpenid: null,
+          wechatOpenid: 'operator-e2e-openid',
           wechatUnionid: null,
           phone: '13800000000',
           phoneVerified: true,
@@ -224,7 +225,7 @@ describe('OPERATOR auth (real MySQL e2e)', () => {
       .send({
         kind: 'SUPER_ADMIN',
         email: SUPER_EMAIL,
-        phone: user.phone,
+        phone: '13700000000',
         password: SUPER_PASSWORD,
       })
       .expect(400);
@@ -362,7 +363,7 @@ describe('OPERATOR auth (real MySQL e2e)', () => {
     expect(serializedPublicData).not.toContain('email');
   });
 
-  it('拒绝 verified=true/phone=null 的历史脏 User，且不新增 admin', async () => {
+  it('拒绝未绑定微信的 User，即使身份手机号已验证', async () => {
     const users = database.getRepository(User);
     const admins = database.getRepository(AdminUser);
     const dirtyUser = await users.save(
@@ -378,16 +379,13 @@ describe('OPERATOR auth (real MySQL e2e)', () => {
         tokenVersion: 1,
       }),
     );
-    await database.query(
-      'UPDATE users SET phone = NULL, phone_verified = TRUE WHERE id = ?',
-      [dirtyUser.id],
-    );
     const adminCountBefore = await admins.count();
 
     await request(app.getHttpServer())
       .post(`/api/v1/admin/users/${dirtyUser.id}/operator/grant`)
       .set('Authorization', `Bearer ${superToken}`)
       .send({
+        loginPhone: '13700000000',
         currentPassword: SUPER_PASSWORD,
         temporaryPassword: '123456',
         confirmTemporaryPassword: '123456',
@@ -403,6 +401,7 @@ describe('OPERATOR auth (real MySQL e2e)', () => {
       .post(`/api/v1/admin/users/${user.id}/operator/grant`)
       .set('Authorization', `Bearer ${superToken}`)
       .send({
+        loginPhone: '13700000000',
         currentPassword: SUPER_PASSWORD,
         temporaryPassword: '123456',
         confirmTemporaryPassword: '123456',
@@ -416,6 +415,7 @@ describe('OPERATOR auth (real MySQL e2e)', () => {
       username: null,
       role: AdminRole.OPERATOR,
       linkedUserId: user.id,
+      loginPhone: '13700000000',
       isActive: true,
       mustChangePassword: true,
     });
@@ -425,6 +425,7 @@ describe('OPERATOR auth (real MySQL e2e)', () => {
           username: null,
           role: AdminRole.OPERATOR,
           linkedUserId: user.id,
+          loginPhone: stored.loginPhone,
           passwordHash: stored.passwordHash,
           isActive: true,
           mustChangePassword: true,
@@ -439,7 +440,7 @@ describe('OPERATOR auth (real MySQL e2e)', () => {
     const restricted = (
       await request(app.getHttpServer())
         .post('/api/v1/admin/auth/login')
-        .send({ kind: 'OPERATOR', phone: ' 13800000000 ', password: '123456' })
+        .send({ kind: 'OPERATOR', phone: ' 13700000000 ', password: '123456' })
         .expect(200)
     ).body as {
       accessToken: string;
@@ -542,11 +543,18 @@ describe('OPERATOR auth (real MySQL e2e)', () => {
       .expect(401);
   });
 
-  it('mall-user 换管理会话并在 linked phone/verified 变化后拒绝', async () => {
+  it('mall-user 换管理会话且身份/联系手机号变化不影响 Admin session', async () => {
+    const admins = database.getRepository(AdminUser);
+    const existingOperator = await admins.findOneBy({ linkedUserId: user.id });
+    if (existingOperator) {
+      existingOperator.isActive = false;
+      await admins.save(existingOperator);
+    }
     await request(app.getHttpServer())
       .post(`/api/v1/admin/users/${user.id}/operator/grant`)
       .set('Authorization', `Bearer ${superToken}`)
       .send({
+        loginPhone: '13700000000',
         currentPassword: SUPER_PASSWORD,
         temporaryPassword: '222222',
         confirmTemporaryPassword: '222222',
@@ -600,7 +608,7 @@ describe('OPERATOR auth (real MySQL e2e)', () => {
           .post('/api/v1/admin/auth/login')
           .send({
             kind: 'OPERATOR',
-            phone: user.phone,
+            phone: '13700000000',
             password: `invalid-${index}`,
           }),
       ),
@@ -611,7 +619,7 @@ describe('OPERATOR auth (real MySQL e2e)', () => {
     const operatorBucketId = calculateAdminLoginBucketId(
       ADMIN_SECRET,
       'OPERATOR',
-      user.phone!,
+      '13700000000',
     );
     const unknownPhone = findDistinctIdentifier(
       'OPERATOR',
@@ -667,7 +675,7 @@ describe('OPERATOR auth (real MySQL e2e)', () => {
     expect(serializedUnknownData).not.toContain('email');
     await request(app.getHttpServer())
       .post('/api/v1/admin/auth/login')
-      .send({ kind: 'OPERATOR', phone: user.phone, password: '000000' })
+      .send({ kind: 'OPERATOR', phone: '13700000000', password: '000000' })
       .expect(429);
     expect(
       (
@@ -677,7 +685,6 @@ describe('OPERATOR auth (real MySQL e2e)', () => {
       ).verifyFailedCount,
     ).toBe(5);
 
-    const admins = database.getRepository(AdminUser);
     const operatorVersionBefore = (
       await admins.findOneByOrFail({ linkedUserId: user.id })
     ).tokenVersion;
@@ -689,21 +696,31 @@ describe('OPERATOR auth (real MySQL e2e)', () => {
     });
     expect(
       (await admins.findOneByOrFail({ linkedUserId: user.id })).tokenVersion,
-    ).toBe(operatorVersionBefore + 1);
+    ).toBe(operatorVersionBefore);
 
     await request(app.getHttpServer())
       .get('/api/v1/admin/operator-probe/order-read')
       .set('Authorization', `Bearer ${exchanged.accessToken}`)
-      .expect(401);
+      .expect(200);
+    const operatorAfterIdentityChange = await admins.findOneByOrFail({
+      linkedUserId: user.id,
+    });
+    expect(operatorAfterIdentityChange.loginPhone).toBe('13700000000');
+    expect(
+      await bcrypt.compare('333333', operatorAfterIdentityChange.passwordHash),
+    ).toBe(true);
     await request(app.getHttpServer())
       .post('/api/v1/admin/auth/login')
       .send({ kind: 'OPERATOR', phone: '13900000000', password: '333333' })
       .expect(401);
+    const refreshedMallUserToken = userAuth.issueSession(
+      await database.getRepository(User).findOneByOrFail({ id: user.id }),
+    ).accessToken;
     await request(app.getHttpServer())
       .post('/api/v1/admin/auth/exchange')
-      .set('Authorization', `Bearer ${mallUserToken}`)
+      .set('Authorization', `Bearer ${refreshedMallUserToken}`)
       .send({})
-      .expect(401);
+      .expect(200);
     await request(app.getHttpServer())
       .get('/api/v1/admin/operator-probe')
       .set('Authorization', `Bearer ${superVersionToken}`)

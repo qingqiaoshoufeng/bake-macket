@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { WechatAuthStatus } from '../hooks/createWechatAuthCoordinator.js';
 import { DEVELOPMENT_LOGIN_HINT } from '../../../bridge/miniapp.js';
 import { LOGIN_COPY } from '../config/copy.js';
 
@@ -7,16 +8,18 @@ const props = defineProps<{
   code: string;
   submitting: boolean;
   showDevHint: boolean;
-  miniprogramAttached: boolean;
+  wechatStatus: WechatAuthStatus;
+  wechatError: string | null;
 }>();
 const emit = defineEmits<{
   (event: 'update:phone', value: string): void;
   (event: 'update:code', value: string): void;
   (event: 'submit'): void;
+  (event: 'wechat-login'): void;
   (event: 'prefill'): void;
   (event: 'test-wechat'): void;
-  (event: 'request-phone-credential'): void;
 }>();
+
 function inputValue(event: Event): string {
   return (event.target as HTMLInputElement).value;
 }
@@ -26,10 +29,35 @@ function inputValue(event: Event): string {
   <div class="store-auth-page__canvas">
     <header class="login__hero">
       <p>{{ LOGIN_COPY.eyebrow }}</p>
-      <h1>{{ LOGIN_COPY.title }}</h1>
-      <span>{{ LOGIN_COPY.description }}</span>
+      <h1>{{ wechatError ? '微信登录未完成' : '欢迎回到烘焙小店' }}</h1>
+      <span>{{
+        wechatError ?? '请点击微信登录，由小程序原生页面安全获取登录凭证。'
+      }}</span>
     </header>
-    <form class="login__form" @submit.prevent="emit('submit')">
+    <section class="login__wechat" aria-label="微信登录">
+      <button
+        type="button"
+        class="login__wechat-button"
+        :disabled="wechatStatus === 'exchanging'"
+        :aria-disabled="wechatStatus === 'exchanging'"
+        data-testid="wechat-login"
+        @click="emit('wechat-login')"
+      >
+        {{
+          wechatStatus === 'exchanging'
+            ? '微信登录中…'
+            : wechatStatus === 'failed'
+              ? '重新微信登录'
+              : '微信登录'
+        }}
+      </button>
+      <p>登录凭证仅由微信小程序获取，H5 不会调用 wx.login。</p>
+    </section>
+    <form
+      v-if="showDevHint"
+      class="login__form"
+      @submit.prevent="emit('submit')"
+    >
       <label class="field"
         ><span>手机号</span
         ><input
@@ -54,15 +82,7 @@ function inputValue(event: Event): string {
         :disabled="submitting"
         :aria-disabled="submitting"
       >
-        {{ submitting ? '登录中…' : '登录' }}
-      </button>
-      <button
-        type="button"
-        class="login__miniapp-phone"
-        data-testid="miniapp-phone-auth"
-        @click="emit('request-phone-credential')"
-      >
-        使用微信手机号授权
+        {{ submitting ? '登录中…' : '开发登录' }}
       </button>
     </form>
     <section v-if="showDevHint" class="login__dev">
@@ -79,9 +99,6 @@ function inputValue(event: Event): string {
         <button type="button" class="link" @click="emit('test-wechat')">
           派发 WECHAT_CODE
         </button>
-      </p>
-      <p v-if="miniprogramAttached" class="login__dev-status">
-        已监听来自小程序容器的消息。
       </p>
     </section>
   </div>
@@ -141,10 +158,37 @@ function inputValue(event: Event): string {
   font-size: 14px;
   line-height: 1.65;
 }
+.login__wechat {
+  display: grid;
+  gap: var(--mall-space-2);
+  padding: var(--mall-space-5);
+}
+.login__wechat-button {
+  min-height: 50px;
+  border: 0;
+  border-radius: var(--mall-radius-card);
+  background: #168a45;
+  color: #fff;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.login__wechat-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.login__wechat p {
+  margin: 0;
+  color: var(--mall-text-muted);
+  font-size: 12px;
+  line-height: 1.6;
+  text-align: center;
+}
 .login__form {
   display: grid;
   gap: var(--mall-space-3);
-  padding: var(--mall-space-5);
+  padding: 0 var(--mall-space-5) var(--mall-space-5);
 }
 .field {
   display: grid;
@@ -155,6 +199,7 @@ function inputValue(event: Event): string {
   font-size: 12px;
 }
 .field input {
+  box-sizing: border-box;
   width: 100%;
   min-height: 46px;
   padding: 0 var(--mall-space-3);
@@ -168,7 +213,7 @@ function inputValue(event: Event): string {
 }
 .field input:focus {
   border-color: var(--mall-primary);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mall-primary) 14%, transparent);
+  box-shadow: 0 0 0 3px rgba(183, 121, 102, 0.14);
 }
 .login__submit {
   min-height: 46px;
@@ -185,17 +230,6 @@ function inputValue(event: Event): string {
 .login__submit:disabled {
   opacity: 0.6;
   cursor: not-allowed;
-}
-.login__miniapp-phone {
-  min-height: 44px;
-  border: 1px solid var(--mall-primary);
-  border-radius: var(--mall-radius-card);
-  background: var(--mall-surface-soft);
-  color: var(--mall-primary-strong);
-  font: inherit;
-  font-size: 14px;
-  font-weight: 700;
-  cursor: pointer;
 }
 .login__dev {
   display: grid;
@@ -226,8 +260,5 @@ function inputValue(event: Event): string {
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
-}
-.login__dev-status {
-  color: var(--mall-primary-strong);
 }
 </style>

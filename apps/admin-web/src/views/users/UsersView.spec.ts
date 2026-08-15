@@ -66,8 +66,10 @@ describe('UsersView', () => {
         {
           id: 'user-1',
           nickname: '小莓',
-          phoneMasked: '138****0000',
-          phoneVerified: true,
+          identityPhoneMasked: '138****0000',
+          identityPhoneVerified: true,
+          wechatBound: true,
+          loginPhoneMasked: null,
           createdAt: '2026-08-06T08:00:00.000Z',
           isOperator: false,
           operatorActive: false,
@@ -88,11 +90,91 @@ describe('UsersView', () => {
     expect(wrapper.find('[data-testid="grant-operator"]').exists()).toBe(true);
   });
 
+  it('展示微信、身份手机号和独立管理员登录手机号，并禁用未绑定微信授权', async () => {
+    api.list.mockResolvedValue({
+      items: [
+        {
+          id: 'user-bound',
+          nickname: '已绑定用户',
+          identityPhoneMasked: '138****0000',
+          identityPhoneVerified: true,
+          wechatBound: true,
+          loginPhoneMasked: '137****0000',
+          createdAt: '2026-08-06T08:00:00.000Z',
+          isOperator: true,
+          operatorActive: false,
+          mustChangePassword: false,
+        },
+        {
+          id: 'user-unbound',
+          nickname: '未绑定用户',
+          identityPhoneMasked: null,
+          identityPhoneVerified: false,
+          wechatBound: false,
+          loginPhoneMasked: null,
+          createdAt: '2026-08-06T08:00:00.000Z',
+          isOperator: false,
+          operatorActive: false,
+          mustChangePassword: false,
+        },
+      ],
+      total: 2,
+      page: 1,
+      pageSize: 20,
+    });
+
+    const wrapper = mountView(superSession);
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('身份手机号');
+    expect(wrapper.text()).toContain('管理员登录手机号');
+    expect(wrapper.text()).toContain('微信已绑定');
+    expect(wrapper.text()).toContain('微信未绑定');
+    expect(wrapper.text()).toContain('137****0000');
+    const grantButtons = wrapper.findAll('[data-testid="grant-operator"]');
+    expect(grantButtons).toHaveLength(2);
+    expect(grantButtons[0]?.attributes('disabled')).toBeUndefined();
+    expect(grantButtons[1]?.attributes('disabled')).toBeDefined();
+  });
+
   it('gives the search input an accessible name', async () => {
     const wrapper = mountView(superSession);
     await flushPromises();
 
     expect(wrapper.find('input[aria-label="搜索用户"]').exists()).toBe(true);
+  });
+
+  it('授权弹窗说明管理员登录手机号独立且包含 11 位输入', async () => {
+    api.list.mockResolvedValue({
+      items: [
+        {
+          id: 'user-1',
+          nickname: '小莓',
+          identityPhoneMasked: '138****0000',
+          identityPhoneVerified: true,
+          wechatBound: true,
+          loginPhoneMasked: null,
+          createdAt: '2026-08-06T08:00:00.000Z',
+          isOperator: false,
+          operatorActive: false,
+          mustChangePassword: false,
+        },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    });
+    const wrapper = mountView(superSession);
+    await flushPromises();
+    await wrapper.find('[data-testid="grant-operator"]').trigger('click');
+
+    expect(wrapper.text()).toContain('管理员登录手机号');
+    expect(wrapper.text()).toContain(
+      '与顾客身份手机号、订单联系手机号相互独立',
+    );
+    expect(wrapper.find('[data-testid="operator-login-phone"]').exists()).toBe(
+      true,
+    );
   });
 
   it.each([
@@ -106,8 +188,10 @@ describe('UsersView', () => {
           {
             id: 'user-1',
             nickname: '小莓',
-            phoneMasked: '138****0000',
-            phoneVerified: true,
+            identityPhoneMasked: '138****0000',
+            identityPhoneVerified: true,
+            wechatBound: true,
+            loginPhoneMasked: null,
             createdAt: '2026-08-06T08:00:00.000Z',
             isOperator: false,
             operatorActive: false,
@@ -139,8 +223,10 @@ describe('UsersView', () => {
         {
           id: 'user-1',
           nickname: '小莓',
-          phoneMasked: '138****0000',
-          phoneVerified: true,
+          identityPhoneMasked: '138****0000',
+          identityPhoneVerified: true,
+          wechatBound: true,
+          loginPhoneMasked: null,
           createdAt: '2026-08-06T08:00:00.000Z',
           isOperator: true,
           operatorActive: true,

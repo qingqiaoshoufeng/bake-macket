@@ -21,8 +21,10 @@ describe('users api', () => {
           JSON.stringify({
             id: 'user-1',
             nickname: null,
-            phoneMasked: '139****0000',
-            phoneVerified: false,
+            identityPhoneMasked: '139****0000',
+            identityPhoneVerified: false,
+            wechatBound: false,
+            loginPhoneMasked: null,
             createdAt: '2026-08-06T08:00:00.000Z',
             isOperator: false,
             operatorActive: false,
@@ -57,6 +59,7 @@ describe('users api', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     await usersApi.grantOperator('user-1', {
+      loginPhone: '13700000000',
       currentPassword: '123456',
       temporaryPassword: '234567',
       confirmTemporaryPassword: '234567',
@@ -70,6 +73,7 @@ describe('users api', () => {
       '/api/v1/admin/users/user-1/operator/revoke',
     ]);
     expect(JSON.parse(fetchMock.mock.calls[0]?.[1]?.body as string)).toEqual({
+      loginPhone: '13700000000',
       currentPassword: '123456',
       temporaryPassword: '234567',
       confirmTemporaryPassword: '234567',

@@ -19,6 +19,7 @@ import { AdminUser } from '../database/entities/admin-user.entity.js';
 import { User } from '../database/entities/user.entity.js';
 import { JWT_ADMIN_AUDIENCE } from './auth.constants.js';
 import { type AdminJwtPayload, type AuthenticatedAdmin } from './auth.types.js';
+import { isEligibleOperatorLinkedUser } from './operator-linked-user-eligibility.js';
 
 const BIGINT_ID_PATTERN = /^(?:[1-9][0-9]*)$/u;
 const invalidToken = (cause?: unknown) =>
@@ -78,14 +79,7 @@ export class JwtAdminGuard implements CanActivate {
         const linkedUser = await this.dataSource.getRepository(User).findOne({
           where: { id: admin.linkedUserId },
         });
-        if (
-          !linkedUser ||
-          !linkedUser.isActive ||
-          linkedUser.mergedIntoUserId !== null ||
-          !linkedUser.phoneVerified
-        ) {
-          throw invalidToken();
-        }
+        if (!isEligibleOperatorLinkedUser(linkedUser)) throw invalidToken();
       }
       const principal: AuthenticatedAdmin = {
         id: admin.id,

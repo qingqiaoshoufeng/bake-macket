@@ -1,7 +1,8 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 
-import { router } from './index.js';
+import { useAuthStore } from '../stores/auth.js';
+import { createStoreRouter } from './index.js';
 
 type LazyViewModule = {
   readonly default: { readonly __name?: string };
@@ -39,7 +40,7 @@ const expectedViews = [
     path: '/checkout',
     routeName: 'checkout',
     componentName: 'CheckoutView',
-    meta: { requiresVerifiedPhone: true },
+    meta: { requiresAuth: true },
   },
   {
     path: '/orders',
@@ -92,6 +93,8 @@ const expectedViews = [
 ] as const;
 
 describe('H5 routes', () => {
+  const router = createStoreRouter();
+
   beforeEach(() => {
     setActivePinia(createPinia());
   });
@@ -109,4 +112,74 @@ describe('H5 routes', () => {
       expect(record?.meta).toMatchObject(meta);
     },
   );
+
+  it('等待正在进行的微信登录后允许未绑定手机号的顾客进入 checkout', async () => {
+    let completeLogin!: () => void;
+    const waitForCurrentAttempt = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          completeLogin = () => {
+            const auth = useAuthStore();
+            auth.accessToken = 'wechat-token';
+            auth.profile = {
+              id: 'u1',
+              phoneVerified: false,
+              orderContactPhone: {
+                configured: false,
+                maskedPhone: null,
+                version: 0,
+              },
+            };
+            resolve();
+          };
+        }),
+    );
+    const guardedRouter = createStoreRouter({ waitForCurrentAttempt });
+
+    const navigation = guardedRouter.push('/checkout');
+    await vi.waitFor(() =>
+      expect(waitForCurrentAttempt).toHaveBeenCalledOnce(),
+    );
+    expect(guardedRouter.currentRoute.value.path).not.toBe('/checkout');
+    completeLogin();
+    await navigation;
+
+    expect(guardedRouter.currentRoute.value.path).toBe('/checkout');
+  });
+
+  it('微信登录失败后把匿名顾客送到带安全 redirect 的登录页', async () => {
+    const guardedRouter = createStoreRouter({
+      waitForCurrentAttempt: () => Promise.resolve(),
+    });
+
+    await guardedRouter.push('/checkout');
+
+    expect(guardedRouter.currentRoute.value.fullPath).toBe(
+      '/login?redirect=/checkout',
+    );
+  });
+
+  it('公开首页不等待微信登录，会员购买仍要求已验证手机号', async () => {
+    const waitForCurrentAttempt = vi.fn(
+      () => new Promise<void>(() => undefined),
+    );
+    const guardedRouter = createStoreRouter({ waitForCurrentAttempt });
+
+    await guardedRouter.push('/');
+    expect(guardedRouter.currentRoute.value.path).toBe('/');
+    expect(waitForCurrentAttempt).not.toHaveBeenCalled();
+
+    const auth = useAuthStore();
+    auth.accessToken = 'wechat-token';
+    auth.profile = {
+      id: 'u1',
+      phoneVerified: false,
+      orderContactPhone: { configured: false, maskedPhone: null, version: 0 },
+    };
+    const membershipRouter = createStoreRouter({
+      waitForCurrentAttempt: () => Promise.resolve(),
+    });
+    await membershipRouter.push('/membership-cards/level-1');
+    expect(membershipRouter.currentRoute.value.path).toBe('/login');
+  });
 });

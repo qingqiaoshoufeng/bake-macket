@@ -77,17 +77,28 @@ function createdAt(value: string): string {
             <small>ID {{ row.id }}</small>
           </div>
         </div>
-        <span v-else-if="column.key === 'phone'">
-          {{ row.phoneMasked ?? '未绑定' }}
-        </span>
         <ElTag
-          v-else-if="column.key === 'verified'"
-          :type="row.phoneVerified ? 'success' : 'info'"
+          v-else-if="column.key === 'wechat'"
+          :type="row.wechatBound ? 'success' : 'info'"
           effect="light"
           round
         >
-          {{ row.phoneVerified ? '已验证' : '待验证' }}
+          {{ row.wechatBound ? '微信已绑定' : '微信未绑定' }}
         </ElTag>
+        <span v-else-if="column.key === 'identityPhone'">
+          {{ row.identityPhoneMasked ?? '未绑定' }}
+        </span>
+        <ElTag
+          v-else-if="column.key === 'identityPhoneStatus'"
+          :type="row.identityPhoneVerified ? 'success' : 'info'"
+          effect="light"
+          round
+        >
+          {{ row.identityPhoneVerified ? '已验证' : '待验证' }}
+        </ElTag>
+        <span v-else-if="column.key === 'loginPhone'">
+          {{ row.loginPhoneMasked ?? '未配置' }}
+        </span>
         <ElTag
           v-else-if="column.key === 'operator'"
           :type="operatorTagType(asAdminUser(row))"
@@ -105,6 +116,8 @@ function createdAt(value: string): string {
               v-if="!row.operatorActive"
               type="primary"
               link
+              :disabled="!row.wechatBound"
+              :title="row.wechatBound ? undefined : '仅可授权已绑定微信的用户'"
               data-testid="grant-operator"
               @click="emit('grant', asAdminUser(row))"
             >

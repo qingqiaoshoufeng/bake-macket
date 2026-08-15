@@ -7,7 +7,6 @@ import type {
   ChangeInitialOperatorPasswordRequest,
   CustomerAuthSessionView,
   WechatLoginRequest,
-  WechatPhoneRequest,
 } from '@bake-mall/contracts';
 
 import type { BakeMallAppData } from '../../app.js';
@@ -20,10 +19,6 @@ export function createAdminApi(app: BakeMallAppData) {
   });
 
   return {
-    bindWechatPhone(code: string): Promise<CustomerAuthSessionView> {
-      const body: WechatPhoneRequest = { code };
-      return client.post('/auth/wechat/phone', body, { audience: 'customer' });
-    },
     changeCurrent(body: ChangeAdminPasswordRequest): Promise<AdminSessionView> {
       return client.post('/admin/auth/password', body, { audience: 'admin' });
     },

@@ -3,7 +3,7 @@ import { FulfillmentType, OrderStatus } from './enums.js';
 type CreateOrderRequestCommon = {
   cartItemIds: string[];
   contactName: string;
-  contactPhone: string;
+  orderContactPhoneVersion: number;
   remark?: string;
 };
 
@@ -95,7 +95,7 @@ const _validPickup: CreateOrderRequest = {
   cartItemIds: ['cart-item-1'],
   fulfillmentType: FulfillmentType.PICKUP,
   contactName: 'Alice',
-  contactPhone: '13800000000',
+  orderContactPhoneVersion: 1,
   pickupTimeText: 'tomorrow 10am',
   requestedCreditCents: 0,
   quoteToken: 'signed-quote',
@@ -105,7 +105,7 @@ const _validDelivery: CreateOrderRequest = {
   cartItemIds: ['cart-item-1'],
   fulfillmentType: FulfillmentType.DELIVERY,
   contactName: 'Alice',
-  contactPhone: '13800000000',
+  orderContactPhoneVersion: 1,
   addressId: 'address-1',
   requestedCreditCents: 500,
   quoteToken: 'signed-quote',
@@ -116,7 +116,7 @@ const _pickupWithoutQuote: CreateOrderRequest = {
   cartItemIds: ['cart-item-1'],
   fulfillmentType: FulfillmentType.PICKUP,
   contactName: 'Alice',
-  contactPhone: '13800000000',
+  orderContactPhoneVersion: 1,
   pickupTimeText: 'tomorrow 10am',
 };
 
@@ -125,7 +125,7 @@ const _creditWithoutQuote: CreateOrderRequest = {
   cartItemIds: ['cart-item-1'],
   fulfillmentType: FulfillmentType.PICKUP,
   contactName: 'Alice',
-  contactPhone: '13800000000',
+  orderContactPhoneVersion: 1,
   pickupTimeText: 'tomorrow 10am',
   requestedCreditCents: 500,
 };
@@ -135,7 +135,7 @@ const _quoteWithoutCredit: CreateOrderRequest = {
   cartItemIds: ['cart-item-1'],
   fulfillmentType: FulfillmentType.PICKUP,
   contactName: 'Alice',
-  contactPhone: '13800000000',
+  orderContactPhoneVersion: 1,
   pickupTimeText: 'tomorrow 10am',
   quoteToken: 'signed-quote',
 };
@@ -145,7 +145,7 @@ const _pickupMissingTime: CreateOrderRequest = {
   cartItemIds: ['cart-item-1'],
   fulfillmentType: FulfillmentType.PICKUP,
   contactName: 'Alice',
-  contactPhone: '13800000000',
+  orderContactPhoneVersion: 1,
 };
 
 // @ts-expect-error PICKUP forbids addressId.
@@ -153,7 +153,7 @@ const _pickupWithAddress: CreateOrderRequest = {
   cartItemIds: ['cart-item-1'],
   fulfillmentType: FulfillmentType.PICKUP,
   contactName: 'Alice',
-  contactPhone: '13800000000',
+  orderContactPhoneVersion: 1,
   pickupTimeText: 'tomorrow 10am',
   addressId: 'address-1',
 };
@@ -163,7 +163,7 @@ const _deliveryMissingAddress: CreateOrderRequest = {
   cartItemIds: ['cart-item-1'],
   fulfillmentType: FulfillmentType.DELIVERY,
   contactName: 'Alice',
-  contactPhone: '13800000000',
+  orderContactPhoneVersion: 1,
 };
 
 // @ts-expect-error DELIVERY forbids pickupTimeText.
@@ -171,7 +171,7 @@ const _deliveryWithPickupTime: CreateOrderRequest = {
   cartItemIds: ['cart-item-1'],
   fulfillmentType: FulfillmentType.DELIVERY,
   contactName: 'Alice',
-  contactPhone: '13800000000',
+  orderContactPhoneVersion: 1,
   addressId: 'address-1',
   pickupTimeText: 'tomorrow 10am',
 };

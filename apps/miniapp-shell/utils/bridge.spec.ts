@@ -15,10 +15,13 @@ import {
   createIndexPageController,
   createPhoneAuthController,
   createPhoneCredentialHandoffStore,
+  createWechatLoginController,
+  createWechatLoginHandoffStore,
   decodeRouteParameter,
   parseLoginCode,
-  resolvePhoneAuthReturnUrl,
   parsePhoneCredential,
+  resolvePhoneAuthReturnUrl,
+  resolveWechatLoginReturnUrl,
   validateReturnUrl,
 } from './bridge.js';
 
@@ -26,8 +29,12 @@ const rootBaseUrl = 'https://mall.example.com/';
 const rootOrigin = 'https://mall.example.com';
 const execFileAsync = promisify(execFile);
 
+function successfulRebuild(url: string, deliveryId: string): boolean {
+  return typeof url === 'string' && typeof deliveryId === 'string';
+}
+
 function createSuccessfulRebuild() {
-  return vi.fn((): boolean => true);
+  return vi.fn(successfulRebuild);
 }
 
 describe('miniapp URL handoff', () => {
@@ -36,9 +43,10 @@ describe('miniapp URL handoff', () => {
       buildLoginHandoffUrl(
         'https://MALL.example.com:443/?campaign=summer#hero',
         ' login code&next ',
+        ' state-1 ',
       ),
     ).toBe(
-      'https://mall.example.com/?campaign=summer&miniappSource=bake-miniapp&miniappType=WECHAT_CODE&wechatCode=login%20code%26next#hero',
+      'https://mall.example.com/?campaign=summer#hero&miniappSource=bake-miniapp&miniappType=WECHAT_CODE&wechatCode=login%20code%26next&wechatState=state-1',
     );
   });
 
@@ -46,11 +54,25 @@ describe('miniapp URL handoff', () => {
     'rejects an empty or invalid login code %#',
     (code) => {
       expect(parseLoginCode(code)).toBeNull();
-      expect(() => buildLoginHandoffUrl(rootBaseUrl, code)).toThrow(
+      expect(() => buildLoginHandoffUrl(rootBaseUrl, code, 'state-1')).toThrow(
         'login code must not be empty',
       );
     },
   );
+
+  it('keeps login code and state out of the HTTP request target', () => {
+    const handoffUrl = buildLoginHandoffUrl(rootBaseUrl, 'code-1', 'state-1');
+    const requestTarget = handoffUrl.split('#')[0] ?? handoffUrl;
+
+    expect(requestTarget).not.toContain('code-1');
+    expect(requestTarget).not.toContain('state-1');
+  });
+
+  it('rejects an empty login state', () => {
+    expect(() => buildLoginHandoffUrl(rootBaseUrl, 'code-1', '   ')).toThrow(
+      'login state must not be empty',
+    );
+  });
 
   it('accepts an arbitrary same-origin HTTPS application path', () => {
     expect(
@@ -144,6 +166,126 @@ describe('miniapp route parameter decoding', () => {
   });
 });
 
+describe('miniapp explicit WeChat login route and in-memory handoff', () => {
+  it('resolves an encoded return URL exactly once against the configured origin', () => {
+    expect(
+      resolveWechatLoginReturnUrl(
+        encodeURIComponent(
+          'https://mall.example.com/login?redirect=%2Fcheckout',
+        ),
+        rootOrigin,
+      ),
+    ).toBe('https://mall.example.com/login?redirect=%2Fcheckout');
+
+    expect(
+      resolveWechatLoginReturnUrl(
+        encodeURIComponent('https://evil.example/steal'),
+        rootOrigin,
+      ),
+    ).toBeNull();
+  });
+
+  it.each([
+    'https://mall.example.com/path%5Csteal',
+    'https://mall.example.com/path%255Csteal',
+    'https://mall.example.com/path%0Asteal',
+    'https://mall.example.com:444/login',
+  ])(
+    'rejects encoded separators, controls, double encoding, and port changes: %s',
+    (value) => {
+      expect(resolveWechatLoginReturnUrl(value, rootOrigin)).toBeNull();
+    },
+  );
+
+  it('keeps login and phone handoffs in independent one-time slots', () => {
+    const loginStore = createWechatLoginHandoffStore();
+    const phoneStore = createPhoneCredentialHandoffStore();
+    const loginHandoff = {
+      code: 'login-code',
+      returnUrl: 'https://mall.example.com/login',
+      state: 'state-1',
+    };
+    const phoneHandoff = {
+      credential: 'phone-code',
+      returnUrl: 'https://mall.example.com/profile',
+    };
+
+    expect(loginStore.write(loginHandoff)).toBe(true);
+    expect(phoneStore.write(phoneHandoff)).toBe(true);
+    expect(loginStore.peek()).toEqual(loginHandoff);
+    expect(phoneStore.peek()).toEqual(phoneHandoff);
+    expect(loginStore.consume(loginHandoff)).toBe(true);
+    expect(phoneStore.peek()).toEqual(phoneHandoff);
+  });
+
+  it('does not persist login codes through WeChat storage', () => {
+    const setStorage = vi.fn();
+    const setStorageSync = vi.fn();
+    vi.stubGlobal('wx', { setStorage, setStorageSync });
+    const store = createWechatLoginHandoffStore();
+
+    store.write({
+      code: 'login-code',
+      returnUrl: 'https://mall.example.com/login',
+      state: 'state-1',
+    });
+
+    expect(setStorage).not.toHaveBeenCalled();
+    expect(setStorageSync).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it('runs wx.login only after a click and navigates back after a non-empty code is stored', async () => {
+    const login = vi.fn().mockResolvedValue(' login-code ');
+    const writeHandoff = vi.fn(() => true);
+    const navigateBack = vi.fn();
+    const toast = vi.fn();
+    const controller = createWechatLoginController({
+      login,
+      navigateBack,
+      returnUrl: 'https://mall.example.com/login',
+      state: 'state-1',
+      toast,
+      writeHandoff,
+    });
+
+    expect(login).not.toHaveBeenCalled();
+    await expect(controller.handleLogin()).resolves.toBe(true);
+    expect(writeHandoff).toHaveBeenCalledWith({
+      code: 'login-code',
+      returnUrl: 'https://mall.example.com/login',
+      state: 'state-1',
+    });
+    expect(navigateBack).toHaveBeenCalledOnce();
+    expect(toast).not.toHaveBeenCalled();
+  });
+
+  it('stays on the native page after login failure so the user can retry', async () => {
+    const login = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('login failed'))
+      .mockResolvedValueOnce('retry-code');
+    const writeHandoff = vi.fn(() => true);
+    const navigateBack = vi.fn();
+    const toast = vi.fn();
+    const controller = createWechatLoginController({
+      login,
+      navigateBack,
+      returnUrl: 'https://mall.example.com/login',
+      state: 'state-1',
+      toast,
+      writeHandoff,
+    });
+
+    await expect(controller.handleLogin()).resolves.toBe(false);
+    expect(navigateBack).not.toHaveBeenCalled();
+    expect(toast).toHaveBeenCalledWith('微信登录失败，请重试');
+
+    await expect(controller.handleLogin()).resolves.toBe(true);
+    expect(navigateBack).toHaveBeenCalledOnce();
+  });
+});
+
 describe('miniapp in-memory phone handoff', () => {
   it('peeks and conditionally consumes a valid handoff once', () => {
     const store = createPhoneCredentialHandoffStore();
@@ -191,23 +333,22 @@ describe('miniapp in-memory phone handoff', () => {
 });
 
 describe('miniapp page controllers', () => {
-  it('gates initial web-view rendering on a rebuilt login URL', () => {
+  it('rejects unbound automatic login codes and falls back to the clean base URL', () => {
     const rebuildWebView = createSuccessfulRebuild();
     const toast = vi.fn();
     const controller = createIndexPageController({
       baseUrl: rootBaseUrl,
       baseOrigin: rootOrigin,
+      consumeWechatLoginHandoff: () => false,
+      peekWechatLoginHandoff: () => null,
       peekPhoneHandoff: () => null,
       consumePhoneHandoff: () => false,
       rebuildWebView,
       toast,
     });
 
-    expect(controller.handleLoginSuccess(' code-1 ')).toBe(true);
-    expect(rebuildWebView).toHaveBeenLastCalledWith(
-      expect.stringContaining('wechatCode=code-1'),
-      expect.any(String),
-    );
+    expect(controller.handleLoginSuccess(' code-1 ')).toBe(false);
+    expect(rebuildWebView).toHaveBeenLastCalledWith(rootBaseUrl, '');
 
     expect(controller.handleLoginSuccess('   ')).toBe(false);
     expect(controller.handleLoginFailure()).toBe(false);
@@ -216,6 +357,127 @@ describe('miniapp page controllers', () => {
       expect.any(String),
     );
     expect(toast).toHaveBeenCalled();
+  });
+
+  it('delivers explicit login before phone when both handoffs are pending', () => {
+    const loginHandoff = {
+      code: 'explicit-code',
+      returnUrl: 'https://mall.example.com/login?redirect=%2Fcheckout',
+      state: 'state-1',
+    };
+    const phoneHandoff = {
+      credential: 'phone-code',
+      returnUrl: 'https://mall.example.com/profile',
+    };
+    let pendingLogin: typeof loginHandoff | null = loginHandoff;
+    const consumeWechatLoginHandoff = vi.fn(() => {
+      pendingLogin = null;
+      return true;
+    });
+    const consumePhoneHandoff = vi.fn(() => true);
+    const rebuildWebView = createSuccessfulRebuild();
+    const controller = createIndexPageController({
+      baseOrigin: rootOrigin,
+      baseUrl: rootBaseUrl,
+      consumePhoneHandoff,
+      consumeWechatLoginHandoff,
+      peekPhoneHandoff: () => phoneHandoff,
+      peekWechatLoginHandoff: () => pendingLogin,
+      rebuildWebView,
+      toast: vi.fn(),
+    });
+
+    expect(controller.handleShow()).toBe(true);
+    const [targetUrl, deliveryId] = rebuildWebView.mock.calls[0] ?? [];
+    expect(targetUrl).toContain('wechatCode=explicit-code');
+    expect(targetUrl).not.toContain('phoneCredential=phone-code');
+    expect(controller.handleWebViewLoad(deliveryId)).toBe(true);
+    expect(consumeWechatLoginHandoff).toHaveBeenCalledWith(loginHandoff);
+    expect(consumePhoneHandoff).not.toHaveBeenCalled();
+
+    expect(controller.handleShow()).toBe(true);
+    expect(rebuildWebView.mock.calls[1]?.[0]).toContain(
+      'phoneCredential=phone-code',
+    );
+  });
+
+  it('does not let a late automatic login overwrite an explicit handoff delivery', () => {
+    const loginHandoff = {
+      code: 'explicit-code',
+      returnUrl: 'https://mall.example.com/login',
+      state: 'state-1',
+    };
+    const consumeWechatLoginHandoff = vi.fn(() => true);
+    const rebuildWebView = createSuccessfulRebuild();
+    const controller = createIndexPageController({
+      baseOrigin: rootOrigin,
+      baseUrl: rootBaseUrl,
+      consumePhoneHandoff: () => false,
+      consumeWechatLoginHandoff,
+      peekPhoneHandoff: () => null,
+      peekWechatLoginHandoff: () => loginHandoff,
+      rebuildWebView,
+      toast: vi.fn(),
+    });
+
+    expect(controller.handleShow()).toBe(true);
+    const explicitDeliveryId = rebuildWebView.mock.calls[0]?.[1];
+    expect(controller.handleLoginSuccess('late-auto-code')).toBe(false);
+    expect(rebuildWebView).toHaveBeenCalledOnce();
+    expect(controller.handleWebViewLoad(explicitDeliveryId)).toBe(true);
+    expect(consumeWechatLoginHandoff).toHaveBeenCalledWith(loginHandoff);
+  });
+
+  it('keeps an explicit login handoff on errors, failed rebuilds, and stale loads', () => {
+    const first = {
+      code: 'explicit-code-1',
+      returnUrl: 'https://mall.example.com/login',
+      state: 'state-1',
+    };
+    const second = {
+      code: 'explicit-code-2',
+      returnUrl: 'https://mall.example.com/checkout',
+      state: 'state-2',
+    };
+    let current = first;
+    const consumeWechatLoginHandoff = vi.fn(() => true);
+    const rebuildWebView = createSuccessfulRebuild();
+    const controller = createIndexPageController({
+      baseOrigin: rootOrigin,
+      baseUrl: rootBaseUrl,
+      consumePhoneHandoff: () => false,
+      consumeWechatLoginHandoff,
+      peekPhoneHandoff: () => null,
+      peekWechatLoginHandoff: () => current,
+      rebuildWebView,
+      toast: vi.fn(),
+    });
+
+    expect(controller.handleShow()).toBe(true);
+    const firstDeliveryId = rebuildWebView.mock.calls[0]?.[1];
+    expect(controller.handleWebViewError(firstDeliveryId)).toBe(true);
+    expect(consumeWechatLoginHandoff).not.toHaveBeenCalled();
+
+    current = second;
+    expect(controller.handleShow()).toBe(true);
+    const secondDeliveryId = rebuildWebView.mock.calls[1]?.[1];
+    expect(controller.handleWebViewLoad(firstDeliveryId)).toBe(false);
+    expect(consumeWechatLoginHandoff).not.toHaveBeenCalled();
+    expect(controller.handleWebViewLoad(secondDeliveryId)).toBe(true);
+    expect(consumeWechatLoginHandoff).toHaveBeenCalledWith(second);
+
+    const failedController = createIndexPageController({
+      baseOrigin: rootOrigin,
+      baseUrl: rootBaseUrl,
+      consumePhoneHandoff: () => false,
+      consumeWechatLoginHandoff,
+      peekPhoneHandoff: () => null,
+      peekWechatLoginHandoff: () => first,
+      rebuildWebView: () => false,
+      toast: vi.fn(),
+    });
+    expect(failedController.handleShow()).toBe(false);
+    expect(consumeWechatLoginHandoff).toHaveBeenCalledOnce();
   });
 
   it('consumes a phone handoff only after the matching web-view load', () => {
@@ -231,6 +493,8 @@ describe('miniapp page controllers', () => {
     const controller = createIndexPageController({
       baseUrl: rootBaseUrl,
       baseOrigin: rootOrigin,
+      consumeWechatLoginHandoff: () => false,
+      peekWechatLoginHandoff: () => null,
       peekPhoneHandoff: () => handoff,
       consumePhoneHandoff,
       rebuildWebView,
@@ -262,6 +526,8 @@ describe('miniapp page controllers', () => {
     const controller = createIndexPageController({
       baseUrl: rootBaseUrl,
       baseOrigin: rootOrigin,
+      consumeWechatLoginHandoff: () => false,
+      peekWechatLoginHandoff: () => null,
       peekPhoneHandoff: () => handoff,
       consumePhoneHandoff,
       rebuildWebView,
@@ -295,6 +561,8 @@ describe('miniapp page controllers', () => {
     const controller = createIndexPageController({
       baseUrl: rootBaseUrl,
       baseOrigin: rootOrigin,
+      consumeWechatLoginHandoff: () => false,
+      peekWechatLoginHandoff: () => null,
       peekPhoneHandoff: () => currentHandoff,
       consumePhoneHandoff,
       rebuildWebView,
@@ -326,6 +594,8 @@ describe('miniapp page controllers', () => {
     const controller = createIndexPageController({
       baseUrl: rootBaseUrl,
       baseOrigin: rootOrigin,
+      consumeWechatLoginHandoff: () => false,
+      peekWechatLoginHandoff: () => null,
       peekPhoneHandoff: () => handoff,
       consumePhoneHandoff,
       rebuildWebView,
@@ -350,6 +620,8 @@ describe('miniapp page controllers', () => {
       createIndexPageController({
         baseUrl: rootBaseUrl,
         baseOrigin: rootOrigin,
+        consumeWechatLoginHandoff: () => false,
+        peekWechatLoginHandoff: () => null,
         peekPhoneHandoff: () => handoff,
         consumePhoneHandoff,
         rebuildWebView,
@@ -371,6 +643,8 @@ describe('miniapp page controllers', () => {
     const controller = createIndexPageController({
       baseUrl: rootBaseUrl,
       baseOrigin: rootOrigin,
+      consumeWechatLoginHandoff: () => false,
+      peekWechatLoginHandoff: () => null,
       peekPhoneHandoff: () => ({
         credential: 'phone-code',
         returnUrl: 'https://evil.example/steal',

@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { onMounted } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { showToast } from 'vant';
 
 import StoreStatePanel from '../components/feedback/StoreStatePanel.vue';
 import StorePage from '../components/layout/StorePage.vue';
 import StorePageHeader from '../components/layout/StorePageHeader.vue';
+import { resolveSafeInternalRedirect } from '../utils/redirect.js';
 import MembershipCardCarousel from './membership/components/MembershipCardCarousel.vue';
 import { hasMembershipCardContent } from './membership/hooks/purchase-capability.js';
 import { useMembershipOverview } from './membership/hooks/useMembershipOverview.js';
@@ -13,12 +14,25 @@ import {
   ProfileAccountInfo,
   ProfileIdentityCard,
   ProfileLogoutButton,
+  ProfileOrderContactPhone,
   ProfileServiceLinks,
   useProfile,
+  type ProfileNotification,
 } from './profile/index.js';
+import { ORDER_CONTACT_PHONE_EDIT_QUERY } from './profile/config/order-contact-phone.js';
 
 const router = useRouter();
-const profile = useProfile();
+const route = useRoute();
+
+function notify(notification: ProfileNotification): void {
+  showToast(
+    notification.type === 'success'
+      ? { type: 'success', message: notification.message }
+      : notification.message,
+  );
+}
+
+const profile = useProfile(notify);
 const membership = useMembershipOverview();
 
 async function loadProfile(): Promise<void> {
@@ -38,11 +52,20 @@ async function loadMembership(): Promise<void> {
 }
 
 onMounted(() => {
+  if (route.query.edit === ORDER_CONTACT_PHONE_EDIT_QUERY) {
+    profile.methods.beginOrderContactPhoneEdit();
+  }
   void Promise.allSettled([loadProfile(), loadMembership()]);
 });
 
 function navigate(path: string): void {
   void router.push(path);
+}
+
+async function saveOrderContactPhone(): Promise<void> {
+  if (!(await profile.methods.saveOrderContactPhone())) return;
+  const redirect = resolveSafeInternalRedirect(route.query.redirect, '');
+  if (redirect) await router.replace(redirect);
 }
 
 async function logout(): Promise<void> {
@@ -57,7 +80,7 @@ async function logout(): Promise<void> {
     <StorePageHeader
       title="个人中心"
       eyebrow="MY BAKE ACCOUNT"
-      description="查看账号资料与常用服务。"
+      description="身份资料与订单履约联系方式相互独立。"
     />
     <ProfileIdentityCard :profile="profile.data.profile.value" />
     <section class="profile__membership" aria-label="会员资产">
@@ -100,6 +123,17 @@ async function logout(): Promise<void> {
       />
     </section>
     <ProfileAccountInfo :profile="profile.data.profile.value" />
+    <ProfileOrderContactPhone
+      :contact="profile.data.profile.value?.orderContactPhone ?? null"
+      :editing="profile.data.editingOrderContactPhone.value"
+      :phone="profile.data.orderContactPhoneInput.value"
+      :saving="profile.savingOrderContactPhone.value"
+      :error="profile.data.orderContactPhoneError.value"
+      @edit="profile.methods.beginOrderContactPhoneEdit"
+      @cancel="profile.methods.cancelOrderContactPhoneEdit"
+      @update:phone="profile.methods.updateOrderContactPhoneInput"
+      @save="saveOrderContactPhone"
+    />
     <ProfileServiceLinks @navigate="navigate" />
     <ProfileLogoutButton @logout="logout" />
     <StoreStatePanel
@@ -135,7 +169,7 @@ async function logout(): Promise<void> {
   cursor: pointer;
 }
 .profile__retry:focus-visible {
-  outline: 3px solid color-mix(in srgb, var(--mall-accent) 50%, transparent);
+  outline: 3px solid rgb(233 168 111 / 50%);
   outline-offset: 2px;
 }
 </style>

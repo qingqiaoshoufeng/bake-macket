@@ -14,8 +14,10 @@ import { createUsersController } from './users.js';
 const user: AdminUserView = {
   id: 'user-1',
   nickname: '小莓',
-  phoneMasked: '138****0000',
-  phoneVerified: true,
+  identityPhoneMasked: '138****0000',
+  identityPhoneVerified: true,
+  wechatBound: true,
+  loginPhoneMasked: null,
   createdAt: '2026-08-06T08:00:00.000Z',
   isOperator: false,
   operatorActive: false,
@@ -104,7 +106,11 @@ describe('createUsersController', () => {
 
   it('creates a placeholder, resets to page one, and refreshes without a stale filter', async () => {
     const harness = usersHarness();
-    const created = { ...user, id: 'created', phoneVerified: false };
+    const created = {
+      ...user,
+      id: 'created',
+      identityPhoneVerified: false,
+    };
     harness.api.create.mockResolvedValue(created);
     harness.api.list.mockResolvedValue(result([created]));
     harness.controller.setQuery('old-filter');

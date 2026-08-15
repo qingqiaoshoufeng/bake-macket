@@ -71,6 +71,21 @@ test('keeps generated runtime configs ignored and declarations tracked', async (
   await access(new URL('config/api.generated.d.ts', packageRootUrl));
 });
 
+test('registers both native credential pages and gates their official controls', async () => {
+  const [appSource, phoneTemplate, loginTemplate] = await Promise.all([
+    readFile(new URL('app.json', packageRootUrl), 'utf8'),
+    readFile(new URL('pages/phone-auth/index.wxml', packageRootUrl), 'utf8'),
+    readFile(new URL('pages/wechat-login/index.wxml', packageRootUrl), 'utf8'),
+  ]);
+  const app = JSON.parse(appSource);
+
+  assert.ok(app.pages.includes('pages/phone-auth/index'));
+  assert.ok(app.pages.includes('pages/wechat-login/index'));
+  assert.match(phoneTemplate, /open-type="getPhoneNumber"/);
+  assert.match(loginTemplate, /bindtap="onWechatLogin"/);
+  assert.doesNotMatch(loginTemplate, /open-type="getPhoneNumber"/);
+});
+
 test('keeps the committed project config on the placeholder AppID', async () => {
   const project = JSON.parse(
     await readFile(new URL('project.config.json', packageRootUrl), 'utf8'),

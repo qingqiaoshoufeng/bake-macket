@@ -402,6 +402,7 @@ describe('OrdersService', () => {
         credit as MembershipCreditService,
         idempotencyService,
       ),
+      userRecords: records.users,
       skuRecords: records.skus,
       orderRecords: records.orders,
       cartRecords: records.cartItems,
@@ -427,7 +428,7 @@ describe('OrdersService', () => {
     overrides: Partial<{
       cartItemIds: string[];
       contactName: string;
-      contactPhone: string;
+      orderContactPhoneVersion: number;
       pickupTimeText: string;
       requestedCreditCents: number;
       quoteToken: string;
@@ -437,7 +438,7 @@ describe('OrdersService', () => {
     cartItemIds: overrides.cartItemIds ?? ['cart-1'],
     fulfillmentType: FulfillmentType.PICKUP as const,
     contactName: overrides.contactName ?? '张三',
-    contactPhone: overrides.contactPhone ?? '13800000000',
+    orderContactPhoneVersion: overrides.orderContactPhoneVersion ?? 1,
     pickupTimeText: overrides.pickupTimeText ?? '明天 10:00',
     ...(overrides.requestedCreditCents === undefined
       ? {}
@@ -448,8 +449,21 @@ describe('OrdersService', () => {
     ...(overrides.remark === undefined ? {} : { remark: overrides.remark }),
   });
 
+  function orderUser(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 'user-1',
+      phone: '13800000000',
+      phoneVerified: true,
+      orderContactPhone: '13900000000',
+      orderContactPhoneVersion: 1,
+      isActive: true,
+      mergedIntoUserId: null,
+      ...overrides,
+    };
+  }
+
   const basicOrderRecords = () => ({
-    users: [{ id: 'user-1', phone: '13800000000', phoneVerified: true }],
+    users: [orderUser()],
     products: [{ id: 'product-1', name: '草莓蛋糕', isActive: true }],
     skus: [
       {
@@ -529,6 +543,51 @@ describe('OrdersService', () => {
     expect(lockOrder.slice(0, 3)).toEqual(['user', 'idempotency', 'account']);
   });
 
+  it('rejects missing and stale server contact profiles while accepting identity-phone independence', async () => {
+    const missing = buildService({
+      ...basicOrderRecords(),
+      users: [
+        orderUser({ orderContactPhone: null, orderContactPhoneVersion: 0 }),
+      ],
+    });
+    await expect(
+      missing.service.create(
+        'user-1',
+        'missing-contact-profile',
+        pickupDto({ orderContactPhoneVersion: 0 }),
+      ),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({
+        code: ApiErrorCode.ORDER_CONTACT_PHONE_REQUIRED,
+      }),
+    });
+
+    const stale = buildService(basicOrderRecords());
+    await expect(
+      stale.service.create(
+        'user-1',
+        'stale-contact-profile',
+        pickupDto({ orderContactPhoneVersion: 0 }),
+      ),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({
+        code: ApiErrorCode.ORDER_CONTACT_PHONE_VERSION_CONFLICT,
+      }),
+    });
+
+    const independent = buildService({
+      ...basicOrderRecords(),
+      users: [orderUser({ phone: null, phoneVerified: false })],
+    });
+    await expect(
+      independent.service.create(
+        'user-1',
+        'identity-independent-contact',
+        pickupDto(),
+      ),
+    ).resolves.toMatchObject({ contactPhone: '13900000000' });
+  });
+
   it('writes immutable product and SKU source IDs into new order items', async () => {
     const records = buildService(basicOrderRecords());
 
@@ -541,6 +600,25 @@ describe('OrdersService', () => {
         productName: '草莓蛋糕',
         skuName: '6寸',
       }),
+    );
+  });
+
+  it('uses only the contact version in the request hash and snapshots the locked server value', async () => {
+    const records = buildService(basicOrderRecords());
+    const dto = pickupDto();
+
+    const view = await records.service.create(
+      'user-1',
+      'server-contact-key',
+      dto,
+    );
+
+    expect(view.contactPhone).toBe('13900000000');
+    expect(records.orderCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ contactPhone: '13900000000' }),
+    );
+    expect(records.idempotencyRecords[0]?.requestHash).toBe(
+      '3353b6aad2dd2409549b4b3593cab78bcf20a5725d44e6a83a9813550b0261c8',
     );
   });
 
@@ -566,6 +644,35 @@ describe('OrdersService', () => {
       }),
     ]);
     expect(records.skuRecords[0]?.stock).toBe(4);
+  });
+
+  it('returns a replay completed while waiting for the User lock before checking the current contact version', async () => {
+    const records = buildService(basicOrderRecords());
+    const dto = pickupDto({ remark: '少糖' });
+    const first = await records.service.create(
+      'user-1',
+      'raced-replay-key',
+      dto,
+    );
+    const completed = records.idempotencyRecords[0];
+    if (!completed) throw new Error('Expected completed idempotency record');
+
+    const raced = buildService({
+      ...basicOrderRecords(),
+      users: [
+        {
+          ...records.userRecords[0],
+          orderContactPhone: '13700000000',
+          orderContactPhoneVersion: 2,
+        },
+      ],
+      idempotencyInsertError: { code: 'ER_DUP_ENTRY' },
+      idempotencyAfterInsertError: completed,
+    });
+
+    await expect(
+      raced.service.create('user-1', 'raced-replay-key', dto),
+    ).resolves.toEqual(first);
   });
 
   it('rejects a completed response snapshot whose order item is missing its string id', async () => {
@@ -642,7 +749,7 @@ describe('OrdersService', () => {
           operation: 'PRODUCT_ORDER_CREATE',
           key: 'in-progress-key',
           requestHash:
-            '91d74b8433e2811bb99df6db2ceff1438cb69729258d109a8a1cc99efac7b97b',
+            '3353b6aad2dd2409549b4b3593cab78bcf20a5725d44e6a83a9813550b0261c8',
           status: 'IN_PROGRESS',
           resourceType: null,
           resourceId: null,
@@ -666,7 +773,7 @@ describe('OrdersService', () => {
       'same raced request',
       {
         requestHash:
-          '91d74b8433e2811bb99df6db2ceff1438cb69729258d109a8a1cc99efac7b97b',
+          '3353b6aad2dd2409549b4b3593cab78bcf20a5725d44e6a83a9813550b0261c8',
         status: 'IN_PROGRESS',
       },
       ApiErrorCode.IDEMPOTENCY_IN_PROGRESS,
@@ -709,7 +816,7 @@ describe('OrdersService', () => {
       operation: 'PRODUCT_ORDER_CREATE',
       key: 'failed-retry-key',
       requestHash:
-        '91d74b8433e2811bb99df6db2ceff1438cb69729258d109a8a1cc99efac7b97b',
+        '3353b6aad2dd2409549b4b3593cab78bcf20a5725d44e6a83a9813550b0261c8',
       status: 'FAILED',
       resourceType: null,
       resourceId: null,
@@ -839,7 +946,7 @@ describe('OrdersService', () => {
             operation: 'PRODUCT_ORDER_CREATE',
             key: `corrupt-${_name}`,
             requestHash:
-              '91d74b8433e2811bb99df6db2ceff1438cb69729258d109a8a1cc99efac7b97b',
+              '3353b6aad2dd2409549b4b3593cab78bcf20a5725d44e6a83a9813550b0261c8',
             status: 'COMPLETED',
             ...corrupt,
           },
@@ -860,7 +967,7 @@ describe('OrdersService', () => {
         cartItemIds: ['cart-1'],
         fulfillmentType: FulfillmentType.PICKUP,
         contactName: '张三',
-        contactPhone: '13800000000',
+        orderContactPhoneVersion: 1,
         pickupTimeText: '明天 10:00',
       } as CreateOrderDto),
     ).resolves.toMatchObject({ id: expect.any(String) });
@@ -1382,7 +1489,7 @@ describe('OrdersService', () => {
 
   it('creates a non-member order with internally consistent pricing snapshots', async () => {
     const records = buildService({
-      users: [{ id: 'user-1', phone: '13800000000', phoneVerified: true }],
+      users: [orderUser()],
       products: [
         { id: 'product-1', name: '草莓蛋糕', isActive: true },
         { id: 'product-2', name: '巧克力曲奇', isActive: true },
@@ -1417,7 +1524,7 @@ describe('OrdersService', () => {
       cartItemIds: ['cart-1', 'cart-2'],
       fulfillmentType: FulfillmentType.PICKUP,
       contactName: '张三',
-      contactPhone: '13800000000',
+      orderContactPhoneVersion: 1,
       pickupTimeText: '明天 10:00',
     });
 
@@ -1460,7 +1567,7 @@ describe('OrdersService', () => {
       orderId: null,
     };
     const records = buildService({
-      users: [{ id: 'user-1', phone: '13800000000', phoneVerified: true }],
+      users: [orderUser()],
       products: [{ id: 'product-1', name: '草莓蛋糕', isActive: true }],
       skus: [
         {
@@ -1486,7 +1593,7 @@ describe('OrdersService', () => {
         cartItemIds: ['cart-1'],
         fulfillmentType: FulfillmentType.PICKUP,
         contactName: '张三',
-        contactPhone: '13800000000',
+        orderContactPhoneVersion: 1,
         pickupTimeText: '明天 10:00',
       },
     );
@@ -1507,7 +1614,7 @@ describe('OrdersService', () => {
 
   it('increments stockVersion exactly once with a successful stock decrement', async () => {
     const records = buildService({
-      users: [{ id: 'user-1', phone: '13800000000', phoneVerified: true }],
+      users: [orderUser()],
       products: [{ id: 'product-1', isActive: true }],
       skus: [
         {
@@ -1529,7 +1636,7 @@ describe('OrdersService', () => {
       cartItemIds: ['cart-1'],
       fulfillmentType: FulfillmentType.PICKUP,
       contactName: '张三',
-      contactPhone: '13800000000',
+      orderContactPhoneVersion: 1,
       pickupTimeText: '明天 10:00',
     });
 
@@ -1538,13 +1645,7 @@ describe('OrdersService', () => {
 
   it('throws STOCK_INSUFFICIENT and rolls back any prior decrement when one SKU is short', async () => {
     const { service } = buildService({
-      users: [
-        {
-          id: 'user-1',
-          phone: '13800000000',
-          phoneVerified: true,
-        },
-      ],
+      users: [orderUser()],
       products: [{ id: 'product-1', isActive: true }],
       skus: [
         {
@@ -1572,7 +1673,7 @@ describe('OrdersService', () => {
         cartItemIds: ['cart-1', 'cart-2'],
         fulfillmentType: FulfillmentType.PICKUP,
         contactName: 'Alice',
-        contactPhone: '13800000000',
+        orderContactPhoneVersion: 1,
         pickupTimeText: 'tomorrow 10am',
       }),
     ).rejects.toMatchObject({
@@ -1584,13 +1685,7 @@ describe('OrdersService', () => {
 
   it('returns the original order on a duplicate idempotency key without re-decrementing stock', async () => {
     const records = buildService({
-      users: [
-        {
-          id: 'user-1',
-          phone: '13800000000',
-          phoneVerified: true,
-        },
-      ],
+      users: [orderUser()],
       products: [{ id: 'product-1', name: '草莓蛋糕', isActive: true }],
       skus: [
         {
@@ -1611,7 +1706,7 @@ describe('OrdersService', () => {
       cartItemIds: ['cart-1'],
       fulfillmentType: FulfillmentType.PICKUP as const,
       contactName: 'Alice',
-      contactPhone: '13800000000',
+      orderContactPhoneVersion: 1,
       pickupTimeText: 'tomorrow',
     };
     const first = await records.service.create('user-1', 'stable-key', dto);
@@ -1919,7 +2014,7 @@ describe('OrdersService', () => {
       version: 4,
     };
     const records = buildService({
-      users: [{ id: 'user-1', phone: '13800000000', phoneVerified: true }],
+      users: [orderUser()],
       memberAccounts: [account],
       creditEntries: [
         {
@@ -2027,7 +2122,7 @@ describe('OrdersService', () => {
       };
       const reverseDebit = vi.fn();
       const records = buildService({
-        users: [{ id: 'user-1', phone: '13800000000', phoneVerified: true }],
+        users: [orderUser()],
         memberAccounts: [account],
         creditEntries: [
           {
@@ -2177,7 +2272,7 @@ describe('OrdersService', () => {
       allocations: [],
     });
     const records = buildService({
-      users: [{ id: 'user-1', phone: '13800000000', phoneVerified: true }],
+      users: [orderUser()],
       memberAccounts: [account],
       creditEntries: [
         {
@@ -2244,7 +2339,7 @@ describe('OrdersService', () => {
       version: 4,
     };
     const records = buildService({
-      users: [{ id: 'user-1', phone: '13800000000', phoneVerified: true }],
+      users: [orderUser()],
       memberAccounts: [account],
       creditEntries: [
         {
@@ -2338,13 +2433,7 @@ describe('OrdersService', () => {
 
   it('rejects create with ConflictException when an idempotency key collides and the prior request has not finished', async () => {
     const { service } = buildService({
-      users: [
-        {
-          id: 'user-1',
-          phone: '13800000000',
-          phoneVerified: true,
-        },
-      ],
+      users: [orderUser()],
       products: [{ id: 'product-1', isActive: true }],
       skus: [
         {
@@ -2373,7 +2462,7 @@ describe('OrdersService', () => {
         cartItemIds: ['cart-1'],
         fulfillmentType: FulfillmentType.PICKUP,
         contactName: 'Alice',
-        contactPhone: '13800000000',
+        orderContactPhoneVersion: 1,
         pickupTimeText: 'tomorrow',
       }),
     ).rejects.toBeInstanceOf(ConflictException);

@@ -95,7 +95,7 @@ export function useAdminLogin() {
       ElMessage.warning(
         kind.value === 'SUPER_ADMIN'
           ? '请输入管理员邮箱与密码'
-          : '请输入操作员手机号与密码',
+          : '请输入管理员登录手机号与密码',
       );
       return;
     }

@@ -86,14 +86,24 @@ apps/miniapp-shell
 
 ## 5. 准备商家与订单
 
-数据库中需要一个有效的 OPERATOR 管理员身份，且关联微信用户，拥有：
+数据库中需要一个由 SUPER_ADMIN 显式授权的有效 OPERATOR：`AdminUser.loginPhone` 为唯一且独立的 PC 管理员登录手机号，`linkedUserId` 指向 active、未合并且具有微信 OpenID 或 UnionID 的 User。订单联系手机号和历史身份手机号不作为管理员资格。OPERATOR 拥有：
 
 - `PRINT_DEVICE_MANAGE`
 - `PRINT_EXECUTE`
 - `PRINT_HISTORY_READ`
 - `ORDER_READ`
 
-同时准备至少一笔 `NEW` 或 `PROCESSING` 且带订单明细的测试订单。取消订单不可打印。小程序不会自动消费新订单，必须由商家主动选择并提交。
+同时准备至少一笔 `NEW` 或 `PROCESSING` 且带订单明细的测试订单。订单联系人手机号应来自创建订单时服务端锁定的 `User.orderContactPhone` 快照；打印输出只能使用脱敏号码。取消订单不可打印。小程序不会自动消费新订单，必须由商家主动选择并提交。
+
+进入管理区时，小程序应使用当前微信 `mall-user` 会话直接 exchange；不得进入 `/pages/phone-auth/index?flow=admin`，不得调用 `getPhoneNumber`，也不得依赖微信手机号付费额度。撤权、linked User 停用/合并或清理微信身份后，已有管理 token 和新 exchange 都应立即失败。
+
+### 5.1 管理员身份与登录验收
+
+1. SUPER_ADMIN 仅可对已绑定微信身份的 User 授权，并必须填写独立管理员登录手机号、临时密码/确认密码和当前超级管理员密码。
+2. Admin Web 用户列表只返回历史身份手机号和管理员登录手机号的脱敏值；按完整 loginPhone 搜索也不得回显完整号码。
+3. OPERATOR 可用独立 loginPhone + 密码登录 PC；小程序通过微信 linked User 直接 exchange。两条路径都不读取 `User.orderContactPhone`。
+4. 并发配置相同 loginPhone 时唯一索引只能允许一个成功；重复值返回稳定冲突，不得泄露另一个管理员。
+5. legacy OPERATOR 若无法从合法历史身份手机号回填 loginPhone，应为 inactive 且 tokenVersion 已递增，等待 SUPER_ADMIN 重新授权。
 
 ## 6. 绑定 fake 打印机
 

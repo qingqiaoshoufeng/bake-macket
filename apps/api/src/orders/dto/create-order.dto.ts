@@ -8,7 +8,6 @@ import {
   IsOptional,
   IsString,
   Length,
-  Matches,
   Min,
   MaxLength,
   ValidateIf,
@@ -36,8 +35,11 @@ export class CreateOrderDto {
   @MaxLength(64)
   contactName!: string;
 
-  @Matches(/^1\d{10}$/)
-  contactPhone!: string;
+  @IsDefined()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  orderContactPhoneVersion!: number;
 
   @ValidateIf(
     (dto: CreateOrderDto) => dto.fulfillmentType === FulfillmentType.PICKUP,

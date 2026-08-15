@@ -74,7 +74,7 @@ describe('UserIdentityService', () => {
     expect(result).toMatchObject({ id: '11', phoneVerified: false });
   });
 
-  it('按 user → linked admin 的固定顺序加锁并在锁后应用变更', async () => {
+  it('身份手机号变化只锁定并保存 User，不读取或失效 linked OPERATOR', async () => {
     const calls: string[] = [];
     const user = {
       id: '7',
@@ -82,7 +82,6 @@ describe('UserIdentityService', () => {
       phoneVerified: true,
       tokenVersion: 1,
     };
-    const operator = { id: '9', linkedUserId: '7', tokenVersion: 2 };
     const manager = {
       getRepository: vi.fn((entity: unknown) => {
         if (entity === User) {
@@ -101,33 +100,14 @@ describe('UserIdentityService', () => {
             }),
           };
         }
-        return {
-          createQueryBuilder: vi.fn(() => ({
-            setLock: vi.fn().mockReturnThis(),
-            where: vi.fn().mockReturnThis(),
-            andWhere: vi.fn().mockReturnThis(),
-            getOne: vi.fn(async () => {
-              calls.push('admin-lock');
-              return operator;
-            }),
-          })),
-          save: vi.fn(async (value: AdminUser) => {
-            calls.push('admin-save');
-            return value;
-          }),
-        };
+        throw new Error('identity phone update must not access AdminUser');
       }),
     };
     const service = new UserIdentityService({ transaction: vi.fn() } as never);
 
     await service.setVerifiedPhone('7', '13800000000', manager as never);
 
-    expect(calls).toEqual([
-      'user-lock',
-      'admin-lock',
-      'admin-save',
-      'user-save',
-    ]);
+    expect(calls).toEqual(['user-lock', 'user-save']);
   });
   it('普通同记录验证成功递增 User tokenVersion，但 false→true 不递增 OPERATOR', async () => {
     const user = {
@@ -148,7 +128,7 @@ describe('UserIdentityService', () => {
     expect(adminSave).not.toHaveBeenCalled();
   });
 
-  it('手机号变化时在同一 manager 内递增关联 OPERATOR tokenVersion', async () => {
+  it('手机号变化不递增关联 OPERATOR tokenVersion', async () => {
     const user = {
       id: '7',
       phone: '13700000000',
@@ -161,9 +141,8 @@ describe('UserIdentityService', () => {
 
     await service.setVerifiedPhone('7', '13800000000', manager as never);
 
-    expect(adminSave).toHaveBeenCalledWith(
-      expect.objectContaining({ id: '9', tokenVersion: 4 }),
-    );
+    expect(adminSave).not.toHaveBeenCalled();
+    expect(operator.tokenVersion).toBe(3);
   });
 
   it('phoneVerified true→false 时递增双方 tokenVersion，且无 OPERATOR 不报错', async () => {

@@ -5,8 +5,10 @@ export const USER_LIST_MOCK: AdminUserListResult = {
     {
       id: '10001',
       nickname: '小莓',
-      phoneMasked: '138****0000',
-      phoneVerified: true,
+      identityPhoneMasked: '138****0000',
+      identityPhoneVerified: true,
+      wechatBound: true,
+      loginPhoneMasked: null,
       createdAt: '2026-08-06T08:00:00.000Z',
       isOperator: false,
       operatorActive: false,

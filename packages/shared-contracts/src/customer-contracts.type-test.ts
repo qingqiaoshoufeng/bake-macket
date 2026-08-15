@@ -12,6 +12,32 @@ const profile: CustomerProfileView = {
   nickname: null,
   avatarUrl: null,
   phone: '138****0000',
+  phoneVerified: true,
+  orderContactPhone: {
+    configured: true,
+    maskedPhone: '138****0000',
+    version: 1,
+  },
+};
+
+const invalidUnconfiguredContact: CustomerProfileView = {
+  ...profile,
+  // @ts-expect-error 未配置联系号时不能携带脱敏号码。
+  orderContactPhone: {
+    configured: false,
+    maskedPhone: '138****0000',
+    version: 0,
+  },
+};
+
+const invalidConfiguredContact: CustomerProfileView = {
+  ...profile,
+  // @ts-expect-error 已配置联系号必须携带脱敏号码。
+  orderContactPhone: {
+    configured: true,
+    maskedPhone: null,
+    version: 1,
+  },
 };
 
 const cartItem: CartItemView = {
@@ -77,6 +103,8 @@ const invalidAddress: CreateAddressRequest = {
 
 void [
   profile,
+  invalidUnconfiguredContact,
+  invalidConfiguredContact,
   cartItem,
   upsert,
   absoluteQuantity,

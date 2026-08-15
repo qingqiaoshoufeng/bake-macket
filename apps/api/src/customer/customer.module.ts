@@ -10,6 +10,7 @@ import { UsersModule } from '../users/users.module.js';
 import { AddressService } from './address.service.js';
 import { CartService } from './cart.service.js';
 import { MeController } from './me.controller.js';
+import { OrderContactPhoneService } from './order-contact-phone.service.js';
 
 @Module({
   imports: [
@@ -17,7 +18,7 @@ import { MeController } from './me.controller.js';
     TypeOrmModule.forFeature([User, Address, CartItem, Product, Sku]),
   ],
   controllers: [MeController],
-  providers: [AddressService, CartService],
-  exports: [AddressService, CartService],
+  providers: [AddressService, CartService, OrderContactPhoneService],
+  exports: [AddressService, CartService, OrderContactPhoneService],
 })
 export class CustomerModule {}

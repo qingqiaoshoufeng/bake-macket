@@ -417,8 +417,7 @@ export class UserIdentityMergeService {
     );
 
     if (source.id === canonical.id) {
-      const operatorChanged =
-        canonical.phone !== phone && canonicalOperators.length === 1;
+      const operatorChanged = false;
       await this.identities.applyLockedPhoneIdentity(
         canonical,
         { phone, phoneVerified: true, forceTokenVersionIncrement: true },
@@ -447,11 +446,7 @@ export class UserIdentityMergeService {
       };
     }
 
-    if (
-      canonicalOperators.length > 1 ||
-      sourceOperators.length > 1 ||
-      (canonicalOperators.length > 0 && sourceOperators.length > 0)
-    ) {
+    if (canonicalOperators.length > 1 || sourceOperators.length > 0) {
       reject('ADMIN_UNIQUENESS', {
         canonicalOperators: canonicalOperators.length,
         sourceOperators: sourceOperators.length,
@@ -529,14 +524,7 @@ export class UserIdentityMergeService {
       });
     }
 
-    const sourceOperator = sourceOperators[0];
-    let operatorChanged = false;
-    if (sourceOperator) {
-      sourceOperator.linkedUserId = canonical.id;
-      sourceOperator.tokenVersion += 1;
-      await manager.getRepository(AdminUser).save(sourceOperator);
-      operatorChanged = true;
-    }
+    const operatorChanged = false;
 
     const sourceWechatIdentity = {
       openid: source.wechatOpenid,

@@ -1,7 +1,10 @@
 import { type GrantOperatorRequest } from '@bake-mall/contracts';
-import { IsString } from 'class-validator';
+import { IsString, Matches } from 'class-validator';
 
 export class GrantOperatorDto implements GrantOperatorRequest {
+  @Matches(/^1\d{10}$/)
+  loginPhone!: string;
+
   @IsString()
   currentPassword!: string;
 

@@ -177,8 +177,7 @@ defineEmits<{
   width: 100%;
   min-height: 48px;
   margin-top: var(--mall-space-3);
-  border: 1px solid
-    color-mix(in srgb, var(--mall-danger) 35%, var(--mall-border));
+  border: 1px solid #daa4a7;
   border-radius: var(--mall-radius-card);
   background: var(--mall-surface);
   color: var(--mall-danger);

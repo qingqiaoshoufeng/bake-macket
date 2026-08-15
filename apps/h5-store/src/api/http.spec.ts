@@ -84,6 +84,30 @@ describe('ApiClient timeout and retry policy', () => {
     expect(onUnauthorized).toHaveBeenCalledOnce();
   });
 
+  it('does not attach or clear the current session for an explicitly anonymous request', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ message: 'invalid login code' }, 401));
+    vi.stubGlobal('fetch', fetchMock);
+    const client = new ApiClient('/api/v1');
+    const onUnauthorized = vi.fn();
+    client.setAccessToken('newer-session-token');
+    client.onUnauthorized(onUnauthorized);
+
+    await expect(
+      client.post(
+        '/auth/wechat/login',
+        { code: 'stale-code' },
+        { token: null },
+      ),
+    ).rejects.toMatchObject({ status: 401 });
+
+    expect(
+      new Headers(fetchMock.mock.calls[0]?.[1]?.headers).has('Authorization'),
+    ).toBe(false);
+    expect(onUnauthorized).not.toHaveBeenCalled();
+  });
+
   it('retries order creation once when POST carries a stable Idempotency-Key', async () => {
     const fetchMock = vi
       .fn()

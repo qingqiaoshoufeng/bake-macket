@@ -48,7 +48,7 @@ defineEmits<{ (event: 'navigate', path: string): void }>();
   font-size: 24px;
 }
 .profile-links button:focus-visible {
-  outline: 3px solid color-mix(in srgb, var(--mall-primary) 40%, transparent);
+  outline: 3px solid rgb(120 162 129 / 42%);
   outline-offset: -3px;
 }
 </style>

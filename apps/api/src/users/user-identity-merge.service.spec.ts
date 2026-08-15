@@ -303,6 +303,80 @@ describe('UserIdentityMergeService transaction injection', () => {
   });
 });
 
+describe('OPERATOR merge fail-closed', () => {
+  it('拒绝把 source OPERATOR 授权无声迁移到 canonical user', async () => {
+    const canonical = {
+      id: '10',
+      phone: '13800000000',
+      phoneVerified: false,
+      isActive: true,
+      mergedIntoUserId: null,
+      wechatOpenid: null,
+      wechatUnionid: null,
+    };
+    const source = {
+      id: '20',
+      phone: null,
+      phoneVerified: false,
+      isActive: true,
+      mergedIntoUserId: null,
+      wechatOpenid: 'openid-source',
+      wechatUnionid: null,
+    };
+    const sourceOperator = {
+      id: '9',
+      role: AdminRole.OPERATOR,
+      linkedUserId: source.id,
+      isActive: true,
+      tokenVersion: 3,
+    };
+    const users = {
+      find: vi.fn().mockResolvedValue([source, canonical]),
+      createQueryBuilder: vi.fn(() => queryBuilder([canonical, source])),
+    };
+    const admins = {
+      createQueryBuilder: vi.fn(() => queryBuilder([sourceOperator])),
+      save: vi.fn(),
+    };
+    const unusedRepository = {
+      count: vi.fn().mockResolvedValue(0),
+      find: vi.fn().mockResolvedValue([]),
+    };
+    const manager = {
+      getRepository: vi.fn((entity: unknown) => {
+        if (entity === User) return users;
+        if (entity === AdminUser) return admins;
+        return unusedRepository;
+      }),
+    };
+    const service = new UserIdentityMergeService(
+      {} as never,
+      { applyLockedPhoneIdentity: vi.fn() } as never,
+      { record: vi.fn() } as never,
+    );
+
+    await expect(
+      service.mergeVerifiedPhoneInTransaction(
+        {
+          authenticatedUserId: source.id,
+          normalizedPhone: '13800000000',
+        },
+        manager as never,
+      ),
+    ).rejects.toMatchObject({
+      category: 'ADMIN_UNIQUENESS',
+      counts: { sourceOperators: 1 },
+    });
+
+    expect(admins.save).not.toHaveBeenCalled();
+    expect(sourceOperator).toMatchObject({
+      linkedUserId: source.id,
+      isActive: true,
+      tokenVersion: 3,
+    });
+  });
+});
+
 describe('phone unique-index defense in depth', () => {
   it('maps ER_DUP_ENTRY only after confirming a competing phone owner', async () => {
     const source = {
@@ -381,7 +455,7 @@ describe('phone unique-index defense in depth', () => {
 });
 
 describe('same-record phone verification audit', () => {
-  it('records linked operator invalidation when a verified phone changes on the same record', async () => {
+  it('records phone verification without invalidating an independent linked operator', async () => {
     const source: {
       id: string;
       phone: string | null;
@@ -448,7 +522,7 @@ describe('same-record phone verification audit', () => {
         }),
     );
 
-    expect(result.operatorChanged).toBe(true);
+    expect(result.operatorChanged).toBe(false);
     expect(audit.record).toHaveBeenCalledWith(
       {
         actor: { type: 'USER', userId: source.id },
@@ -459,7 +533,7 @@ describe('same-record phone verification audit', () => {
           canonicalUserId: source.id,
           sourceUserId: source.id,
           sameRecord: true,
-          operatorChanged: true,
+          operatorChanged: false,
         },
       },
       manager,

@@ -7,7 +7,7 @@ import { createMemoryHistory, createRouter } from 'vue-router';
 import {
   DEVELOPMENT_LOGIN_HINT,
   miniappMessageHub,
-  requestMiniappPhoneCredential,
+  requestMiniappWechatLogin,
 } from '../bridge/miniapp.js';
 import LoginView from './LoginView.vue';
 import { useAuthStore } from '../stores/auth.js';
@@ -30,7 +30,7 @@ vi.mock('../bridge/miniapp.js', async (importOriginal) => {
       publish: vi.fn(),
       subscribe: vi.fn(() => vi.fn()),
     },
-    requestMiniappPhoneCredential: vi.fn(async () => true),
+    requestMiniappWechatLogin: vi.fn(async () => false),
   };
 });
 
@@ -65,14 +65,11 @@ afterEach(() => {
 });
 
 describe('LoginView', () => {
-  it('subscribes to the global in-memory hub and unsubscribes on unmount', async () => {
-    const unsubscribe = vi.fn();
-    vi.mocked(miniappMessageHub.subscribe).mockReturnValueOnce(unsubscribe);
+  it('leaves miniapp bridge consumption to the application coordinator', async () => {
     const { wrapper } = await mountLogin();
 
-    expect(miniappMessageHub.subscribe).toHaveBeenCalledOnce();
+    expect(miniappMessageHub.subscribe).not.toHaveBeenCalled();
     wrapper.unmount();
-    expect(unsubscribe).toHaveBeenCalledOnce();
   });
 
   it('renders the shared development credentials', async () => {
@@ -93,6 +90,12 @@ describe('LoginView', () => {
       nickname: '烘焙客',
       avatarUrl: null,
       phone: '138****0000',
+      phoneVerified: true,
+      orderContactPhone: {
+        configured: true,
+        maskedPhone: '139****0000',
+        version: 1,
+      },
     } satisfies CustomerProfileView;
     vi.mocked(loginFeatureApi.login).mockResolvedValue({
       accessToken: 'user-token-1',
@@ -114,6 +117,7 @@ describe('LoginView', () => {
       avatarUrl: undefined,
       phone: profile.phone,
       phoneVerified: true,
+      orderContactPhone: profile.orderContactPhone,
     });
   });
 
@@ -160,26 +164,17 @@ describe('LoginView', () => {
     });
   });
 
-  it('shows a user-facing miniapp phone button and awaits native authorization navigation', async () => {
+  it('始终展示显式微信登录按钮并把主动请求交给 bridge', async () => {
+    vi.mocked(requestMiniappWechatLogin).mockResolvedValue(true);
     const { wrapper } = await mountLogin();
 
-    const button = wrapper.get('button[data-testid="miniapp-phone-auth"]');
-    expect(button.text()).toContain('微信手机号');
+    const button = wrapper.get('[data-testid="wechat-login"]');
+    expect(button.text()).toBe('微信登录');
     await button.trigger('click');
 
-    expect(requestMiniappPhoneCredential).toHaveBeenCalledOnce();
-  });
-
-  it('reports a failed native navigation instead of treating API presence as success', async () => {
-    vi.mocked(requestMiniappPhoneCredential).mockResolvedValueOnce(false);
-    const { showToast } = await import('vant');
-    const { wrapper } = await mountLogin();
-
-    await wrapper
-      .get('button[data-testid="miniapp-phone-auth"]')
-      .trigger('click');
-    await vi.waitFor(() =>
-      expect(showToast).toHaveBeenCalledWith('请在微信小程序中使用手机号授权'),
+    expect(requestMiniappWechatLogin).toHaveBeenCalledOnce();
+    expect(wrapper.find('[data-testid="miniapp-phone-auth"]').exists()).toBe(
+      false,
     );
   });
 });

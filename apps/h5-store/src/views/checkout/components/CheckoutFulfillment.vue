@@ -38,7 +38,13 @@ function updateAddress(event: Event): void {
       <span>02</span><strong>履约方式</strong>
     </legend>
     <div class="checkout__radio-grid">
-      <label class="checkout__radio">
+      <label
+        class="checkout__radio"
+        :class="{
+          'checkout__radio--checked':
+            fulfillmentType === FulfillmentType.PICKUP,
+        }"
+      >
         <input
           :checked="fulfillmentType === FulfillmentType.PICKUP"
           type="radio"
@@ -49,7 +55,13 @@ function updateAddress(event: Event): void {
         />
         <span>到店自提</span>
       </label>
-      <label class="checkout__radio">
+      <label
+        class="checkout__radio"
+        :class="{
+          'checkout__radio--checked':
+            fulfillmentType === FulfillmentType.DELIVERY,
+        }"
+      >
         <input
           :checked="fulfillmentType === FulfillmentType.DELIVERY"
           type="radio"
@@ -87,7 +99,10 @@ function updateAddress(event: Event): void {
       <p class="checkout__hint">配送时间由商家联系确认。</p>
       <ul v-if="addresses.length" class="checkout__addresses">
         <li v-for="address in addresses" :key="address.id">
-          <label class="checkout__radio checkout__radio--address">
+          <label
+            class="checkout__radio checkout__radio--address"
+            :class="{ 'checkout__radio--checked': addressId === address.id }"
+          >
             <input
               :checked="addressId === address.id"
               type="radio"
@@ -178,7 +193,7 @@ function updateAddress(event: Event): void {
   font-size: 14px;
   cursor: pointer;
 }
-.checkout__radio:has(input:checked) {
+.checkout__radio--checked {
   border-color: var(--mall-primary);
   background: var(--mall-surface-soft);
 }
@@ -227,7 +242,7 @@ function updateAddress(event: Event): void {
 }
 .checkout__control textarea:focus {
   border-color: var(--mall-primary);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mall-primary) 14%, transparent);
+  box-shadow: 0 0 0 3px rgb(120 162 129 / 18%);
 }
 .checkout__hint {
   margin: 0 0 var(--mall-space-2);

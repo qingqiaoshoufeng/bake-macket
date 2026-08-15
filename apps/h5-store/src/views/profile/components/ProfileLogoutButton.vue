@@ -17,8 +17,7 @@ defineEmits<{ (event: 'logout'): void }>();
 .profile-logout {
   width: 100%;
   min-height: 48px;
-  border: 1px solid
-    color-mix(in srgb, var(--mall-danger) 35%, var(--mall-border));
+  border: 1px solid #daa4a7;
   border-radius: var(--mall-radius-card);
   background: var(--mall-surface);
   color: var(--mall-danger);
@@ -28,7 +27,7 @@ defineEmits<{ (event: 'logout'): void }>();
   cursor: pointer;
 }
 .profile-logout:focus-visible {
-  outline: 3px solid color-mix(in srgb, var(--mall-danger) 25%, transparent);
+  outline: 3px solid rgb(199 93 98 / 28%);
   outline-offset: 2px;
 }
 </style>

@@ -119,8 +119,10 @@ describe('Admin users (e2e)', () => {
           nickname: '已有用户',
           phone: '13900000000',
           phoneVerified: 1,
+          wechatBound: 1,
           createdAt: new Date('2026-08-04T00:00:00.000Z'),
           operatorId: '42',
+          operatorLoginPhone: '13700000000',
           operatorActive: 1,
           mustChangePassword: 0,
         },
@@ -207,8 +209,10 @@ describe('Admin users (e2e)', () => {
         {
           id: '7',
           nickname: '已有用户',
-          phoneMasked: '139****0000',
-          phoneVerified: true,
+          identityPhoneMasked: '139****0000',
+          identityPhoneVerified: true,
+          wechatBound: true,
+          loginPhoneMasked: '137****0000',
           createdAt: '2026-08-04T00:00:00.000Z',
           isOperator: true,
           operatorActive: true,
@@ -232,8 +236,10 @@ describe('Admin users (e2e)', () => {
       .expect(201);
 
     expect(response.body).toMatchObject({
-      phoneMasked: '138****0000',
-      phoneVerified: false,
+      identityPhoneMasked: '138****0000',
+      identityPhoneVerified: false,
+      wechatBound: false,
+      loginPhoneMasked: null,
       isOperator: false,
       operatorActive: false,
       mustChangePassword: false,

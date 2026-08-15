@@ -1,9 +1,30 @@
+export type OrderContactPhoneView =
+  | {
+      configured: false;
+      maskedPhone: null;
+      version: number;
+    }
+  | {
+      configured: true;
+      maskedPhone: string;
+      version: number;
+    };
+
 export type CustomerProfileView = {
   id: string;
   nickname: string | null;
   avatarUrl: string | null;
   phone: string | null;
+  phoneVerified: boolean;
+  orderContactPhone: OrderContactPhoneView;
 };
+
+export type UpdateOrderContactPhoneRequest = {
+  phone: string;
+  expectedVersion: number;
+};
+
+export type UpdateOrderContactPhoneResponse = OrderContactPhoneView;
 
 export type CartItemView = {
   id: string;

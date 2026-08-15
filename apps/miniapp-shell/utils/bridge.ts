@@ -2,12 +2,15 @@ export const MINIAPP_MESSAGE_SOURCE = 'bake-miniapp' as const;
 export const MINIAPP_SOURCE_PARAM = 'miniappSource' as const;
 export const MINIAPP_TYPE_PARAM = 'miniappType' as const;
 export const WECHAT_CODE_PARAM = 'wechatCode' as const;
+export const WECHAT_STATE_PARAM = 'wechatState' as const;
 export const PHONE_CREDENTIAL_PARAM = 'phoneCredential' as const;
+export const AUTO_WECHAT_LOGIN_PARAM = 'miniappAutoWechatLogin' as const;
 
 const HANDOFF_PARAMETERS = [
   MINIAPP_SOURCE_PARAM,
   MINIAPP_TYPE_PARAM,
   WECHAT_CODE_PARAM,
+  WECHAT_STATE_PARAM,
   PHONE_CREDENTIAL_PARAM,
 ] as const;
 const MALFORMED_PERCENT = /%(?![0-9a-fA-F]{2})/;
@@ -21,17 +24,27 @@ export type PhoneCredentialHandoff = Readonly<{
   returnUrl: string;
 }>;
 
+export type WechatLoginHandoff = Readonly<{
+  code: string;
+  returnUrl: string;
+  state: string;
+}>;
+
 export type PhoneAuthorizationDetail = Readonly<{
   code?: unknown;
   errMsg?: unknown;
   errno?: unknown;
 }>;
 
-export type PhoneCredentialHandoffStore = Readonly<{
-  consume: (expected: PhoneCredentialHandoff) => boolean;
-  peek: () => PhoneCredentialHandoff | null;
-  write: (handoff: PhoneCredentialHandoff) => boolean;
+type MemoryHandoffStore<T> = Readonly<{
+  consume: (expected: T) => boolean;
+  peek: () => T | null;
+  write: (handoff: T) => boolean;
 }>;
+
+export type PhoneCredentialHandoffStore =
+  MemoryHandoffStore<PhoneCredentialHandoff>;
+export type WechatLoginHandoffStore = MemoryHandoffStore<WechatLoginHandoff>;
 
 type ParsedHttpsUrl = Readonly<{
   hash: string;
@@ -45,21 +58,39 @@ type IndexPageControllerDependencies = Readonly<{
   baseOrigin: string;
   baseUrl: string;
   consumePhoneHandoff: (expected: PhoneCredentialHandoff) => boolean;
+  consumeWechatLoginHandoff: (expected: WechatLoginHandoff) => boolean;
   peekPhoneHandoff: () => PhoneCredentialHandoff | null;
+  peekWechatLoginHandoff: () => WechatLoginHandoff | null;
   rebuildWebView: (url: string, deliveryId: string) => boolean;
   toast: (message: string) => void;
 }>;
 
-type PendingPhoneDelivery = Readonly<{
-  deliveryId: string;
-  handoff: PhoneCredentialHandoff;
-}>;
+type PendingDelivery =
+  | Readonly<{
+      deliveryId: string;
+      handoff: PhoneCredentialHandoff;
+      type: 'phone';
+    }>
+  | Readonly<{
+      deliveryId: string;
+      handoff: WechatLoginHandoff;
+      type: 'wechat-login';
+    }>;
 
 type PhoneAuthControllerDependencies = Readonly<{
   returnUrl: string;
   writeHandoff: (handoff: PhoneCredentialHandoff) => boolean;
   navigateBack: () => void;
   toast: (message: string) => void;
+}>;
+
+type WechatLoginControllerDependencies = Readonly<{
+  login: () => Promise<unknown>;
+  navigateBack: () => void;
+  returnUrl: string;
+  state: string;
+  toast: (message: string) => void;
+  writeHandoff: (handoff: WechatLoginHandoff) => boolean;
 }>;
 
 function parseNonEmptyString(value: unknown): string | null {
@@ -99,12 +130,33 @@ function containsControlOrSpace(value: string): boolean {
   );
 }
 
+function containsControl(value: string): boolean {
+  return Array.from(value).some((character) => {
+    const codePoint = character.codePointAt(0) ?? 0;
+    return codePoint <= 31 || codePoint === 127;
+  });
+}
+
+function hasUnsafeEncodedContent(value: string): boolean {
+  try {
+    const decoded = decodeURIComponent(value);
+    return (
+      decoded.includes('\\') ||
+      containsControl(decoded) ||
+      /%[0-9a-fA-F]{2}/.test(decoded)
+    );
+  } catch {
+    return true;
+  }
+}
+
 function parseHttpsUrl(value: string): ParsedHttpsUrl | null {
   const normalized = value.trim();
   if (
     !normalized ||
     MALFORMED_PERCENT.test(normalized) ||
-    containsControlOrSpace(normalized)
+    containsControlOrSpace(normalized) ||
+    hasUnsafeEncodedContent(normalized)
   ) {
     return null;
   }
@@ -156,19 +208,35 @@ function clearHandoffQuery(query: string): string {
   return retained.length > 0 ? `?${retained.join('&')}` : '';
 }
 
+function serializeHandoffParameters(
+  parameters: ReadonlyArray<readonly [string, string]>,
+): string {
+  return parameters
+    .map(
+      ([key, value]) =>
+        `${encodeURIComponent(key)}=${encodeURIComponent(value)}`,
+    )
+    .join('&');
+}
+
 function appendHandoffParameters(
   parsed: ParsedHttpsUrl,
   parameters: ReadonlyArray<readonly [string, string]>,
 ): string {
   const cleanQuery = clearHandoffQuery(parsed.query);
   const prefix = cleanQuery ? `${cleanQuery}&` : '?';
-  const handoff = parameters
-    .map(
-      ([key, value]) =>
-        `${encodeURIComponent(key)}=${encodeURIComponent(value)}`,
-    )
-    .join('&');
-  return `${parsed.origin}${parsed.pathname}${prefix}${handoff}${parsed.hash}`;
+  return `${parsed.origin}${parsed.pathname}${prefix}${serializeHandoffParameters(parameters)}${parsed.hash}`;
+}
+
+function appendHandoffFragmentParameters(
+  parsed: ParsedHttpsUrl,
+  parameters: ReadonlyArray<readonly [string, string]>,
+): string {
+  const cleanFragment = clearHandoffQuery(
+    parsed.hash ? `?${parsed.hash.slice(1)}` : '',
+  ).slice(1);
+  const prefix = cleanFragment ? `#${cleanFragment}&` : '#';
+  return `${parsed.origin}${parsed.pathname}${parsed.query}${prefix}${serializeHandoffParameters(parameters)}`;
 }
 
 function requireSecureUrl(value: string): ParsedHttpsUrl {
@@ -177,13 +245,50 @@ function requireSecureUrl(value: string): ParsedHttpsUrl {
   return parsed;
 }
 
-function sameHandoff(
+function samePhoneHandoff(
   left: PhoneCredentialHandoff,
   right: PhoneCredentialHandoff,
 ): boolean {
   return (
     left.credential === right.credential && left.returnUrl === right.returnUrl
   );
+}
+
+function sameWechatLoginHandoff(
+  left: WechatLoginHandoff,
+  right: WechatLoginHandoff,
+): boolean {
+  return (
+    left.code === right.code &&
+    left.returnUrl === right.returnUrl &&
+    left.state === right.state
+  );
+}
+
+function createMemoryHandoffStore<T>(
+  normalize: (handoff: T) => T | null,
+  equals: (left: T, right: T) => boolean,
+): MemoryHandoffStore<T> {
+  let current: T | null = null;
+
+  function write(handoff: T): boolean {
+    const normalized = normalize(handoff);
+    if (!normalized) return false;
+    current = normalized;
+    return true;
+  }
+
+  function peek(): T | null {
+    return current;
+  }
+
+  function consume(expected: T): boolean {
+    if (!current || !equals(current, expected)) return false;
+    current = null;
+    return true;
+  }
+
+  return { consume, peek, write };
 }
 
 export function parseLoginCode(value: unknown): string | null {
@@ -215,12 +320,17 @@ export function decodeRouteParameter(value: unknown): string | null {
   }
 }
 
-export function buildLoginHandoffUrl(baseUrl: string, code: unknown): string {
+export function buildLoginHandoffUrl(
+  baseUrl: string,
+  code: unknown,
+  state: unknown,
+): string {
   const parsed = requireSecureUrl(baseUrl);
-  return appendHandoffParameters(parsed, [
+  return appendHandoffFragmentParameters(parsed, [
     [MINIAPP_SOURCE_PARAM, MINIAPP_MESSAGE_SOURCE],
     [MINIAPP_TYPE_PARAM, 'WECHAT_CODE'],
     [WECHAT_CODE_PARAM, requireNonEmptyString(code, 'login code')],
+    [WECHAT_STATE_PARAM, requireNonEmptyString(state, 'login state')],
   ]);
 }
 
@@ -235,13 +345,18 @@ export function validateReturnUrl(
     : null;
 }
 
-export function resolvePhoneAuthReturnUrl(
+function resolveTrustedReturnUrl(
   routeParameter: unknown,
   baseOrigin: string,
 ): string | null {
   const decoded = decodeRouteParameter(routeParameter);
   return decoded ? validateReturnUrl(decoded, baseOrigin) : null;
 }
+
+export {
+  resolveTrustedReturnUrl as resolvePhoneAuthReturnUrl,
+  resolveTrustedReturnUrl as resolveWechatLoginReturnUrl,
+};
 
 export function buildPhoneCredentialHandoffUrl(
   returnUrl: string,
@@ -262,27 +377,20 @@ export function buildPhoneCredentialHandoffUrl(
 }
 
 export function createPhoneCredentialHandoffStore(): PhoneCredentialHandoffStore {
-  let current: PhoneCredentialHandoff | null = null;
-
-  function write(handoff: PhoneCredentialHandoff): boolean {
+  return createMemoryHandoffStore((handoff) => {
     const credential = parseNonEmptyString(handoff.credential);
     const returnUrl = parseNonEmptyString(handoff.returnUrl);
-    if (!credential || !returnUrl) return false;
-    current = { credential, returnUrl };
-    return true;
-  }
+    return credential && returnUrl ? { credential, returnUrl } : null;
+  }, samePhoneHandoff);
+}
 
-  function peek(): PhoneCredentialHandoff | null {
-    return current;
-  }
-
-  function consume(expected: PhoneCredentialHandoff): boolean {
-    if (!current || !sameHandoff(current, expected)) return false;
-    current = null;
-    return true;
-  }
-
-  return { consume, peek, write };
+export function createWechatLoginHandoffStore(): WechatLoginHandoffStore {
+  return createMemoryHandoffStore((handoff) => {
+    const code = parseLoginCode(handoff.code);
+    const returnUrl = parseNonEmptyString(handoff.returnUrl);
+    const state = parseNonEmptyString(handoff.state);
+    return code && returnUrl && state ? { code, returnUrl, state } : null;
+  }, sameWechatLoginHandoff);
 }
 
 export function createIndexPageController(
@@ -294,13 +402,14 @@ export function createIndexPageController(
   handleWebViewError: (deliveryId: unknown) => boolean;
   handleWebViewLoad: (deliveryId: unknown) => boolean;
 }> {
+  let explicitLoginObserved = false;
   let generation = 0;
-  let pendingPhoneDelivery: PendingPhoneDelivery | null = null;
+  let pendingDelivery: PendingDelivery | null = null;
 
   function rebuild(url: string, deliveryId = ''): boolean {
     try {
       const rebuilt = dependencies.rebuildWebView(url, deliveryId);
-      if (rebuilt && !deliveryId) pendingPhoneDelivery = null;
+      if (rebuilt && !deliveryId) pendingDelivery = null;
       return rebuilt;
     } catch {
       return false;
@@ -312,34 +421,67 @@ export function createIndexPageController(
     return `delivery-${generation}`;
   }
 
+  function hasExplicitLogin(): boolean {
+    return (
+      explicitLoginObserved ||
+      dependencies.peekWechatLoginHandoff() !== null ||
+      pendingDelivery?.type === 'wechat-login'
+    );
+  }
+
   function handleLoginSuccess(code: unknown): boolean {
+    if (hasExplicitLogin()) return false;
     const normalized = parseLoginCode(code);
     if (!normalized) {
       dependencies.toast('微信登录暂不可用，请稍后重试');
       rebuild(dependencies.baseUrl);
       return false;
     }
-    return rebuild(buildLoginHandoffUrl(dependencies.baseUrl, normalized));
-  }
-
-  function handleLoginFailure(): false {
-    dependencies.toast('微信登录失败，请稍后重试');
+    dependencies.toast('微信登录状态已失效，请重新登录');
     rebuild(dependencies.baseUrl);
     return false;
   }
 
-  function handleShow(): boolean {
-    const handoff = dependencies.peekPhoneHandoff();
-    if (!handoff) return false;
+  function handleLoginFailure(): false {
+    if (!hasExplicitLogin()) {
+      dependencies.toast('微信登录失败，请稍后重试');
+      rebuild(dependencies.baseUrl);
+    }
+    return false;
+  }
+
+  function deliverWechatLogin(handoff: WechatLoginHandoff): boolean {
+    const trustedReturnUrl = validateReturnUrl(
+      handoff.returnUrl,
+      dependencies.baseOrigin,
+    );
+    if (!trustedReturnUrl) {
+      dependencies.toast('微信登录返回地址无效');
+      return false;
+    }
+    const deliveryId = createDeliveryId();
+    const rebuilt = rebuild(
+      buildLoginHandoffUrl(trustedReturnUrl, handoff.code, handoff.state),
+      deliveryId,
+    );
+    if (rebuilt) {
+      pendingDelivery = { deliveryId, handoff, type: 'wechat-login' };
+    }
+    return rebuilt;
+  }
+
+  function deliverPhone(handoff: PhoneCredentialHandoff): boolean {
     try {
-      const handoffUrl = buildPhoneCredentialHandoffUrl(
-        handoff.returnUrl,
-        dependencies.baseOrigin,
-        handoff.credential,
-      );
       const deliveryId = createDeliveryId();
-      const rebuilt = rebuild(handoffUrl, deliveryId);
-      if (rebuilt) pendingPhoneDelivery = { deliveryId, handoff };
+      const rebuilt = rebuild(
+        buildPhoneCredentialHandoffUrl(
+          handoff.returnUrl,
+          dependencies.baseOrigin,
+          handoff.credential,
+        ),
+        deliveryId,
+      );
+      if (rebuilt) pendingDelivery = { deliveryId, handoff, type: 'phone' };
       return rebuilt;
     } catch {
       dependencies.toast('手机号授权返回地址无效');
@@ -347,24 +489,34 @@ export function createIndexPageController(
     }
   }
 
+  function handleShow(): boolean {
+    const loginHandoff = dependencies.peekWechatLoginHandoff();
+    if (loginHandoff) {
+      explicitLoginObserved = true;
+      return deliverWechatLogin(loginHandoff);
+    }
+    const phoneHandoff = dependencies.peekPhoneHandoff();
+    return phoneHandoff ? deliverPhone(phoneHandoff) : false;
+  }
+
   function handleWebViewLoad(deliveryId: unknown): boolean {
     const normalized = parseNonEmptyString(deliveryId);
-    if (
-      !pendingPhoneDelivery ||
-      normalized !== pendingPhoneDelivery.deliveryId
-    ) {
+    if (!pendingDelivery || normalized !== pendingDelivery.deliveryId) {
       return false;
     }
-    const delivery = pendingPhoneDelivery;
-    const consumed = dependencies.consumePhoneHandoff(delivery.handoff);
-    if (consumed) pendingPhoneDelivery = null;
+    const delivery = pendingDelivery;
+    const consumed =
+      delivery.type === 'wechat-login'
+        ? dependencies.consumeWechatLoginHandoff(delivery.handoff)
+        : dependencies.consumePhoneHandoff(delivery.handoff);
+    if (consumed) pendingDelivery = null;
     return consumed;
   }
 
   function handleWebViewError(deliveryId: unknown): boolean {
     const normalized = parseNonEmptyString(deliveryId);
     return Boolean(
-      pendingPhoneDelivery && normalized === pendingPhoneDelivery.deliveryId,
+      pendingDelivery && normalized === pendingDelivery.deliveryId,
     );
   }
 
@@ -375,6 +527,36 @@ export function createIndexPageController(
     handleWebViewError,
     handleWebViewLoad,
   };
+}
+
+export function createWechatLoginController(
+  dependencies: WechatLoginControllerDependencies,
+): Readonly<{
+  handleLogin: () => Promise<boolean>;
+}> {
+  async function handleLogin(): Promise<boolean> {
+    try {
+      const code = parseLoginCode(await dependencies.login());
+      const stored = code
+        ? dependencies.writeHandoff({
+            code,
+            returnUrl: dependencies.returnUrl,
+            state: dependencies.state,
+          })
+        : false;
+      if (!stored) {
+        dependencies.toast('微信登录失败，请重试');
+        return false;
+      }
+      dependencies.navigateBack();
+      return true;
+    } catch {
+      dependencies.toast('微信登录失败，请重试');
+      return false;
+    }
+  }
+
+  return { handleLogin };
 }
 
 export function createPhoneAuthController(

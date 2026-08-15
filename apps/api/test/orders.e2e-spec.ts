@@ -413,6 +413,8 @@ describe('Orders domain (e2e)', () => {
       id: '1',
       phone: '13800000000',
       phoneVerified: true,
+      orderContactPhone: '13700000000',
+      orderContactPhoneVersion: 1,
       isActive: true,
       mergedIntoUserId: null,
       tokenVersion: 1,
@@ -639,10 +641,14 @@ describe('Orders domain (e2e)', () => {
         stockVersion: sku.stockVersion,
       };
     });
+    const quoteUserId = stubs.cartItems.records.find(
+      (item: CartItem) => item.id === cartItemIds[0],
+    )?.userId;
+    if (!quoteUserId) throw new Error('Quote user fixture is missing');
     return {
       requestedCreditCents: 0,
       quoteToken: quoteTokens.issue({
-        userId: '1',
+        userId: quoteUserId,
         cart,
         requestedCreditCents: 0,
         membershipId: null,
@@ -657,7 +663,7 @@ describe('Orders domain (e2e)', () => {
     cartItemIds: string[],
     overrides: Partial<{
       contactName: string;
-      contactPhone: string;
+      orderContactPhoneVersion: number;
       pickupTimeText: string;
       remark: string;
     }> = {},
@@ -666,7 +672,7 @@ describe('Orders domain (e2e)', () => {
       cartItemIds,
       fulfillmentType: FulfillmentType.PICKUP,
       contactName: overrides.contactName ?? 'Alice',
-      contactPhone: overrides.contactPhone ?? '13800000000',
+      orderContactPhoneVersion: overrides.orderContactPhoneVersion ?? 1,
       pickupTimeText: overrides.pickupTimeText ?? 'tomorrow 10am',
       ...quoteIntent(cartItemIds),
       ...(overrides.remark ? { remark: overrides.remark } : {}),
@@ -677,7 +683,7 @@ describe('Orders domain (e2e)', () => {
     cartItemIds: string[],
     overrides: Partial<{
       contactName: string;
-      contactPhone: string;
+      orderContactPhoneVersion: number;
       addressId: string;
       remark: string;
     }> = {},
@@ -686,12 +692,28 @@ describe('Orders domain (e2e)', () => {
       cartItemIds,
       fulfillmentType: FulfillmentType.DELIVERY,
       contactName: overrides.contactName ?? 'Alice',
-      contactPhone: overrides.contactPhone ?? '13800000000',
+      orderContactPhoneVersion: overrides.orderContactPhoneVersion ?? 1,
       addressId: overrides.addressId ?? 'address-1',
       ...quoteIntent(cartItemIds),
       ...(overrides.remark ? { remark: overrides.remark } : {}),
     };
   }
+
+  it('strictly rejects the legacy full contactPhone field', async () => {
+    stubs.cartItems.records.length = 0;
+    const cart = await seedCart('1', [{ skuId: 'sku-1', quantity: 1 }]);
+
+    await request(app.getHttpServer())
+      .post('/api/v1/orders')
+      .set(userHeaders)
+      .set('Idempotency-Key', 'legacy-contact-phone-field')
+      .send({
+        ...pickupRequest(cart.map(({ id }) => id)),
+        contactPhone: '13600000000',
+      })
+      .expect(400);
+    expect(stubs.orders.records).toHaveLength(0);
+  });
 
   it('rejects missing quote intent with 400 before opening a transaction', async () => {
     stubs.cartItems.records.length = 0;
@@ -780,6 +802,9 @@ describe('Orders domain (e2e)', () => {
       .send(requestBody)
       .expect(201);
     const firstBody = first.body as OrderView;
+    const persistedUser = await stubs.users.findOneByOrFail({ id: '1' });
+    persistedUser.orderContactPhone = null;
+    persistedUser.orderContactPhoneVersion = 2;
 
     const second = await request(app.getHttpServer())
       .post('/api/v1/orders')
@@ -791,7 +816,10 @@ describe('Orders domain (e2e)', () => {
 
     expect(secondBody.id).toBe(firstBody.id);
     expect(secondBody.orderNo).toBe(firstBody.orderNo);
+    expect(secondBody.contactPhone).toBe('13700000000');
     expect(stockOf('sku-1')).toBe(3);
+    persistedUser.orderContactPhone = '13700000000';
+    persistedUser.orderContactPhoneVersion = 1;
   });
 
   it('rejects NEW→COMPLETED with 422 INVALID_ORDER_TRANSITION but accepts PROCESSING→COMPLETED', async () => {
@@ -947,7 +975,7 @@ describe('Orders domain (e2e)', () => {
       .send(
         pickupRequest(cartIds, {
           contactName: 'Alice',
-          contactPhone: '13800000000',
+          orderContactPhoneVersion: 1,
           pickupTimeText: '明天下午3点',
           remark: '请贴上生日牌',
         }),
@@ -957,6 +985,7 @@ describe('Orders domain (e2e)', () => {
     expect(pickupOrder.pickupTimeText).toBe('明天下午3点');
     expect(pickupOrder.deliveryAddressText).toBeUndefined();
     expect(pickupOrder.contactName).toBe('Alice');
+    expect(pickupOrder.contactPhone).toBe('13700000000');
     expect(pickupOrder.remark).toBe('请贴上生日牌');
     expect(pickupOrder.items).toHaveLength(2);
     const persistedPickupItems = stubs.orderItems.records.filter(
@@ -1012,15 +1041,17 @@ describe('Orders domain (e2e)', () => {
     expect(deliveryOrder.pickupTimeText).toBeUndefined();
   });
 
-  it('rejects an order without a verified phone', async () => {
+  it('creates an order from the server contact phone without changing identity fields', async () => {
     await stubs.users.save({
       id: '3',
       phone: null,
       phoneVerified: false,
+      orderContactPhone: '13900000000',
+      orderContactPhoneVersion: 1,
       isActive: true,
       mergedIntoUserId: null,
       tokenVersion: 1,
-      nickname: 'No phone',
+      nickname: 'No identity phone',
       avatarUrl: null,
       wechatOpenid: null,
       wechatUnionid: null,
@@ -1047,9 +1078,12 @@ describe('Orders domain (e2e)', () => {
       .set(headers)
       .set('Idempotency-Key', 'no-phone-key')
       .send(pickupRequest(cartIds));
-    expect(response.status).toBe(403);
-    expect(response.body).toMatchObject({
-      code: ApiErrorCode.PHONE_REQUIRED,
+
+    expect(response.status).toBe(201);
+    expect(response.body).toMatchObject({ contactPhone: '13900000000' });
+    expect(await stubs.users.findOneBy({ id: '3' })).toMatchObject({
+      phone: null,
+      phoneVerified: false,
     });
   });
 });

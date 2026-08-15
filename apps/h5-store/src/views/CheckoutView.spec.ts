@@ -9,6 +9,7 @@ import { useCartStore } from '../stores/cart.js';
 import { customerApi } from '../api/customer.js';
 import { ordersApi } from '../api/orders.js';
 import {
+  ApiErrorCode,
   FulfillmentType,
   OrderStatus,
   type AddressView,
@@ -24,9 +25,9 @@ import { apiClient, ApiClientError } from '../api/http.js';
  *   validation message; the request is NOT fired.
  *   - PICKUP requires `pickupTimeText` (期望取货时间).
  *   - DELIVERY requires a selected saved address (请选择配送地址).
- * - The checkout view always asks `useAuthStore.requireVerifiedPhone('/checkout')`
- *   on entry so that unverified users are bounced to the login flow before
- *   any form interaction.
+ * - The checkout route requires a customer session, while the account itself
+ *   may remain without a verified phone. The form requires an explicit contact
+ *   phone for the immutable order snapshot.
  * - Submitting a valid form fires exactly one POST /orders with a stable
  *   `Idempotency-Key` header. On success the form clears the key and the
  *   cart is refetched; the route transitions to `/orders/:id`.
@@ -86,6 +87,7 @@ function mountCheckout(
       { path: '/checkout', component: CheckoutView },
       { path: '/orders/:id', component: { template: '<div />' } },
       { path: '/login', component: { template: '<div />' } },
+      { path: '/profile', component: { template: '<div />' } },
     ],
   });
   // Bind the test's store mutations to the SAME pinia the component
@@ -124,6 +126,11 @@ function verifiedProfile() {
     phone: '13800000000',
     phoneVerified: true as const,
     nickname: '小明',
+    orderContactPhone: {
+      configured: true as const,
+      maskedPhone: '138****0000',
+      version: 1,
+    },
   };
 }
 
@@ -140,6 +147,17 @@ function seedApis(opts?: {
     vi.fn().mockResolvedValue(opts?.addresses ?? savedAddresses);
   vi.spyOn(customerApi, 'listCart').mockImplementation(cartRefresh);
   vi.spyOn(customerApi, 'listAddresses').mockImplementation(addressesRefresh);
+  vi.spyOn(customerApi, 'getMe').mockImplementation(async () => {
+    const current = useAuthStore().profile ?? verifiedProfile();
+    return {
+      id: current.id,
+      nickname: current.nickname ?? null,
+      avatarUrl: 'avatarUrl' in current ? (current.avatarUrl ?? null) : null,
+      phone: current.phone ?? null,
+      phoneVerified: current.phoneVerified,
+      orderContactPhone: current.orderContactPhone,
+    };
+  });
   return { cartRefresh, addressesRefresh };
 }
 
@@ -153,19 +171,28 @@ describe('CheckoutView', () => {
     vi.unstubAllGlobals();
   });
 
-  it('redirects to login when the verified phone is missing on entry', () => {
-    const auth = useAuthStore();
-    auth.accessToken = 'tok';
-    auth.profile = {
-      id: 'u1',
-      nickname: 'Cake Fan',
-      phoneVerified: false,
-    };
-    // The router guard owns the redirect; the view's onMounted guard
-    // simply re-affirms the same target when called directly.
-    expect(auth.requireVerifiedPhone('/checkout')).toBe(
-      '/login?redirect=%2Fcheckout',
-    );
+  it('loads checkout for an authenticated WeChat user without a verified account phone', async () => {
+    seedApis();
+    const { wrapper } = mountCheckout(() => {
+      const auth = useAuthStore();
+      auth.accessToken = 'wechat-token';
+      auth.profile = {
+        id: 'u1',
+        nickname: 'Cake Fan',
+        phoneVerified: false,
+        orderContactPhone: {
+          configured: true,
+          maskedPhone: '138****0000',
+          version: 1,
+        },
+      };
+    });
+
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="contact-phone"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain('138****0000');
+    expect(customerApi.listCart).toHaveBeenCalledOnce();
   });
 
   it('requires pickup time for PICKUP and an address for DELIVERY', async () => {
@@ -178,7 +205,6 @@ describe('CheckoutView', () => {
     // Fill the always-required contact fields so the validation falls
     // through to the per-mode required-field check.
     await wrapper.get('[data-testid="contact-name"]').setValue('小明');
-    await wrapper.get('[data-testid="contact-phone"]').setValue('13800000000');
 
     expect(wrapper.findAll('.store-form-card').length).toBeGreaterThanOrEqual(
       3,
@@ -246,7 +272,6 @@ describe('CheckoutView', () => {
     expect(wrapper.text()).not.toContain('海盐可颂');
     await wrapper.get('[data-testid="fulfillment-pickup"]').trigger('click');
     await wrapper.get('[data-testid="contact-name"]').setValue('小明');
-    await wrapper.get('[data-testid="contact-phone"]').setValue('13800000000');
     await wrapper.get('[data-testid="pickup-time"]').setValue('明天上午十点');
     await wrapper.get('form').trigger('submit.prevent');
     await flushPromises();
@@ -280,7 +305,6 @@ describe('CheckoutView', () => {
 
     await wrapper.get('[data-testid="fulfillment-pickup"]').trigger('click');
     await wrapper.get('[data-testid="contact-name"]').setValue('小明');
-    await wrapper.get('[data-testid="contact-phone"]').setValue('13800000000');
     await wrapper.get('[data-testid="pickup-time"]').setValue('明天上午十点');
 
     await wrapper.get('form').trigger('submit.prevent');
@@ -291,9 +315,11 @@ describe('CheckoutView', () => {
     expect(payload).toMatchObject({
       fulfillmentType: 'PICKUP',
       contactName: '小明',
-      contactPhone: '13800000000',
+      orderContactPhoneVersion: 1,
       pickupTimeText: '明天上午十点',
     });
+    expect(payload).not.toHaveProperty('contactPhone');
+    expect(JSON.stringify(payload)).not.toContain('13800000000');
     expect(payload).toMatchObject({
       requestedCreditCents: 0,
       quoteToken: 'checkout-test-quote-token',
@@ -315,7 +341,6 @@ describe('CheckoutView', () => {
 
     await wrapper.get('[data-testid="fulfillment-pickup"]').trigger('click');
     await wrapper.get('[data-testid="contact-name"]').setValue('小明');
-    await wrapper.get('[data-testid="contact-phone"]').setValue('13800000000');
     await wrapper.get('[data-testid="pickup-time"]').setValue('明天上午十点');
     await wrapper.get('form').trigger('submit.prevent');
     await flushPromises();
@@ -326,6 +351,65 @@ describe('CheckoutView', () => {
     await flushPromises();
 
     expect(createSpy.mock.calls[1][1]).not.toBe(firstKey);
+  });
+
+  it('未配置订单联系手机号时不提交并跳转我的设置', async () => {
+    seedApis();
+    seedQuoteApi();
+    const { wrapper, router } = mountCheckout(() => {
+      const auth = useAuthStore();
+      auth.profile = {
+        ...verifiedProfile(),
+        orderContactPhone: {
+          configured: false,
+          maskedPhone: null,
+          version: 0,
+        },
+      };
+    });
+    await waitForQuote();
+    const createSpy = vi.spyOn(ordersApi, 'create');
+
+    await wrapper.get('[data-testid="pickup-time"]').setValue('明天上午十点');
+    await wrapper.get('form').trigger('submit.prevent');
+    await flushPromises();
+
+    expect(createSpy).not.toHaveBeenCalled();
+    expect(router.currentRoute.value.fullPath).toBe(
+      '/profile?edit=order-contact-phone&redirect=/checkout',
+    );
+  });
+
+  it('联系手机号版本冲突时刷新脱敏资料并要求重新确认', async () => {
+    seedApis();
+    seedQuoteApi();
+    const { wrapper, router } = mountCheckout();
+    await waitForQuote();
+    vi.spyOn(ordersApi, 'create').mockRejectedValue(
+      new ApiClientError(409, 'version conflict', {
+        code: ApiErrorCode.ORDER_CONTACT_PHONE_VERSION_CONFLICT,
+      }),
+    );
+    vi.mocked(customerApi.getMe).mockResolvedValue({
+      id: 'u1',
+      nickname: '小明',
+      avatarUrl: null,
+      phone: '138****0000',
+      phoneVerified: true,
+      orderContactPhone: {
+        configured: true,
+        maskedPhone: '139****9999',
+        version: 2,
+      },
+    });
+
+    await wrapper.get('[data-testid="pickup-time"]').setValue('明天上午十点');
+    await wrapper.get('form').trigger('submit.prevent');
+    await flushPromises();
+
+    expect(router.currentRoute.value.path).not.toBe('/profile');
+    expect(wrapper.text()).toContain('139****9999');
+    expect(wrapper.text()).toContain('请确认最新脱敏号码后重新提交');
   });
 
   it('reuses the same Idempotency-Key across retries until success', async () => {
@@ -357,7 +441,6 @@ describe('CheckoutView', () => {
 
     await wrapper.get('[data-testid="fulfillment-pickup"]').trigger('click');
     await wrapper.get('[data-testid="contact-name"]').setValue('小明');
-    await wrapper.get('[data-testid="contact-phone"]').setValue('13800000000');
     await wrapper.get('[data-testid="pickup-time"]').setValue('明天上午十点');
 
     await wrapper.get('form').trigger('submit.prevent');

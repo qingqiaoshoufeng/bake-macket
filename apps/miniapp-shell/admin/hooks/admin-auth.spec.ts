@@ -24,6 +24,11 @@ const customerSession = (
     id: 'user-1',
     phone: '13800000000',
     phoneVerified: true,
+    orderContactPhone: {
+      configured: false,
+      maskedPhone: null,
+      version: 0,
+    },
     ...overrides,
   },
 });
@@ -63,8 +68,6 @@ function authHarness() {
   const api = {
     exchange: vi.fn<() => Promise<AdminSessionView>>(),
     loginWithWechat:
-      vi.fn<(code: string) => Promise<CustomerAuthSessionView>>(),
-    bindWechatPhone:
       vi.fn<(code: string) => Promise<CustomerAuthSessionView>>(),
   };
   const login = vi.fn<() => Promise<string>>();
@@ -133,6 +136,7 @@ describe('createAdminAuthController', () => {
     harness.api.loginWithWechat.mockResolvedValue(
       customerSession({ phone: undefined, phoneVerified: false }),
     );
+    harness.api.exchange.mockRejectedValueOnce({ status: 403 });
     const refresh = harness.controller.refreshEligibility();
 
     expect(harness.controller.snapshot()).toEqual({
@@ -144,6 +148,7 @@ describe('createAdminAuthController', () => {
       eligible: false,
       loading: false,
     });
+    expect(harness.adminSession.get()).toBeNull();
   });
 
   it('does another fresh login on entry and routes must-change sessions to initial password', async () => {
@@ -162,38 +167,22 @@ describe('createAdminAuthController', () => {
     );
   });
 
-  it('opens the native phone responsibility when the fresh customer identity needs phone authorization', async () => {
+  it('phoneVerified=false 仍按显式授权直接 exchange，不进入手机号授权页', async () => {
     const harness = authHarness();
     harness.login.mockResolvedValue('entry-code');
     harness.api.loginWithWechat.mockResolvedValue(
       customerSession({ phone: undefined, phoneVerified: false }),
     );
-
-    await expect(harness.controller.enterAdmin()).resolves.toBe(false);
-
-    expect(harness.api.exchange).not.toHaveBeenCalled();
-    expect(harness.navigate).toHaveBeenCalledWith(
-      '/pages/phone-auth/index?flow=admin',
-    );
-  });
-
-  it('exchanges a fresh phone code without reading the H5 PHONE_CREDENTIAL handoff', async () => {
-    const harness = authHarness();
-    harness.customer.set(
-      customerSession({ phone: undefined, phoneVerified: false }),
-    );
-    harness.api.bindWechatPhone.mockResolvedValue(customerSession());
     harness.api.exchange.mockResolvedValue(operatorSession);
 
-    await expect(
-      harness.controller.authorizePhone('fresh-phone-code'),
-    ).resolves.toBe(true);
+    await expect(harness.controller.enterAdmin()).resolves.toBe(true);
 
-    expect(harness.api.bindWechatPhone).toHaveBeenCalledWith(
-      'fresh-phone-code',
-    );
+    expect(harness.api.exchange).toHaveBeenCalledOnce();
     expect(harness.adminSession.get()).toEqual(operatorSession);
     expect(harness.navigate).toHaveBeenCalledWith('/pages/admin-home/index');
+    expect(harness.navigate).not.toHaveBeenCalledWith(
+      expect.stringContaining('phone-auth'),
+    );
   });
 
   it('ignores stale login generations that resolve after the latest entry attempt', async () => {

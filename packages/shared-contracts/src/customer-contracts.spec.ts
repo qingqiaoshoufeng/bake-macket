@@ -16,9 +16,16 @@ describe('customer boundary contracts', () => {
       nickname: null,
       avatarUrl: null,
       phone: '138****0000',
+      phoneVerified: true,
+      orderContactPhone: {
+        configured: true,
+        maskedPhone: '138****0000',
+        version: 1,
+      },
     } satisfies CustomerProfileView;
 
     expect(profile.phone).toBe('138****0000');
+    expect(profile.orderContactPhone.configured).toBe(true);
     expect(profile.nickname).toBeNull();
   });
 

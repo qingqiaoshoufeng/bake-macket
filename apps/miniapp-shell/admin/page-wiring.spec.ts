@@ -8,6 +8,26 @@ async function read(relativePath: string): Promise<string> {
   return readFile(`${packageRoot}/${relativePath}`, 'utf8');
 }
 
+describe('native WeChat login page wiring', () => {
+  it('registers an explicit login page that does not request a phone number', async () => {
+    const [appSource, template, controller] = await Promise.all([
+      read('app.json'),
+      read('pages/wechat-login/index.wxml'),
+      read('pages/wechat-login/index.ts'),
+    ]);
+    const app = JSON.parse(appSource) as { pages: string[] };
+
+    expect(app.pages).toContain('pages/wechat-login/index');
+    expect(template).toContain('bindtap="onWechatLogin"');
+    expect(template).not.toContain('getPhoneNumber');
+    expect(controller).toContain('login: freshWechatLogin');
+    expect(controller).toMatch(
+      /async onWechatLogin\(\)[\s\S]*controller\.handleLogin\(\)/u,
+    );
+    expect(controller).not.toMatch(/Storage|console\./u);
+  });
+});
+
 describe('Task 7 native admin page wiring', () => {
   it('registers all native admin pages and the real user-list component', async () => {
     const app = JSON.parse(await read('app.json')) as { pages: string[] };
@@ -50,6 +70,23 @@ describe('Task 7 native admin page wiring', () => {
     expect(indexController).toContain("webViewMessage: '商城网页已加载'");
     expect(indexController).toContain("webViewMessage: '商城网页加载失败'");
     expect(indexPage).not.toMatch(/<button[\s\S]*class="admin-entry"/u);
+  });
+
+  it('keeps admin flow independent from getPhoneNumber and phone-auth routing', async () => {
+    const [authHook, adminApi, navigation, phonePage] = await Promise.all([
+      read('admin/hooks/admin-auth.ts'),
+      read('admin/api/index.ts'),
+      read('admin/config/navigation.ts'),
+      read('pages/phone-auth/index.ts'),
+    ]);
+    const adminSource = [authHook, adminApi, navigation].join('\n');
+
+    expect(adminSource).not.toMatch(
+      /phoneVerified|bindWechatPhone|authorizePhone|flow=admin|ADMIN_ROUTES\.phone/u,
+    );
+    expect(phonePage).not.toContain("query.flow === 'admin'");
+    expect(phonePage).not.toContain('createAdminAuthController');
+    expect(phonePage).toContain('createPhoneAuthController');
   });
 
   it('keeps operator UI free of role grant and revoke controls', async () => {

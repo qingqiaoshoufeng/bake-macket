@@ -154,7 +154,7 @@ export class ApiClient {
     const url = this.resolve(path);
     const method = (requestedMethod ?? 'GET').toUpperCase();
     const requestHeaders = new Headers(headers ?? {});
-    const bearerToken = token ?? this.token;
+    const bearerToken = token === undefined ? this.token : token;
     if (bearerToken) {
       requestHeaders.set('Authorization', `Bearer ${bearerToken}`);
     }
@@ -178,18 +178,14 @@ export class ApiClient {
 
     const execute = async (attempt: number): Promise<T> => {
       const controller = new AbortController();
-      const abortFromCaller = (): void =>
-        controller.abort(callerSignal?.reason);
+      const abortFromCaller = (): void => controller.abort();
       if (callerSignal?.aborted) abortFromCaller();
       else
         callerSignal?.addEventListener('abort', abortFromCaller, {
           once: true,
         });
       const timeoutId = window.setTimeout(
-        () =>
-          controller.abort(
-            new DOMException('Request timed out', 'TimeoutError'),
-          ),
+        () => controller.abort(),
         API_REQUEST_TIMEOUT_MS,
       );
 
@@ -233,7 +229,11 @@ export class ApiClient {
           details: payload.details,
           requestId: payload.requestId,
         });
-        if (response.status === 401) {
+        if (
+          response.status === 401 &&
+          bearerToken !== null &&
+          bearerToken === this.token
+        ) {
           this.token = null;
           this.unauthorizedHandler?.(
             typeof window === 'undefined' ? '/' : window.location.pathname,

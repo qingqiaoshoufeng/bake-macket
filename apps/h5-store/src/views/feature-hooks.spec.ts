@@ -30,6 +30,7 @@ const apiMocks = vi.hoisted(() => ({
   cartUpsert: vi.fn(),
   checkoutCreate: vi.fn(),
   checkoutQuote: vi.fn(),
+  profileGet: vi.fn(),
   login: vi.fn(),
   orderGetOne: vi.fn(),
   orderList: vi.fn(),
@@ -74,6 +75,9 @@ vi.mock('./checkout/api/index.js', () => ({
 }));
 vi.mock('./login/api/index.js', () => ({
   loginFeatureApi: { login: apiMocks.login },
+}));
+vi.mock('./profile/api/index.js', () => ({
+  profileFeatureApi: { get: apiMocks.profileGet },
 }));
 vi.mock('./orders/api/index.js', () => ({
   ordersFeatureApi: {
@@ -171,6 +175,18 @@ beforeEach(() => {
     membership: null,
     quoteToken: 'quote-token',
     expiresAt: '2099-01-01T00:00:00.000Z',
+  });
+  apiMocks.profileGet.mockResolvedValue({
+    id: 'user-1',
+    nickname: '小明',
+    avatarUrl: null,
+    phone: '138****0000',
+    phoneVerified: true,
+    orderContactPhone: {
+      configured: true,
+      maskedPhone: '138****0000',
+      version: 1,
+    },
   });
   apiMocks.login.mockResolvedValue({ accessToken: 'token' });
   apiMocks.orderGetOne.mockResolvedValue(order);
@@ -290,7 +306,11 @@ describe('feature hooks consume their feature API', () => {
     const auth = useAuthStore();
     auth.applySession(
       { accessToken: 'token-a', expiresAt: '2026-07-20T00:00:00.000Z' },
-      { id: 'user-a', phoneVerified: true },
+      {
+        id: 'user-a',
+        phoneVerified: true,
+        orderContactPhone: { configured: false, maskedPhone: null, version: 0 },
+      },
     );
     let resolveCart: ((value: CartItemView[]) => void) | undefined;
     let resolveAddresses: ((value: AddressView[]) => void) | undefined;
@@ -327,7 +347,11 @@ describe('feature hooks consume their feature API', () => {
     const detailRequest = useOrderDetail().methods.load('order-a');
     auth.applySession(
       { accessToken: 'token-b', expiresAt: '2026-07-20T00:00:00.000Z' },
-      { id: 'user-b', phoneVerified: true },
+      {
+        id: 'user-b',
+        phoneVerified: true,
+        orderContactPhone: { configured: false, maskedPhone: null, version: 0 },
+      },
     );
     resolveCart?.([cartItem]);
     resolveAddresses?.([address]);
@@ -362,7 +386,11 @@ describe('feature hooks consume their feature API', () => {
     const auth = useAuthStore();
     auth.applySession(
       { accessToken: 'token-a', expiresAt: '2026-07-20T00:00:00.000Z' },
-      { id: 'user-a', phoneVerified: true },
+      {
+        id: 'user-a',
+        phoneVerified: true,
+        orderContactPhone: { configured: false, maskedPhone: null, version: 0 },
+      },
     );
     let rejectCart: ((error: Error) => void) | undefined;
     let rejectAddresses: ((error: Error) => void) | undefined;
@@ -393,7 +421,11 @@ describe('feature hooks consume their feature API', () => {
     ];
     auth.applySession(
       { accessToken: 'token-b', expiresAt: '2026-07-20T00:00:00.000Z' },
-      { id: 'user-b', phoneVerified: true },
+      {
+        id: 'user-b',
+        phoneVerified: true,
+        orderContactPhone: { configured: false, maskedPhone: null, version: 0 },
+      },
     );
     rejectCart?.(new Error('A cart error'));
     rejectAddresses?.(new Error('A address error'));
@@ -442,10 +474,14 @@ describe('feature hooks consume their feature API', () => {
       nickname: '小明',
       phone: '13800000000',
       phoneVerified: true,
+      orderContactPhone: {
+        configured: true,
+        maskedPhone: '138****0000',
+        version: 1,
+      },
     });
     await checkout.methods.load();
     checkout.methods.updateValues({
-      contactPhone: '13800000000',
       fulfillmentType: FulfillmentType.PICKUP,
       pickupTimeText: '明天上午十点',
     });

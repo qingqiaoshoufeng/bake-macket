@@ -8,7 +8,9 @@ import {
   type UserProfileView,
 } from '@bake-mall/contracts';
 
+import { ApiClientError } from '../../../api/http.js';
 import { useAddressesStore } from '../../../stores/addresses.js';
+import { useAuthStore } from '../../../stores/auth.js';
 import { useCartStore } from '../../../stores/cart.js';
 import { useOrdersStore } from '../../../stores/orders.js';
 import {
@@ -16,33 +18,36 @@ import {
   isCurrentSession,
   type SessionSnapshot,
 } from '../../../stores/session.js';
+import { generateIdempotencyKey } from '../../../utils/idempotency.js';
+import { yuanTextToCents } from '../../../utils/money.js';
 import { addressesFeatureApi } from '../../addresses/api/index.js';
 import { cartFeatureApi } from '../../cart/api/index.js';
+import { profileFeatureApi } from '../../profile/api/index.js';
+import { mapProfile } from '../../profile/hooks/useProfile.js';
 import { checkoutFeatureApi } from '../api/index.js';
 import {
   CHECKOUT_DEFAULTS,
   ORDER_QUOTE_DEBOUNCE_MS,
-  PHONE_PATTERN,
   REMARK_MAX_LENGTH,
 } from '../config/defaults.js';
-import { generateIdempotencyKey } from '../../../utils/idempotency.js';
-import { yuanTextToCents } from '../../../utils/money.js';
-import { ApiClientError } from '../../../api/http.js';
 import type { CheckoutFormValues, CheckoutValidation } from '../type/index.js';
 import { useOrderQuote } from './useOrderQuote.js';
 
 export { generateIdempotencyKey } from '../../../utils/idempotency.js';
 
+export type CheckoutRecovery = 'contact-phone-missing' | 'contact-phone-stale';
+
 export function validateCheckout(
   values: Readonly<CheckoutFormValues>,
   cartItemIds: readonly string[],
+  hasOrderContactPhone: boolean,
 ): CheckoutValidation {
   if (!cartItemIds.length)
     return { valid: false, message: '购物车为空,请先添加商品' };
   if (!values.contactName.trim())
     return { valid: false, message: '请填写联系人' };
-  if (!PHONE_PATTERN.test(values.contactPhone.trim())) {
-    return { valid: false, message: '请填写 11 位手机号' };
+  if (!hasOrderContactPhone) {
+    return { valid: false, message: '请先在“我的”设置订单联系手机号' };
   }
   if (
     values.fulfillmentType === FulfillmentType.PICKUP &&
@@ -63,10 +68,11 @@ export function mapCheckoutRequest(
   values: Readonly<CheckoutFormValues>,
   cartItemIds: readonly string[],
   quote: Readonly<OrderQuoteView> | null,
+  orderContactPhoneVersion: number,
 ): CreateOrderRequest {
   const common = {
     contactName: values.contactName.trim(),
-    contactPhone: values.contactPhone.trim(),
+    orderContactPhoneVersion,
     cartItemIds: [...cartItemIds],
     ...(values.remark.trim()
       ? { remark: values.remark.trim().slice(0, REMARK_MAX_LENGTH) }
@@ -99,13 +105,15 @@ function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
-export function useCheckout(profile: UserProfileView | null) {
+export function useCheckout(initialProfile: UserProfileView | null) {
+  const auth = useAuthStore();
   const cart = useCartStore();
   const addresses = useAddressesStore();
   const orders = useOrdersStore();
+  const profile = ref<UserProfileView | null>(initialProfile);
   const values = ref<CheckoutFormValues>({
     ...CHECKOUT_DEFAULTS,
-    contactName: profile?.nickname ?? '',
+    contactName: initialProfile?.nickname ?? '',
   });
   const submitting = ref(false);
   const idempotencyReservation = ref<{
@@ -114,6 +122,7 @@ export function useCheckout(profile: UserProfileView | null) {
   } | null>(null);
   const formError = ref<string | null>(null);
   const submitError = ref<string | null>(null);
+  const recovery = ref<CheckoutRecovery | null>(null);
 
   const cartItemIds = computed(() => cart.selectedItems.map((item) => item.id));
   const cartTotalCents = computed(() =>
@@ -121,6 +130,12 @@ export function useCheckout(profile: UserProfileView | null) {
       (sum, item) => sum + item.sku.priceCents * item.quantity,
       0,
     ),
+  );
+  const orderContactPhone = computed(
+    () => profile.value?.orderContactPhone ?? null,
+  );
+  const hasOrderContactPhone = computed(
+    () => orderContactPhone.value?.configured === true,
   );
   const quoteIntent = computed(() => ({
     cartItemIds: cartItemIds.value,
@@ -149,7 +164,11 @@ export function useCheckout(profile: UserProfileView | null) {
     () =>
       !submitting.value &&
       hasSubmittablePricing.value &&
-      validateCheckout(values.value, cartItemIds.value).valid,
+      validateCheckout(
+        values.value,
+        cartItemIds.value,
+        hasOrderContactPhone.value,
+      ).valid,
   );
 
   function updateValues(next: Partial<CheckoutFormValues>): void {
@@ -175,6 +194,13 @@ export function useCheckout(profile: UserProfileView | null) {
     if (isCurrentSession(session)) addresses.applyItems(items);
   }
 
+  async function refreshProfile(session: SessionSnapshot): Promise<void> {
+    const next = mapProfile(await profileFeatureApi.get());
+    if (!isCurrentSession(session)) return;
+    profile.value = next;
+    auth.setProfile(next);
+  }
+
   async function load(): Promise<void> {
     const session = captureSession();
     cart.setLoading(true);
@@ -182,7 +208,11 @@ export function useCheckout(profile: UserProfileView | null) {
     cart.setError(null);
     addresses.setError(null);
     try {
-      await Promise.all([refreshCart(session), refreshAddresses(session)]);
+      await Promise.all([
+        refreshCart(session),
+        refreshAddresses(session),
+        refreshProfile(session),
+      ]);
     } catch (error) {
       if (isCurrentSession(session)) {
         const message = errorMessage(error, '加载失败');
@@ -219,12 +249,34 @@ export function useCheckout(profile: UserProfileView | null) {
     }
   }
 
+  async function recoverContactPhone(
+    kind: CheckoutRecovery,
+    message: string,
+    session: SessionSnapshot,
+  ): Promise<null> {
+    idempotencyReservation.value = null;
+    recovery.value = kind;
+    try {
+      await refreshProfile(session);
+    } catch {
+      // 保留服务端错误指引，用户可进入“我的”重新加载并设置。
+    }
+    submitError.value = message;
+    return null;
+  }
+
   async function submit(): Promise<OrderView | null> {
     formError.value = null;
     submitError.value = null;
-    const validation = validateCheckout(values.value, cartItemIds.value);
+    recovery.value = null;
+    const validation = validateCheckout(
+      values.value,
+      cartItemIds.value,
+      hasOrderContactPhone.value,
+    );
     if (!validation.valid) {
       formError.value = validation.message;
+      if (!hasOrderContactPhone.value) recovery.value = 'contact-phone-missing';
       return null;
     }
 
@@ -240,10 +292,17 @@ export function useCheckout(profile: UserProfileView | null) {
       return null;
     }
 
+    const contact = orderContactPhone.value;
+    if (!contact?.configured) {
+      formError.value = '请先在“我的”设置订单联系手机号';
+      recovery.value = 'contact-phone-missing';
+      return null;
+    }
     const request = mapCheckoutRequest(
       values.value,
       cartItemIds.value,
       usableQuote,
+      contact.version,
     );
     const requestFingerprint = JSON.stringify(request);
     const reservation = idempotencyReservation.value;
@@ -264,15 +323,27 @@ export function useCheckout(profile: UserProfileView | null) {
       }
       return order;
     } catch (error) {
-      if (
-        isCurrentSession(session) &&
-        error instanceof ApiClientError &&
-        error.code === ApiErrorCode.ORDER_QUOTE_STALE
-      ) {
-        idempotencyReservation.value = null;
-        orderQuote.methods.markStale('报价已失效，请确认最新金额后再次下单');
-        submitError.value = '报价已失效，请确认最新金额后再次下单';
-        return null;
+      if (isCurrentSession(session) && error instanceof ApiClientError) {
+        if (error.code === ApiErrorCode.ORDER_QUOTE_STALE) {
+          idempotencyReservation.value = null;
+          orderQuote.methods.markStale('报价已失效，请确认最新金额后再次下单');
+          submitError.value = '报价已失效，请确认最新金额后再次下单';
+          return null;
+        }
+        if (error.code === ApiErrorCode.ORDER_CONTACT_PHONE_REQUIRED) {
+          return recoverContactPhone(
+            'contact-phone-missing',
+            '订单联系手机号尚未设置，请前往“我的”设置',
+            session,
+          );
+        }
+        if (error.code === ApiErrorCode.ORDER_CONTACT_PHONE_VERSION_CONFLICT) {
+          return recoverContactPhone(
+            'contact-phone-stale',
+            '订单联系手机号已更新，请确认最新脱敏号码后重新提交',
+            session,
+          );
+        }
       }
       if (isCurrentSession(session)) {
         submitError.value = errorMessage(error, '提交失败');
@@ -286,12 +357,15 @@ export function useCheckout(profile: UserProfileView | null) {
   return {
     data: {
       values: readonly(values),
+      profile: readonly(profile),
+      orderContactPhone,
       cartItems: computed(() => cart.items),
       availableItems: computed(() => cart.selectedItems),
       addresses: computed(() => addresses.items),
       cartTotalCents,
       formError: readonly(formError),
       submitError: readonly(submitError),
+      recovery: readonly(recovery),
       quote: orderQuote.data.quote,
       requestedCreditText: orderQuote.data.requestedCreditText,
       quoteValidationError: orderQuote.data.validationError,

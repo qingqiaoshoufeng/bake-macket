@@ -90,7 +90,7 @@ async function revokeOperator(): Promise<void> {
       <AdminPageHeader
         eyebrow="CUSTOMER DIRECTORY"
         title="用户管理"
-        description="查看顾客身份与手机号验证状态，按权限添加用户并管理操作员角色。"
+        description="查看微信绑定、身份手机号与独立管理员登录号，按权限添加用户并管理操作员角色。"
       >
         <template v-if="users.canCreate.value" #actions>
           <ElButton
@@ -138,7 +138,7 @@ async function revokeOperator(): Promise<void> {
             :model-value="users.query.value"
             aria-label="搜索用户"
             clearable
-            placeholder="搜索手机号、昵称或用户 ID"
+            placeholder="搜索身份手机号、管理员登录手机号、昵称或用户 ID"
             class="users-page__search"
             data-testid="users-search-input"
             @update:model-value="users.setQuery(String($event))"
