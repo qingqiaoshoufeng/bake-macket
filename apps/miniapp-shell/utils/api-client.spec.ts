@@ -35,8 +35,16 @@ const adminSession: AdminSessionView = {
 const customerSession = {
   accessToken: 'customer-token',
   expiresAt: '2026-08-06T12:00:00.000Z',
-  profile: { id: '42', phoneVerified: false },
-};
+  profile: {
+    id: '42',
+    phoneVerified: false,
+    orderContactPhone: {
+      configured: false,
+      maskedPhone: null,
+      version: 0,
+    },
+  },
+} as const;
 
 type RequestOptions = WechatMiniprogram.RequestOption;
 

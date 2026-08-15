@@ -1,0 +1,45 @@
+.wechat-login-page {
+  min-height: 100vh;
+  padding: 32rpx;
+  background: #fffaf3;
+  box-sizing: border-box;
+}
+
+.wechat-login-card {
+  margin-top: 18vh;
+  padding: 40rpx 32rpx 24rpx;
+  border: 1rpx solid #eadfd2;
+  border-radius: 28rpx;
+  background: #ffffff;
+}
+
+.wechat-login-title,
+.wechat-login-copy {
+  display: block;
+}
+
+.wechat-login-title {
+  margin-bottom: 16rpx;
+  color: #3f3932;
+  font-size: 36rpx;
+  font-weight: 600;
+}
+
+.wechat-login-copy {
+  margin-bottom: 32rpx;
+  color: #6f675d;
+  font-size: 28rpx;
+  line-height: 1.6;
+}
+
+.wechat-login-button {
+  background: #7da77d;
+  border-radius: 16rpx;
+}
+
+.wechat-login-cancel {
+  margin-top: 16rpx;
+  color: #6f675d;
+  background: transparent;
+  border: 0;
+}

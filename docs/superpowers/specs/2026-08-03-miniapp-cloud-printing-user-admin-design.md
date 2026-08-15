@@ -136,11 +136,11 @@ NestJS API + MySQL
 
 ### 5.1 账户类型
 
-| 类型          | 关联消费用户 | 登录方式                                                | 权限                                                        |
-| ------------- | ------------ | ------------------------------------------------------- | ----------------------------------------------------------- |
-| `SUPER_ADMIN` | 否           | Admin Web `username`（邮箱）+ 环境初始化密码            | 现有完整后台、用户管理、管理员授权/撤销、订单、打印机和打印 |
-| `OPERATOR`    | 是           | 小程序消费身份；Admin Web 规范化手机号 + 管理员操作密码 | 仅限第 7 节 permission 白名单                               |
-| 普通 `User`   | 不适用       | 微信或手机号                                            | 商城、个人资料和自己的订单                                  |
+| 类型          | 关联消费用户 | 登录方式                                                                       | 权限                                                        |
+| ------------- | ------------ | ------------------------------------------------------------------------------ | ----------------------------------------------------------- |
+| `SUPER_ADMIN` | 否           | Admin Web `username`（邮箱）+ 环境初始化密码                                   | 现有完整后台、用户管理、管理员授权/撤销、订单、打印机和打印 |
+| `OPERATOR`    | 是           | 小程序微信 linked User；Admin Web 独立 `AdminUser.loginPhone` + 管理员操作密码 | 仅限第 7 节 permission 白名单                               |
+| 普通 `User`   | 不适用       | 微信或手机号                                                                   | 商城、个人资料和自己的订单                                  |
 
 ### 5.2 超级管理员
 
@@ -153,14 +153,13 @@ NestJS API + MySQL
 
 ### 5.3 普通管理员
 
-- 一个 `OPERATOR` 必须唯一关联一个已有消费用户，`linked_user_id` 非空且唯一。
-- `OPERATOR.username` 必须为 null；不得复制手机号到 `admin_users`，也不得把 username 作为普通管理员身份事实源。
-- Admin Web 登录先按与用户系统相同的规则规范化手机号，再通过 `users.phone` 查询已验证的 canonical User，并以其 ID 匹配 `admin_users.linked_user_id`。
-- 消费用户被授权后，继续使用原微信/手机号顾客身份。
-- 小程序使用有效 `mall-user` 会话换取独立 `mall-admin` 会话。
+- 一个 `OPERATOR` 必须唯一关联一个已有消费用户，`linked_user_id` 非空且唯一；该 linked User 必须 active、未合并，并至少具有微信 OpenID 或 UnionID。
+- `OPERATOR.username` 必须为 null；`AdminUser.loginPhone` 是唯一、独立的 PC 管理员登录手机号，由 SUPER_ADMIN 授权时配置。不得从 `User.phone` 或 `User.orderContactPhone` 动态推导，也不得把 username 作为普通管理员身份事实源。
+- Admin Web 登录直接按规范化后的 `AdminUser.loginPhone` 查询 OPERATOR，再校验 linked User 的微信资格；不读取 `User.phone`、`phoneVerified` 或 `orderContactPhone`。
+- 消费用户被授权后，继续使用原微信/手机号顾客身份；小程序使用有效 `mall-user` 会话按当前微信 linked User 换取独立 `mall-admin` 会话，不调用收费的 `getPhoneNumber`。
 - 普通管理员不能管理第 7 节白名单之外的任何能力。
-- linked User 的手机号发生变化，或 `phoneVerified` 从 true 变为 false 时，必须在同一事务递增关联 `OPERATOR.tokenVersion`；当前 `mall-admin` token 立即失效。
-- linked User 手机号未验证时，必须拒绝 Admin Web 登录，也必须拒绝由 `mall-user` 换取或刷新管理会话；已有管理 token 由前述 tokenVersion 递增失效。
+- linked User 被停用、合并或失去全部微信 OpenID/UnionID 时，登录、exchange 与每次 guard 都 fail closed；SUPER_ADMIN 撤权时停用 OPERATOR 并递增 `AdminUser.tokenVersion`，现有管理 token 立即失效。
+- `User.phone`、`phoneVerified` 或 `orderContactPhone` 变化不授予、不撤销 OPERATOR，也不改变其 token；会员若保留手机号验证，是独立顾客能力。
 
 ### 5.4 JWT 隔离
 
@@ -182,10 +181,10 @@ NestJS API + MySQL
 - 管理员仍存在；
 - `isActive=true`；
 - token version 仍有效；
-- `OPERATOR` 的 linked User 仍存在且 `phoneVerified=true`；
+- `OPERATOR` 的 linked User 仍存在、active、未合并，且仍具有微信 OpenID 或 UnionID；
 - 当前角色和 endpoint permission 匹配。
 
-撤权、停用、操作密码变更、linked User 手机变更或失去 verified 状态时递增 `tokenVersion`，使现有 `mall-admin` token 立即失效。
+撤权、管理员停用和操作密码变更时递增 `AdminUser.tokenVersion`，使现有 `mall-admin` token 立即失效；linked User 停用、合并或微信身份被清理时，即使 token version 未变化，exchange 与每次 guard 也会立即拒绝。顾客三类手机号变化均不影响管理员 token。
 
 ### 5.5 首次修改临时密码
 
@@ -245,7 +244,7 @@ Admin Web 和小程序管理员区均提供：
 - 重复手机号返回确定性冲突错误；
 - 并发添加由数据库唯一约束兜底；
 - 手动创建的 User 是 `placeholder`，`phoneVerified=false`，不能伪造用户已验证手机号；
-- 下单前置必须同时检查手机号存在且 `phoneVerified=true`。
+- placeholder 的历史身份手机号与 `phoneVerified` 只服务身份归一和保留的会员验证能力；商品下单改为检查 `User.orderContactPhone` 已配置并匹配客户端提交的版本，不要求 `User.phone` 或 `phoneVerified`。
 
 用户以后通过真实短信或微信手机号流程验证 placeholder 的同一规范化手机号时，必须执行显式、原子的用户合并，禁止静默保留两个用户：
 
@@ -303,19 +302,19 @@ Admin Web 和小程序管理员区均提供：
 
 `OPERATOR` 权限采用严格白名单，只拥有上述八项 permission。既有 admin endpoint 默认仅 `SUPER_ADMIN` 可访问；只有 endpoint 显式声明上述 permission 时才向 `OPERATOR` 开放。新增 endpoint 也遵循相同默认拒绝规则，不能因位于订单、用户或打印模块而自动继承访问权。
 
-| 能力                             | 所需 permission        |     SUPER_ADMIN |                OPERATOR | 普通用户 |
-| -------------------------------- | ---------------------- | --------------: | ----------------------: | -------: |
-| 查看全部消费用户                 | `USER_READ`            |              是 |                      是 |       否 |
-| 手动添加消费用户                 | `USER_CREATE`          |              是 |                      是 |       否 |
-| 授予/撤销管理员                  | SUPER_ADMIN only       |              是 |                      否 |       否 |
-| 查看全部订单及详情               | `ORDER_READ`           |              是 |                      是 |       否 |
-| 修改合法订单状态                 | `ORDER_STATUS_UPDATE`  |              是 |                      是 |       否 |
-| 单张/批量打印                    | `PRINT_EXECUTE`        |              是 |                      是 |       否 |
-| 查看打印批次和历史               | `PRINT_HISTORY_READ`   |              是 |                      是 |       否 |
-| 绑定、恢复、重命名、解绑云打印机 | `PRINT_DEVICE_MANAGE`  |  是，需二次验证 |          是，需二次验证 |       否 |
-| 修改自己的操作密码               | `SELF_PASSWORD_CHANGE` |              是 |                      是 |       否 |
-| Admin Web 登录                   | 身份端点               | username + 密码 | 规范化手机号 + 操作密码 |       否 |
-| 小程序管理区                     | 管理会话 + permission  |              否 |                      是 |       否 |
+| 能力                             | 所需 permission                          |     SUPER_ADMIN |                        OPERATOR | 普通用户 |
+| -------------------------------- | ---------------------------------------- | --------------: | ------------------------------: | -------: |
+| 查看全部消费用户                 | `USER_READ`                              |              是 |                              是 |       否 |
+| 手动添加消费用户                 | `USER_CREATE`                            |              是 |                              是 |       否 |
+| 授予/撤销管理员                  | SUPER_ADMIN only                         |              是 |                              否 |       否 |
+| 查看全部订单及详情               | `ORDER_READ`                             |              是 |                              是 |       否 |
+| 修改合法订单状态                 | `ORDER_STATUS_UPDATE`                    |              是 |                              是 |       否 |
+| 单张/批量打印                    | `PRINT_EXECUTE`                          |              是 |                              是 |       否 |
+| 查看打印批次和历史               | `PRINT_HISTORY_READ`                     |              是 |                              是 |       否 |
+| 绑定、恢复、重命名、解绑云打印机 | `PRINT_DEVICE_MANAGE`                    |  是，需二次验证 |                  是，需二次验证 |       否 |
+| 修改自己的操作密码               | `SELF_PASSWORD_CHANGE`                   |              是 |                              是 |       否 |
+| Admin Web 登录                   | 身份端点                                 | username + 密码 | 独立管理员登录手机号 + 操作密码 |       否 |
+| 小程序管理区                     | 微信 linked User + 管理会话 + permission |              否 |     是，不依赖 `getPhoneNumber` |       否 |
 
 `OPERATOR` 明确不得访问 dashboard、订单导出、supply、supply-items、商品、分类、会员、购卡记录、首页配置、upload、管理员与角色管理。其路由、导航和 API 均必须拒绝；不能通过聚合统计、导出或上传端点间接取得相同数据或能力。Admin Web 的 `OPERATOR` 登录成功后默认跳转订单列表，不进入 dashboard。
 
@@ -457,18 +456,19 @@ adapter 对提交调用统一分类为：
 
 首期必须新增或调整：
 
-| 字段                       | 语义                                                                                      |
-| -------------------------- | ----------------------------------------------------------------------------------------- |
-| `username`                 | 可空且非空值唯一；`SUPER_ADMIN` 必须为邮箱 username，`OPERATOR` 必须为 null               |
-| `role`                     | `SUPER_ADMIN` 或 `OPERATOR`                                                               |
-| `linked_user_id`           | `OPERATOR` 必须关联已验证消费用户；`SUPER_ADMIN` 必须为 null；唯一外键                    |
-| `must_change_password`     | 是否必须修改临时操作密码                                                                  |
-| `token_version`            | 撤权、密码事件及 linked User 手机身份变化使旧 token 失效                                  |
-| `verify_failed_count`      | known 管理员公开登录叠加保护，以及首次/普通改密与高风险二次验证复用的每管理员精确失败次数 |
-| `verify_window_started_at` | 每管理员 5 分钟精确失败窗口起点，可空                                                     |
-| `last_password_changed_at` | 密码最近修改时间                                                                          |
+| 字段                       | 语义                                                                                              |
+| -------------------------- | ------------------------------------------------------------------------------------------------- |
+| `username`                 | 可空且非空值唯一；`SUPER_ADMIN` 必须为邮箱 username，`OPERATOR` 必须为 null                       |
+| `role`                     | `SUPER_ADMIN` 或 `OPERATOR`                                                                       |
+| `login_phone`              | `OPERATOR` 必须具有的唯一 PC 登录手机号；`SUPER_ADMIN` 必须为 null；不来自 User 三类履约/身份字段 |
+| `linked_user_id`           | `OPERATOR` 必须关联具有微信 OpenID/UnionID 的有效消费用户；`SUPER_ADMIN` 必须为 null；唯一外键    |
+| `must_change_password`     | 是否必须修改临时操作密码                                                                          |
+| `token_version`            | 撤权、管理员停用和密码事件使旧 token 失效                                                         |
+| `verify_failed_count`      | known 管理员公开登录叠加保护，以及首次/普通改密与高风险二次验证复用的每管理员精确失败次数         |
+| `verify_window_started_at` | 每管理员 5 分钟精确失败窗口起点，可空                                                             |
+| `last_password_changed_at` | 密码最近修改时间                                                                                  |
 
-保留 `password_hash`。数据库约束或等效 service invariant 必须保证角色与 `username`/`linked_user_id` 的互斥组合。迁移将所有现有 admin 回填为 `SUPER_ADMIN`；新建或迁移 `OPERATOR` 时 username 为 null，并始终通过规范化 `users.phone -> linked_user_id` 定位。
+保留 `password_hash`。数据库约束或等效 service invariant 必须保证角色与 `username`/`login_phone`/`linked_user_id` 的互斥组合。新建或重新授权 OPERATOR 时 username 为 null，由 SUPER_ADMIN 明确提交唯一 `loginPhone`。0014 对 legacy OPERATOR 仅在 linked User 有合法历史身份手机号时一次性回填 `login_phone`；无法回填者设为 inactive 并递增 token version，等待重新授权。唯一索引处理并发 race，迁移 `down` 对新数据与 legacy 停用状态 fail closed。
 
 ### 10.3 `admin_login_verification_buckets`
 
@@ -707,8 +707,8 @@ job 状态和处理规则为：
 ### 13.1 顾客/管理员会话
 
 - 顾客会话查询自身管理员资格；
-- linked User 手机号已验证的有效 `OPERATOR` 使用 `mall-user` 会话换取 `mall-admin` 会话；
-- 普通管理员通过规范化手机号定位 `users.phone -> linked_user_id`，再以操作密码登录 Admin Web；
+- linked User active、未合并并具有微信 OpenID/UnionID 的有效 `OPERATOR` 使用 `mall-user` 会话换取 `mall-admin` 会话；
+- 普通管理员通过规范化后的唯一 `AdminUser.loginPhone` 定位 OPERATOR，再以操作密码登录 Admin Web；
 - 首次临时密码修改同时接收临时密码、新密码和确认值，成功后使旧受限 token 失效并直接返回新的完整 `mall-admin` 会话；
 - 管理员操作密码二次验证由高风险接口内部完成，不返回可长期复用的“验证通过”布尔值。
 
@@ -766,11 +766,11 @@ job 状态和处理规则为：
 ### 14.1 用户管理模块
 
 - 用户列表、搜索、分页；
-- 手机号脱敏展示；
-- 手动添加手机号用户；
+- 历史身份手机号与管理员登录手机号分别脱敏展示，并展示微信是否绑定；搜索完整 loginPhone 只用于服务端精确匹配，响应不回显完整号码；
+- 手动添加历史身份手机号用户；
 - 管理员状态；
-- 超级管理员可见授予/撤销操作；
-- 授权表单要求当前密码、临时操作密码及确认值；
+- 超级管理员可见授予/撤销操作，只有已绑定微信身份的 User 可授权；
+- 授权表单要求独立管理员登录手机号、当前超级管理员密码、临时操作密码及确认值；
 - 普通管理员不渲染授权操作，API 同时拒绝越权。
 
 ### 14.2 打印机管理模块
@@ -811,7 +811,8 @@ Dashboard、订单导出、supply、supply-items、商品、分类、会员、�
 
 ### 15.1 入口
 
-- 小程序加载顾客身份后查询管理员资格；
+- 小程序启动时可用 `wx.login` 自动取得一次性 code 并加载 H5；H5 登录页还提供显式微信登录按钮，经严格同源 return URL 校验进入原生页，code 仅存 App 内存并在匹配的 web-view `deliveryId` load 后消费；自动与显式路径共用应用级协调器且避免竞态重复兑换。
+- 小程序加载顾客微信身份后直接查询管理员资格，不进入 `/pages/phone-auth/index?flow=admin`，也不调用 `getPhoneNumber`；
 - 非管理员不显示管理入口；
 - 已撤权管理员进入时 API 返回未授权并清理本地管理会话；
 - `mustChangePassword=true` 时先进入修改密码页。
@@ -898,7 +899,7 @@ Dashboard、订单导出、supply、supply-items、商品、分类、会员、�
 
 - 用户手机号冲突；
 - placeholder 合并含不可迁移财务事实、微信身份冲突或管理员唯一性冲突；
-- 管理员不存在、已撤权、linked User 手机未验证或 permission 不足；
+- 管理员不存在、已撤权、linked User 不存在/停用/已合并/失去微信身份或 permission 不足；
 - 必须修改临时密码；
 - 操作密码错误或验证限流；
 - 打印机 SN 无效、已绑定、归属无法证明或厂商限制；
@@ -918,11 +919,11 @@ Dashboard、订单导出、supply、supply-items、商品、分类、会员、�
 
 ### 18.1 用户和管理员
 
-- 规范化手机号由数据库唯一索引保证；
-- 授权/撤权锁定目标 `User` 和关联 `AdminUser`；
-- placeholder 合并按稳定顺序锁定 placeholder、source 微信 User 和双方关联管理员，所有迁移、管理员重挂及 source token 失效原子提交；
-- 同一用户最多一个 `OPERATOR`；
-- linked User 手机变化/失去 verified 与管理员 tokenVersion 更新同事务提交；
+- 历史身份手机号 `User.phone` 与管理员 PC 登录号 `AdminUser.loginPhone` 分别规范化，并由各自数据库唯一索引保证；`User.orderContactPhone` 明确不唯一；
+- 授权/撤权锁定目标 `User` 和关联 `AdminUser`；授权同时检查微信 OpenID/UnionID 资格，并以 `admin_users.login_phone` 唯一索引兜底并发 race；
+- placeholder 合并按稳定顺序锁定 placeholder、source 微信 User 和双方关联管理员，所有迁移、管理员重挂及 source token 失效原子提交；重挂后若 canonical User 无微信身份，管理员资格检查 fail closed；
+- 同一用户最多一个 `OPERATOR`，同一 `loginPhone` 最多一个管理员；
+- linked User 停用、合并或微信身份被清理后，登录、exchange 和 guard 立即拒绝；订单联系号或历史身份手机号变化不更新管理员 tokenVersion；
 - 公开 `SUPER_ADMIN`/`OPERATOR` 登录先锁定或原子更新 `HMAC(kind + normalized identifier)` 映射的固定 bucket；known 管理员再按固定锁序更新其精确窗口，known/unknown 均不能以并发请求绕过“前 5 次 401、第 6 次 429”；
 - bucket 碰撞按共享计数产生更严格限制；公开登录成功只重置管理员精确窗口、不重置 bucket，公开失败不逐次写 `AuditLog`；
 - 首次改密、普通改密和高风险二次验证只原子更新每管理员精确窗口，成功重置并逐次写脱敏 `AuditLog`；
@@ -983,8 +984,8 @@ Dashboard、订单导出、supply、supply-items、商品、分类、会员、�
 覆盖：
 
 - `mall-user` / `mall-admin` 交叉拒绝；
-- `OPERATOR.username=null`、手机号登录映射与迁移现有 admin 为 `SUPER_ADMIN`；
-- linked User 手机变更或失去 verified 后 token 立即失效且登录/换会话被拒绝；
+- `OPERATOR.username=null`、独立 `AdminUser.loginPhone` 登录、唯一键 race 与 legacy OPERATOR 回填/停用，以及迁移现有 admin 为 `SUPER_ADMIN`；
+- linked User 停用、合并或失去微信身份后登录/换会话/guard 立即拒绝；订单联系号和历史身份手机号变化不影响管理员 token；
 - 普通管理员对白名单外所有既有 endpoint 被拒绝，包括 dashboard、订单导出、supply/supply-items、商品/分类/会员/购卡/首页/upload/admin-role；
 - 用户并发创建与 placeholder 合并锁；
 - 合并迁移微信身份、地址、购物车和管理员关联；财务事实、OpenID/UnionID 或唯一性冲突整笔回滚；
@@ -1052,7 +1053,7 @@ Dashboard、订单导出、supply、supply-items、商品、分类、会员、�
 9. 部分明确失败和只为失败项创建新意图；
 10. 厂商 timeout 后查询并进入 `MANUAL_REVIEW`，三类人工处置均可审计；
 11. 非终态引用阻止解绑，取消只取消 `PENDING`，厂商删除失败不完成本地解绑；
-12. 普通管理员撤权、linked User 手机变化或失去 verified 后立即失效；
+12. 普通管理员撤权后 token 立即失效；linked User 停用、合并或微信身份失效后，登录、exchange 和现有 token guard 立即拒绝；手机号资料变化不影响管理员权限；
 13. 小票手机号脱敏、配送地址、备注和金额正确；
 14. 创建满 180 天的打印 payload PII 被清理且旧 job 不可直接重试。
 
@@ -1090,9 +1091,9 @@ Dashboard、订单导出、supply、supply-items、商品、分类、会员、�
 ### 阶段二：OPERATOR 身份与 token
 
 - `admin_users.username` 可空、角色约束及现有 admin 全量回填 `SUPER_ADMIN`；
-- `OPERATOR.username=null`，通过规范化 `users.phone -> linked_user_id` 登录；
-- 授权、撤权、受限会话、首次三字段改密和新完整会话；
-- linked User 手机变化/失去 verified 时 tokenVersion 递增；
+- `OPERATOR.username=null`，使用唯一 `AdminUser.loginPhone` 登录；
+- 只有 SUPER_ADMIN 可为具有微信身份的 User 显式配置 loginPhone 与临时密码并授权；撤权、受限会话、首次三字段改密和新完整会话保持；
+- linked User 停用、合并或失去微信身份时登录/exchange/guard 立即拒绝；三类手机号变化不影响管理员 token；
 - 公开登录使用固定 1024 HMAC bucket，known/unknown 仅按 bucket 对外返回前 5 次 `401`、第 6 次 `429`；known 管理员另叠加不提前改变公开响应的精确窗口；
 - 首次改密、普通改密和高风险二次验证继续使用每管理员 5 分钟 5 次精确窗口并逐次脱敏审计，公开登录失败仅聚合 bucket。
 
@@ -1162,7 +1163,7 @@ Dashboard、订单导出、supply、supply-items、商品、分类、会员、�
 2. 超级管理员仍只使用 Admin Web；现有 admin 迁移为 `SUPER_ADMIN`；
 3. Admin Web 和小程序均支持消费用户查看/添加，手工记录明确为 placeholder；
 4. 手机号验证以 placeholder ID 为 canonical 原子合并安全数据；财务事实、微信身份和唯一性冲突被确定性阻断，不产生静默双用户；
-5. `OPERATOR.username=null`，仅通过规范化 `users.phone -> linked_user_id` 登录，手机号未验证时拒绝登录/换会话；
+5. `OPERATOR.username=null`，仅通过唯一 `AdminUser.loginPhone` 登录 PC；小程序只按 active、未合并且具有微信 OpenID/UnionID 的 linked User 换会话，不依赖 `User.phone`、`phoneVerified`、订单联系号或 `getPhoneNumber`；
 6. 只有超级管理员能授予或撤销普通管理员；公开登录固定 1024 HMAC bucket 对 known/unknown 均为前 5 次 `401`、第 6 次 `429`，碰撞更严格，known 管理员附加精确窗口不提前改变响应，成功只重置管理员窗口且公开 attempt 不逐次写 `AuditLog`；首次改密三字段、已认证流程每管理员精确限流与逐次脱敏审计、新完整会话和所有 tokenVersion 即时失效事件生效；
 7. OPERATOR 仅有八项 permission，既有 endpoint 默认 SUPER_ADMIN，所有白名单外路径被拒绝，Admin Web 默认跳订单；
 8. 多台芯烨云打印机可绑定，单次只选择一台；绑定在厂商调用前持久化 `BINDING`；

@@ -25,8 +25,11 @@ const superAdmin = () => ({
 });
 const targetUser = (overrides: Record<string, unknown> = {}) => ({
   id: '7',
-  phone: '13800000000',
-  phoneVerified: true,
+  phone: null,
+  phoneVerified: false,
+  orderContactPhone: null,
+  wechatOpenid: 'openid-7',
+  wechatUnionid: null,
   isActive: true,
   mergedIntoUserId: null,
   ...overrides,
@@ -134,6 +137,7 @@ describe('AdminUsersService', () => {
     vi.spyOn(bcrypt, 'hash').mockResolvedValue('temporary-hash' as never);
 
     const result = await harness.service.grantOperator('7', principal, {
+      loginPhone: '13700000000',
       currentPassword: 'super-password',
       temporaryPassword: '123456',
       confirmTemporaryPassword: '123456',
@@ -152,6 +156,7 @@ describe('AdminUsersService', () => {
     );
     expect(harness.getSavedAdmin()).toMatchObject({
       username: null,
+      loginPhone: '13700000000',
       role: AdminRole.OPERATOR,
       linkedUserId: '7',
       passwordHash: 'temporary-hash',
@@ -168,23 +173,32 @@ describe('AdminUsersService', () => {
       '123456',
     );
     expect(JSON.stringify(harness.audit.record.mock.calls)).not.toContain(
+      '13700000000',
+    );
+    expect(JSON.stringify(harness.audit.record.mock.calls)).not.toContain(
       'hash',
     );
   });
 
   it.each([
-    ['未 verified', targetUser({ phoneVerified: false })],
+    ['不存在', null],
     ['inactive', targetUser({ isActive: false })],
     ['已合并', targetUser({ mergedIntoUserId: '8' })],
-    ['手机号为 null', targetUser({ phone: null })],
-    ['手机号非法', targetUser({ phone: '138-0000-0000' })],
-    ['非 11 位 verified 手机号', targetUser({ phone: '+8613800000000' })],
-    ['手机号含未规范空白', targetUser({ phone: ' 13800000000 ' })],
+    [
+      '未绑定微信，即使身份手机号已验证',
+      targetUser({
+        phone: '13800000000',
+        phoneVerified: true,
+        wechatOpenid: null,
+        wechatUnionid: null,
+      }),
+    ],
   ])('拒绝%s user，且不验证、不创建或激活 admin', async (_label, user) => {
     const harness = build({ user });
 
     await expect(
       harness.service.grantOperator('7', principal, {
+        loginPhone: '13700000000',
         currentPassword: 'super-password',
         temporaryPassword: '123456',
         confirmTemporaryPassword: '123456',
@@ -203,6 +217,7 @@ describe('AdminUsersService', () => {
         '7',
         { ...principal, role: AdminRole.OPERATOR },
         {
+          loginPhone: '13700000000',
           currentPassword: '123456',
           temporaryPassword: '654321',
           confirmTemporaryPassword: '654321',
@@ -225,6 +240,7 @@ describe('AdminUsersService', () => {
           isActive: true,
         },
       }).service.grantOperator('7', principal, {
+        loginPhone: '13700000000',
         currentPassword: 'super-password',
         temporaryPassword: '123456',
         confirmTemporaryPassword: '123456',
@@ -247,6 +263,7 @@ describe('AdminUsersService', () => {
     });
     vi.spyOn(bcrypt, 'hash').mockResolvedValue('new-hash' as never);
     await harness.service.grantOperator('7', principal, {
+      loginPhone: '13700000000',
       currentPassword: 'super-password',
       temporaryPassword: '654321',
       confirmTemporaryPassword: '654321',
@@ -374,8 +391,10 @@ describe('AdminUsersService 用户管理', () => {
     expect(result).toEqual({
       id: '11',
       nickname: null,
-      phoneMasked: '138****0000',
-      phoneVerified: false,
+      identityPhoneMasked: '138****0000',
+      identityPhoneVerified: false,
+      wechatBound: false,
+      loginPhoneMasked: null,
       createdAt: '2026-08-05T01:02:03.000Z',
       isOperator: false,
       operatorActive: false,
@@ -467,8 +486,10 @@ describe('AdminUsersService 用户管理', () => {
           nickname: '张三',
           phone: '13800000000',
           phoneVerified: 1,
+          wechatBound: 1,
           createdAt: new Date('2026-08-04T00:00:00.000Z'),
           operatorId: '9',
+          operatorLoginPhone: '13700000000',
           operatorActive: 0,
           mustChangePassword: 1,
         },
@@ -482,8 +503,11 @@ describe('AdminUsersService 用户管理', () => {
     });
 
     expect(harness.queryBuilder.andWhere).toHaveBeenCalledWith(
-      "(user.phone LIKE :search ESCAPE '\\\\' OR user.nickname LIKE :search ESCAPE '\\\\')",
-      { search: String.raw`%张\%\_三\\%` },
+      "(user.phone LIKE :search ESCAPE '\\\\' OR user.nickname LIKE :search ESCAPE '\\\\' OR operator.loginPhone = :exactLoginPhone)",
+      {
+        exactLoginPhone: '张%_三\\',
+        search: String.raw`%张\%\_三\\%`,
+      },
     );
     expect(harness.queryBuilder.andWhere.mock.calls[0]?.[0]).not.toContain(
       'user.id = :exactUserId',
@@ -503,8 +527,10 @@ describe('AdminUsersService 用户管理', () => {
         {
           id: '7',
           nickname: '张三',
-          phoneMasked: '138****0000',
-          phoneVerified: true,
+          identityPhoneMasked: '138****0000',
+          identityPhoneVerified: true,
+          wechatBound: true,
+          loginPhoneMasked: '137****0000',
           createdAt: '2026-08-04T00:00:00.000Z',
           isOperator: true,
           operatorActive: false,
@@ -538,8 +564,8 @@ describe('AdminUsersService 用户管理', () => {
       expect(sql.includes('user.id = :exactUserId')).toBe(expectsExactId);
       expect(parameters).toEqual(
         expectsExactId
-          ? { exactUserId: q, search: `%${q}%` }
-          : { search: `%${q}%` },
+          ? { exactLoginPhone: q, exactUserId: q, search: `%${q}%` }
+          : { exactLoginPhone: q, search: `%${q}%` },
       );
     },
   );
@@ -553,10 +579,12 @@ describe('AdminUsersService 用户管理', () => {
       harness.queryBuilder.select.mock.calls[0]?.[0],
     );
     expect(projection).toContain('user.phone');
+    expect(projection).toContain('wechatBound');
+    expect(projection).toContain('operator.loginPhone');
     expect(projection).toContain('operator.isActive');
     expect(projection).toContain('operator.mustChangePassword');
     expect(projection).not.toMatch(
-      /wechatOpenid|wechatUnionid|passwordHash|tokenVersion|verifyFailed|secret|jwt/i,
+      /passwordHash|tokenVersion|verifyFailed|secret|jwt/i,
     );
   });
 });

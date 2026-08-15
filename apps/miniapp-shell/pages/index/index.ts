@@ -69,16 +69,21 @@ Page<IndexPageData, IndexPageCustom>({
       baseOrigin: MINIAPP_H5_ORIGIN,
       baseUrl: MINIAPP_H5_URL,
       consumePhoneHandoff: app.phoneCredentialHandoff.consume,
+      consumeWechatLoginHandoff: app.wechatLoginHandoff.consume,
       peekPhoneHandoff: app.phoneCredentialHandoff.peek,
+      peekWechatLoginHandoff: app.wechatLoginHandoff.peek,
       rebuildWebView: (h5Url, deliveryId): boolean => {
         try {
-          this.setData({
-            showWebView: false,
-            webViewMessage: '正在加载商城网页…',
-            webViewState: 'loading',
-          }, () => {
-            this.setData({ deliveryId, h5Url, showWebView: true });
-          });
+          this.setData(
+            {
+              showWebView: false,
+              webViewMessage: '正在加载商城网页…',
+              webViewState: 'loading',
+            },
+            () => {
+              this.setData({ deliveryId, h5Url, showWebView: true });
+            },
+          );
           return true;
         } catch {
           return false;
@@ -86,15 +91,6 @@ Page<IndexPageData, IndexPageCustom>({
       },
       toast: (title): void => {
         void wx.showToast({ title, icon: 'none' });
-      },
-    });
-
-    wx.login({
-      success: (result): void => {
-        this.controller?.handleLoginSuccess(result.code);
-      },
-      fail: (): void => {
-        this.controller?.handleLoginFailure();
       },
     });
   },

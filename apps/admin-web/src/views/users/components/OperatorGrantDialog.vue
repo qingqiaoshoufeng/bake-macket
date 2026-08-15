@@ -31,10 +31,25 @@ function updateForm(patch: Partial<OperatorGrantForm>): void {
     @close="emit('close')"
   >
     <div class="operator-dialog__notice">
-      <strong>{{ user?.nickname || user?.phoneMasked || '当前用户' }}</strong>
+      <strong>{{
+        user?.nickname || user?.identityPhoneMasked || '当前用户'
+      }}</strong>
       将获得订单、用户和打印白名单权限，并在首次登录时强制修改临时密码。
+      管理员登录手机号与顾客身份手机号、订单联系手机号相互独立。
     </div>
     <ElForm label-position="top" @submit.prevent="emit('submit')">
+      <ElFormItem label="管理员登录手机号">
+        <ElInput
+          :model-value="form.loginPhone"
+          type="tel"
+          inputmode="numeric"
+          autocomplete="username"
+          maxlength="11"
+          placeholder="请输入独立的 11 位登录手机号"
+          data-testid="operator-login-phone"
+          @update:model-value="updateForm({ loginPhone: String($event) })"
+        />
+      </ElFormItem>
       <ElFormItem label="当前超级管理员密码">
         <ElInput
           :model-value="form.currentPassword"

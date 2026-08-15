@@ -10,8 +10,14 @@ defineProps<{ profile: UserProfileView | null }>();
     <dl>
       <dt>昵称</dt>
       <dd>{{ profile?.nickname ?? '—' }}</dd>
-      <dt>手机号</dt>
-      <dd>{{ profile?.phone ?? '未绑定' }}</dd>
+      <dt>身份手机号</dt>
+      <dd>
+        {{
+          profile?.phoneVerified && profile.phone
+            ? profile.phone
+            : '未验证身份手机号'
+        }}
+      </dd>
       <dt>用户 ID</dt>
       <dd class="profile-account__id">{{ profile?.id ?? '—' }}</dd>
     </dl>

@@ -22,6 +22,7 @@ const config = {
 const operator = (overrides: Record<string, unknown> = {}) => ({
   id: '9',
   username: null,
+  loginPhone: '13700000000',
   role: AdminRole.OPERATOR,
   linkedUserId: '7',
   passwordHash: 'operator-hash',
@@ -37,6 +38,9 @@ const linkedUser = (overrides: Record<string, unknown> = {}) => ({
   id: '7',
   phone: '13800000000',
   phoneVerified: true,
+  orderContactPhone: null,
+  wechatOpenid: 'openid-7',
+  wechatUnionid: null,
   isActive: true,
   mergedIntoUserId: null,
   ...overrides,
@@ -56,6 +60,10 @@ const build = (
     options.persistedUser === undefined ? linkedUser() : options.persistedUser;
   const admins = {
     findOne: vi.fn(async ({ where }: { where: Record<string, unknown> }) => {
+      if (where.loginPhone)
+        return where.loginPhone === persistedOperator?.loginPhone
+          ? persistedOperator
+          : null;
       if (where.linkedUserId) return persistedOperator;
       if (where.id) return persistedOperator;
       return null;
@@ -104,23 +112,27 @@ const build = (
 };
 
 describe('AdminAuthService OPERATOR 会话', () => {
-  it('按规范化手机号登录并签发受限会话', async () => {
-    const { service, users, verification, jwt } = build();
+  it('按独立 AdminUser.loginPhone 登录并签发受限会话', async () => {
+    const { service, admins, users, verification, jwt } = build();
 
     const session = await service.login({
       kind: 'OPERATOR',
-      phone: ' 13800000000 ',
+      phone: ' 13700000000 ',
       password: '123456',
     });
 
+    expect(admins.findOne).toHaveBeenCalledWith({
+      where: { loginPhone: '13700000000' },
+      lock: { mode: 'pessimistic_write' },
+    });
     expect(users.findOne).toHaveBeenCalledWith({
-      where: { phone: '13800000000' },
+      where: { id: '7' },
       lock: { mode: 'pessimistic_write' },
     });
     expect(verification.verifyPublicLogin).toHaveBeenCalledWith(
       expect.objectContaining({
         loginKind: 'OPERATOR',
-        normalizedIdentifier: '13800000000',
+        normalizedIdentifier: '13700000000',
         candidatePassword: '123456',
         resolveAdmin: expect.any(Function),
       }),
@@ -143,35 +155,35 @@ describe('AdminAuthService OPERATOR 会话', () => {
   });
 
   it.each([
-    ['用户不存在', '13800000000', null, operator()],
-    [
-      '手机号未验证',
-      '13800000000',
-      linkedUser({ phoneVerified: false }),
-      operator(),
-    ],
+    ['用户不存在', '13700000000', null, operator()],
     [
       '用户 inactive',
-      '13800000000',
+      '13700000000',
       linkedUser({ isActive: false }),
       operator(),
     ],
     [
       '用户已合并',
-      '13800000000',
+      '13700000000',
       linkedUser({ mergedIntoUserId: '8' }),
       operator(),
     ],
-    ['管理员不存在', '13800000000', linkedUser(), null],
+    [
+      '用户无微信 identity',
+      '13700000000',
+      linkedUser({ wechatOpenid: null, wechatUnionid: null }),
+      operator(),
+    ],
+    ['管理员不存在', '13700000000', linkedUser(), null],
     [
       '管理员 inactive',
-      '13800000000',
+      '13700000000',
       linkedUser(),
       operator({ isActive: false }),
     ],
     [
       '管理员角色错误',
-      '13800000000',
+      '13700000000',
       linkedUser(),
       operator({ role: AdminRole.SUPER_ADMIN }),
     ],
@@ -195,7 +207,7 @@ describe('AdminAuthService OPERATOR 会话', () => {
       expect(verification.verifyPublicLogin).toHaveBeenCalledWith(
         expect.objectContaining({
           loginKind: 'OPERATOR',
-          normalizedIdentifier: '13800000000',
+          normalizedIdentifier: '13700000000',
           candidatePassword: '123456',
           resolveAdmin: expect.any(Function),
         }),
@@ -209,14 +221,14 @@ describe('AdminAuthService OPERATOR 会话', () => {
 
     await service.login({
       kind: 'OPERATOR',
-      phone: '13800000000',
+      phone: '13700000000',
       password: '12345a',
     });
 
     expect(verification.verifyPublicLogin).toHaveBeenCalledWith(
       expect.objectContaining({
         loginKind: 'OPERATOR',
-        normalizedIdentifier: '13800000000',
+        normalizedIdentifier: '13700000000',
         candidatePassword: '12345a',
       }),
     );
@@ -239,10 +251,33 @@ describe('AdminAuthService OPERATOR 会话', () => {
     });
   });
 
-  it('linked user 失去 verified 后拒绝换会话', async () => {
+  it('linked user 的身份/联系手机号变化不影响换会话', async () => {
     const { service } = build({
-      persistedUser: linkedUser({ phoneVerified: false }),
+      persistedUser: linkedUser({
+        phone: null,
+        phoneVerified: false,
+        orderContactPhone: '13600000000',
+      }),
+      persistedOperator: operator({ mustChangePassword: false }),
     });
+    await expect(
+      service.exchangeOperatorSession({
+        id: '7',
+        phone: '13800000000',
+        phoneVerified: true,
+      }),
+    ).resolves.toMatchObject({ role: AdminRole.OPERATOR });
+  });
+
+  it.each([
+    [
+      '微信 identity 被清空',
+      linkedUser({ wechatOpenid: null, wechatUnionid: null }),
+    ],
+    ['linked user inactive', linkedUser({ isActive: false })],
+    ['linked user 已合并', linkedUser({ mergedIntoUserId: '8' })],
+  ])('%s 后立即拒绝换会话', async (_label, persistedUser) => {
+    const { service } = build({ persistedUser });
     await expect(
       service.exchangeOperatorSession({
         id: '7',

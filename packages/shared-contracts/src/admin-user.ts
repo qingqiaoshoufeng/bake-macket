@@ -11,8 +11,10 @@ export type AdminOperatorStatusView = {
 export type AdminUserView = {
   id: string;
   nickname: string | null;
-  phoneMasked: string | null;
-  phoneVerified: boolean;
+  identityPhoneMasked: string | null;
+  identityPhoneVerified: boolean;
+  wechatBound: boolean;
+  loginPhoneMasked: string | null;
   createdAt: string;
   isOperator: boolean;
   operatorActive: boolean;
@@ -39,6 +41,7 @@ export type AdminUserStatusView = {
 };
 
 export type GrantOperatorRequest = {
+  loginPhone: string;
   currentPassword: string;
   temporaryPassword: string;
   confirmTemporaryPassword: string;

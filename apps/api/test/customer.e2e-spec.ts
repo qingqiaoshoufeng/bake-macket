@@ -171,6 +171,7 @@ describe('Customer domain (e2e)', () => {
   let app: INestApplication;
   let userHeaders: Record<string, string>;
   let adminHeaders: Record<string, string>;
+  let userRepo: ReturnType<typeof memoryRepository<User>>;
   let productRepo: ReturnType<typeof memoryRepository<Product>>;
   let bannerRepo: ReturnType<typeof memoryRepository<Banner>>;
   let auditRepo: ReturnType<typeof memoryRepository<AuditLog>>;
@@ -183,7 +184,7 @@ describe('Customer domain (e2e)', () => {
     process.env.MYSQL_DATABASE = 'bake_mall_test';
     process.env.MYSQL_USER = 'bake_app_test';
 
-    const userRepo = memoryRepository<User>();
+    userRepo = memoryRepository<User>();
     const adminRepo = memoryRepository<AdminUser>();
     const addressRepo = memoryRepository<Address>();
     auditRepo = memoryRepository<AuditLog>();
@@ -196,6 +197,8 @@ describe('Customer domain (e2e)', () => {
       id: '1',
       phone: '13800000000',
       phoneVerified: true,
+      orderContactPhone: null,
+      orderContactPhoneVersion: 0,
       isActive: true,
       mergedIntoUserId: null,
       tokenVersion: 1,
@@ -355,6 +358,66 @@ describe('Customer domain (e2e)', () => {
 
   afterAll(async () => {
     await app?.close();
+  });
+
+  it('returns identity and order contact phone states, then updates the contact version without changing identity', async () => {
+    const profileBefore = await request(app.getHttpServer())
+      .get('/api/v1/me')
+      .set(userHeaders)
+      .expect(200);
+    expect(profileBefore.body).toEqual({
+      id: '1',
+      nickname: 'Cake Fan',
+      avatarUrl: null,
+      phone: '138****0000',
+      phoneVerified: true,
+      orderContactPhone: {
+        configured: false,
+        maskedPhone: null,
+        version: 0,
+      },
+    });
+
+    const updated = await request(app.getHttpServer())
+      .put('/api/v1/me/order-contact-phone')
+      .set(userHeaders)
+      .send({ phone: '13900000000', expectedVersion: 0 })
+      .expect(200);
+    expect(updated.body).toEqual({
+      configured: true,
+      maskedPhone: '139****0000',
+      version: 1,
+    });
+    const persisted = await userRepo.findOneByOrFail({ id: '1' });
+    expect(persisted).toMatchObject({
+      phone: '13800000000',
+      phoneVerified: true,
+      orderContactPhone: '13900000000',
+      orderContactPhoneVersion: 1,
+      tokenVersion: 1,
+    });
+
+    await request(app.getHttpServer())
+      .put('/api/v1/me/order-contact-phone')
+      .set(userHeaders)
+      .send({ phone: '13700000000', expectedVersion: 0 })
+      .expect(409)
+      .expect(({ body }) => {
+        expect(body.code).toBe('ORDER_CONTACT_PHONE_UPDATE_VERSION_CONFLICT');
+      });
+    await request(app.getHttpServer())
+      .put('/api/v1/me/order-contact-phone')
+      .set(userHeaders)
+      .send({ phone: '13900000000', expectedVersion: 1 })
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.version).toBe(1);
+      });
+    await request(app.getHttpServer())
+      .put('/api/v1/me/order-contact-phone')
+      .set(userHeaders)
+      .send({ phone: '1390000000', expectedVersion: 1 })
+      .expect(400);
   });
 
   it('keeps only the second default address, replaces repeated SKU quantities, and filters disabled or invalid banners', async () => {

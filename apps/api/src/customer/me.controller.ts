@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   UseGuards,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -20,7 +21,12 @@ import { JwtUserGuard } from '../auth/user-jwt.guard.js';
 import { User } from '../database/entities/user.entity.js';
 import { AddressService } from './address.service.js';
 import { CartService } from './cart.service.js';
+import { UpdateOrderContactPhoneDto } from './dto/order-contact-phone.dto.js';
 import { CreateAddressDto, UpdateAddressDto } from './dto/address.dto.js';
+import {
+  OrderContactPhoneService,
+  toOrderContactPhoneView,
+} from './order-contact-phone.service.js';
 import { UpsertCartItemDto } from './dto/cart.dto.js';
 
 @Controller('me')
@@ -30,6 +36,7 @@ export class MeController {
     @InjectRepository(User) private readonly users: Repository<User>,
     private readonly addresses: AddressService,
     private readonly carts: CartService,
+    private readonly orderContactPhones: OrderContactPhoneService,
   ) {}
 
   @Get()
@@ -42,7 +49,24 @@ export class MeController {
       avatarUrl: user.avatarUrl,
       nickname: user.nickname,
       phone: maskPhone(user.phone),
+      phoneVerified: user.phoneVerified,
+      orderContactPhone: toOrderContactPhoneView(
+        user.orderContactPhone,
+        user.orderContactPhoneVersion,
+      ),
     };
+  }
+
+  @Put('order-contact-phone')
+  updateOrderContactPhone(
+    @CurrentUser() currentUser: AuthenticatedUser,
+    @Body() dto: UpdateOrderContactPhoneDto,
+  ) {
+    return this.orderContactPhones.update(
+      currentUser.id,
+      dto.phone,
+      dto.expectedVersion,
+    );
   }
 
   @Get('cart/items')

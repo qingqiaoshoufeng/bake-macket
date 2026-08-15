@@ -14,16 +14,19 @@ import {
 import { User } from './user.entity.js';
 
 /**
- * Merchant back-office account. The first admin is provisioned via deployment
- * environment variables or a one-time init script — never seeded through the
- * public API or migrations.
+ * Merchant back-office account. `loginPhone` is an OPERATOR-only PC login
+ * credential and is independent from the linked customer's identity and order
+ * contact phones. Legacy OPERATOR rows awaiting reauthorization may remain
+ * inactive with a null login phone. The first admin is provisioned via
+ * deployment variables or a one-time init script, never a public endpoint.
  */
 @Entity({ name: 'admin_users' })
 @Check(
   'chk_admin_users_role_identity',
-  "(`role` = 'SUPER_ADMIN' AND `username` IS NOT NULL AND `linked_user_id` IS NULL) OR (`role` = 'OPERATOR' AND `username` IS NULL AND `linked_user_id` IS NOT NULL)",
+  "(`role` = 'SUPER_ADMIN' AND `username` IS NOT NULL AND `login_phone` IS NULL AND `linked_user_id` IS NULL) OR (`role` = 'OPERATOR' AND `username` IS NULL AND `linked_user_id` IS NOT NULL AND (`login_phone` IS NOT NULL OR `is_active` = 0))",
 )
 @Index('uniq_admin_users_username', ['username'], { unique: true })
+@Index('uniq_admin_users_login_phone', ['loginPhone'], { unique: true })
 @Index('uniq_admin_users_linked_user', ['linkedUserId'], { unique: true })
 export class AdminUser {
   @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true })
@@ -37,6 +40,9 @@ export class AdminUser {
     enum: [AdminRole.SUPER_ADMIN, AdminRole.OPERATOR],
   })
   role!: AdminRole;
+
+  @Column({ name: 'login_phone', type: 'varchar', length: 32, nullable: true })
+  loginPhone!: string | null;
 
   @Column({
     name: 'linked_user_id',

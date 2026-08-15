@@ -89,10 +89,10 @@ const timestampOf = (name: string): number => {
 };
 
 describe('DATABASE_MIGRATIONS 注册表完整性', () => {
-  it('统一注册十三项迁移，并以打印 UNKNOWN 元数据兼容迁移作为当前尾项', () => {
-    expect(DATABASE_MIGRATIONS).toHaveLength(13);
+  it('统一注册十四项迁移，并以订单联系号与管理员登录手机号迁移作为当前尾项', () => {
+    expect(DATABASE_MIGRATIONS).toHaveLength(14);
     expect(DATABASE_MIGRATIONS.at(-1)?.name).toBe(
-      'PrintJobUnknownMetadata1718000000012',
+      'OrderContactAndAdminLoginPhone1718000000013',
     );
   });
 

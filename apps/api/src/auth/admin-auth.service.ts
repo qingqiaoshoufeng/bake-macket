@@ -30,6 +30,7 @@ import { JWT_ADMIN_AUDIENCE } from './auth.constants.js';
 import { type AuthenticatedUser, type AdminJwtPayload } from './auth.types.js';
 import { validateAdminPassword } from './admin-password-policy.js';
 import { AdminVerificationService } from './admin-verification.service.js';
+import { isEligibleOperatorLinkedUser } from './operator-linked-user-eligibility.js';
 
 export const ADMIN_BCRYPT_COST = 10;
 
@@ -119,20 +120,23 @@ export class AdminAuthService implements OnModuleInit {
       candidatePassword: password,
       now: new Date(),
       resolveAdmin: async (manager) => {
-        const user = await manager.getRepository(User).findOne({
-          where: { phone: normalizedPhone },
-          lock: { mode: 'pessimistic_write' },
-        });
-        if (!isEligibleLinkedUser(user)) return null;
         const admin = await manager.getRepository(AdminUser).findOne({
-          where: { linkedUserId: user.id },
+          where: { loginPhone: normalizedPhone },
           lock: { mode: 'pessimistic_write' },
         });
-        return admin?.role === AdminRole.OPERATOR &&
-          admin.isActive &&
-          admin.linkedUserId === user.id
-          ? admin
-          : null;
+        if (
+          !admin ||
+          admin.role !== AdminRole.OPERATOR ||
+          !admin.isActive ||
+          !admin.linkedUserId
+        ) {
+          return null;
+        }
+        const user = await manager.getRepository(User).findOne({
+          where: { id: admin.linkedUserId },
+          lock: { mode: 'pessimistic_write' },
+        });
+        return isEligibleOperatorLinkedUser(user) ? admin : null;
       },
     });
     return this.issueSession(verification.admin);
@@ -142,7 +146,7 @@ export class AdminAuthService implements OnModuleInit {
     principal: AuthenticatedUser,
   ): Promise<AdminSessionView> {
     const user = await this.users.findOne({ where: { id: principal.id } });
-    if (!isEligibleLinkedUser(user)) {
+    if (!isEligibleOperatorLinkedUser(user)) {
       throw new ForbiddenException('Operator session unavailable');
     }
     const admin = await this.admins.findOne({
@@ -345,12 +349,3 @@ export class AdminAuthService implements OnModuleInit {
     };
   }
 }
-
-const isEligibleLinkedUser = (user: User | null): user is User =>
-  Boolean(
-    user &&
-    user.isActive &&
-    user.mergedIntoUserId === null &&
-    user.phoneVerified &&
-    user.phone,
-  );

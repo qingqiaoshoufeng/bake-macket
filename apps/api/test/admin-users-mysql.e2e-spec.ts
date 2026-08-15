@@ -91,6 +91,80 @@ const decorateManager = (
     },
   });
 
+const dataSourceWithAdminLoginPhoneBarrier = (
+  source: DataSource,
+  transactionErrors: unknown[],
+  loginPhone: string,
+): DataSource => {
+  const lookupBarrier = createBarrier(2);
+  return new Proxy(source, {
+    get(target, property) {
+      if (property !== 'transaction') {
+        const value = Reflect.get(target, property, target) as unknown;
+        return typeof value === 'function' ? value.bind(target) : value;
+      }
+      return async <T>(operation: (manager: EntityManager) => Promise<T>) => {
+        try {
+          return await target.transaction((manager) =>
+            operation(
+              new Proxy(manager, {
+                get(managerTarget, managerProperty) {
+                  if (managerProperty !== 'getRepository') {
+                    const value = Reflect.get(
+                      managerTarget,
+                      managerProperty,
+                      managerTarget,
+                    ) as unknown;
+                    return typeof value === 'function'
+                      ? value.bind(managerTarget)
+                      : value;
+                  }
+                  return <Entity extends ObjectLiteral>(
+                    entity: EntityTarget<Entity>,
+                  ) => {
+                    const repository = managerTarget.getRepository(entity);
+                    if (entity !== AdminUser) return repository;
+                    return new Proxy(repository, {
+                      get(repositoryTarget, repositoryProperty) {
+                        if (repositoryProperty !== 'findOne') {
+                          const value = Reflect.get(
+                            repositoryTarget,
+                            repositoryProperty,
+                            repositoryTarget,
+                          ) as unknown;
+                          return typeof value === 'function'
+                            ? value.bind(repositoryTarget)
+                            : value;
+                        }
+                        return async (
+                          options: Parameters<Repository<Entity>['findOne']>[0],
+                        ) => {
+                          const result =
+                            await repositoryTarget.findOne(options);
+                          const candidate = (
+                            options.where as { loginPhone?: unknown }
+                          ).loginPhone;
+                          if (candidate === loginPhone && result === null) {
+                            await lookupBarrier.wait();
+                          }
+                          return result;
+                        };
+                      },
+                    });
+                  };
+                },
+              }),
+            ),
+          );
+        } catch (error) {
+          transactionErrors.push(error);
+          throw error;
+        }
+      };
+    },
+  });
+};
+
 const dataSourceWithUserLookupBarrier = (
   source: DataSource,
   transactionErrors: unknown[],
@@ -248,6 +322,73 @@ describe.sequential('AdminUsersService unique phone race (MySQL)', () => {
       await source.getRepository(AuditLog).count({
         where: { action: 'ADMIN_PLACEHOLDER_USER_CREATED' },
       }),
+    ).toBe(1);
+  }, 30_000);
+
+  it('并发授权不同微信用户使用同一 loginPhone 时唯一成功且 race 映射稳定错误码', async () => {
+    const source = requireDatabase();
+    const users = source.getRepository(User);
+    const targets = await users.save([
+      users.create({
+        nickname: 'operator-race-one',
+        wechatOpenid: 'operator-race-openid-one',
+        isActive: true,
+        mergedIntoUserId: null,
+      }),
+      users.create({
+        nickname: 'operator-race-two',
+        wechatUnionid: 'operator-race-unionid-two',
+        isActive: true,
+        mergedIntoUserId: null,
+      }),
+    ]);
+    const loginPhone = '13700000000';
+    const transactionErrors: unknown[] = [];
+    const racingSource = dataSourceWithAdminLoginPhoneBarrier(
+      source,
+      transactionErrors,
+      loginPhone,
+    );
+    const verification = {
+      verifyInTransaction: async () => ({ status: 'VERIFIED', admin }),
+      assertVerified: (outcome: unknown) => outcome,
+    };
+    const service = new AdminUsersService(
+      racingSource,
+      verification as never,
+      new AuditService(source.getRepository(AuditLog)),
+      new UserIdentityService(racingSource),
+    );
+    const input = {
+      loginPhone,
+      currentPassword: 'not-used',
+      temporaryPassword: '123456',
+      confirmTemporaryPassword: '123456',
+    };
+
+    const outcomes = await Promise.allSettled(
+      targets.map((target) =>
+        service.grantOperator(target.id, principal(admin.id), input),
+      ),
+    );
+
+    expect(
+      outcomes.filter(({ status }) => status === 'fulfilled'),
+    ).toHaveLength(1);
+    const rejected = outcomes.filter(
+      (outcome) => outcome.status === 'rejected',
+    );
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]?.reason).toMatchObject({
+      response: { code: ApiErrorCode.ADMIN_LOGIN_PHONE_CONFLICT },
+    });
+    expect(transactionErrors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'ER_LOCK_DEADLOCK' }),
+      ]),
+    );
+    expect(
+      await source.getRepository(AdminUser).count({ where: { loginPhone } }),
     ).toBe(1);
   }, 30_000);
 

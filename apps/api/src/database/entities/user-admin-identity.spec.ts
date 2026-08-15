@@ -34,6 +34,16 @@ describe('User 与 AdminUser 身份安全实体元数据', () => {
     expect(columns.mergedIntoUserId.type).toBe('bigint');
     expect(columns.mergedIntoUserId.unsigned).toBe(true);
     expect(columns.mergedIntoUserId.isNullable).toBe(true);
+    expect(columns.orderContactPhone.databaseName).toBe('order_contact_phone');
+    expect(columns.orderContactPhone.type).toBe('varchar');
+    expect(columns.orderContactPhone.length).toBe('32');
+    expect(columns.orderContactPhone.isNullable).toBe(true);
+    expect(columns.orderContactPhoneVersion.databaseName).toBe(
+      'order_contact_phone_version',
+    );
+    expect(columns.orderContactPhoneVersion.type).toBe('int');
+    expect(columns.orderContactPhoneVersion.unsigned).toBe(true);
+    expect(columns.orderContactPhoneVersion.default).toBe(0);
     expect(columns.tokenVersion.databaseName).toBe('token_version');
     expect(columns.tokenVersion.type).toBe('int');
     expect(columns.tokenVersion.unsigned).toBe(true);
@@ -96,6 +106,10 @@ describe('User 与 AdminUser 身份安全实体元数据', () => {
     );
 
     expect(columns.username.isNullable).toBe(true);
+    expect(columns.loginPhone.databaseName).toBe('login_phone');
+    expect(columns.loginPhone.type).toBe('varchar');
+    expect(columns.loginPhone.length).toBe('32');
+    expect(columns.loginPhone.isNullable).toBe(true);
     expect(columns.role.enum).toEqual([
       AdminRole.SUPER_ADMIN,
       AdminRole.OPERATOR,
@@ -133,6 +147,11 @@ describe('User 与 AdminUser 身份安全实体元数据', () => {
         isUnique: true,
       },
     ]);
+    expect(
+      metadata.indices.find(
+        ({ givenName }) => givenName === 'uniq_admin_users_login_phone',
+      ),
+    ).toMatchObject({ isUnique: true });
     expect(metadata.uniques).toEqual([]);
     expect(
       metadata.relations.find(

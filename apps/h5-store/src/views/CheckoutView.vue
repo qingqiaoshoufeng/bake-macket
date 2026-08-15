@@ -21,11 +21,6 @@ const auth = useAuthStore();
 const checkout = useCheckout(auth.profile);
 
 onMounted(async () => {
-  const redirect = auth.requireVerifiedPhone('/checkout');
-  if (redirect) {
-    await router.replace(redirect);
-    return;
-  }
   try {
     await checkout.methods.load();
   } catch {
@@ -33,10 +28,24 @@ onMounted(async () => {
   }
 });
 
+async function openOrderContactPhone(): Promise<void> {
+  await router.push({
+    path: '/profile',
+    query: { edit: 'order-contact-phone', redirect: '/checkout' },
+  });
+}
+
 async function submit(): Promise<void> {
   try {
     const order = await checkout.methods.submit();
-    if (!order) return;
+    if (!order) {
+      if (checkout.data.recovery.value === 'contact-phone-missing') {
+        await openOrderContactPhone();
+      } else if (checkout.data.recovery.value === 'contact-phone-stale') {
+        showToast('联系手机号已刷新，请确认后重新提交');
+      }
+      return;
+    }
     showToast({ type: 'success', message: '下单成功' });
     await router.replace(`/orders/${order.id}`);
   } catch (error) {
@@ -76,13 +85,11 @@ async function submit(): Promise<void> {
       />
       <CheckoutContact
         :contact-name="checkout.data.values.value.contactName"
-        :contact-phone="checkout.data.values.value.contactPhone"
+        :order-contact-phone="checkout.data.orderContactPhone.value"
         @update:contact-name="
           checkout.methods.updateValues({ contactName: $event })
         "
-        @update:contact-phone="
-          checkout.methods.updateValues({ contactPhone: $event })
-        "
+        @manage-contact-phone="openOrderContactPhone"
       />
       <CheckoutMembershipPricing
         :quote="checkout.data.quote.value"

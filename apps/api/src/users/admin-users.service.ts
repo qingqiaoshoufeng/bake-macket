@@ -23,6 +23,7 @@ import { AuditService } from '../audit/audit.service.js';
 import { ADMIN_BCRYPT_COST } from '../auth/admin-auth.service.js';
 import { validateAdminPassword } from '../auth/admin-password-policy.js';
 import { type AuthenticatedAdmin } from '../auth/auth.types.js';
+import { isEligibleOperatorLinkedUser } from '../auth/operator-linked-user-eligibility.js';
 import { AdminVerificationService } from '../auth/admin-verification.service.js';
 import { escapeLike } from '../common/query/admin-query.helpers.js';
 import { AdminUser } from '../database/entities/admin-user.entity.js';
@@ -56,21 +57,24 @@ export class AdminUsersService {
         'user.nickname AS nickname',
         'user.phone AS phone',
         'user.phoneVerified AS phoneVerified',
+        '(user.wechatOpenid IS NOT NULL OR user.wechatUnionid IS NOT NULL) AS wechatBound',
         'user.createdAt AS createdAt',
         'operator.id AS operatorId',
+        'operator.loginPhone AS operatorLoginPhone',
         'operator.isActive AS operatorActive',
         'operator.mustChangePassword AS mustChangePassword',
       ]);
     const q = query.q?.trim();
     if (q) {
       const exactUserId = toExactUserId(q);
-      const likeConditions =
-        "user.phone LIKE :search ESCAPE '\\\\' OR user.nickname LIKE :search ESCAPE '\\\\'";
+      const searchConditions =
+        "user.phone LIKE :search ESCAPE '\\\\' OR user.nickname LIKE :search ESCAPE '\\\\' OR operator.loginPhone = :exactLoginPhone";
       builder.andWhere(
         exactUserId === null
-          ? `(${likeConditions})`
-          : `(${likeConditions} OR user.id = :exactUserId)`,
+          ? `(${searchConditions})`
+          : `(${searchConditions} OR user.id = :exactUserId)`,
         {
+          exactLoginPhone: q,
           search: `%${escapeLike(q)}%`,
           ...(exactUserId === null ? {} : { exactUserId }),
         },
@@ -138,75 +142,91 @@ export class AdminUsersService {
         message: 'Temporary password is invalid',
       });
     }
-    const outcome = await this.dataSource.transaction(async (manager) => {
-      const user = await manager.getRepository(User).findOne({
-        where: { id: userId },
-        lock: { mode: 'pessimistic_write' },
-      });
-      if (!isEligibleUser(user)) {
-        throw new ConflictException({
-          code: ApiErrorCode.ADMIN_USER_CONFLICT,
-          message: 'User is not eligible for operator authorization',
-        });
-      }
-      const admins = manager.getRepository(AdminUser);
-      const existing = await admins.findOne({
-        where: { linkedUserId: user.id },
-        lock: { mode: 'pessimistic_write' },
-      });
-      if (existing?.isActive) {
-        throw new ConflictException({
-          code: ApiErrorCode.ADMIN_USER_CONFLICT,
-          message: 'User is already an active operator',
-        });
-      }
-      const verification = await this.verification.verifyInTransaction(
-        manager,
-        {
-          adminId: principal.id,
-          candidatePassword: input.currentPassword,
-          now: new Date(),
-          context: { purpose: 'HIGH_RISK_ACTION' },
-        },
+    const loginPhone = normalizeOperatorPhone(input.loginPhone);
+    try {
+      const outcome = await withDeadlockRetry(() =>
+        this.dataSource.transaction(async (manager) => {
+          const user = await manager.getRepository(User).findOne({
+            where: { id: userId },
+            lock: { mode: 'pessimistic_write' },
+          });
+          if (!isEligibleOperatorLinkedUser(user)) {
+            throw new ConflictException({
+              code: ApiErrorCode.ADMIN_USER_CONFLICT,
+              message: 'User is not eligible for operator authorization',
+            });
+          }
+          const admins = manager.getRepository(AdminUser);
+          const existing = await admins.findOne({
+            where: { linkedUserId: user.id },
+            lock: { mode: 'pessimistic_write' },
+          });
+          const loginPhoneOwner = await admins.findOne({
+            where: { loginPhone },
+            lock: { mode: 'pessimistic_write' },
+          });
+          if (loginPhoneOwner && loginPhoneOwner.id !== existing?.id) {
+            throw adminLoginPhoneConflict();
+          }
+          if (existing?.isActive) {
+            throw new ConflictException({
+              code: ApiErrorCode.ADMIN_USER_CONFLICT,
+              message: 'User is already an active operator',
+            });
+          }
+          const verification = await this.verification.verifyInTransaction(
+            manager,
+            {
+              adminId: principal.id,
+              candidatePassword: input.currentPassword,
+              now: new Date(),
+              context: { purpose: 'HIGH_RISK_ACTION' },
+            },
+          );
+          if (verification.status !== 'VERIFIED') {
+            return { verification } as const;
+          }
+          const passwordHash = await bcrypt.hash(
+            input.temporaryPassword,
+            ADMIN_BCRYPT_COST,
+          );
+          const operator =
+            existing ??
+            admins.create({
+              username: null,
+              role: AdminRole.OPERATOR,
+              linkedUserId: user.id,
+              tokenVersion: 0,
+            });
+          operator.username = null;
+          operator.loginPhone = loginPhone;
+          operator.role = AdminRole.OPERATOR;
+          operator.linkedUserId = user.id;
+          operator.passwordHash = passwordHash;
+          operator.isActive = true;
+          operator.mustChangePassword = true;
+          operator.tokenVersion += 1;
+          operator.verifyFailedCount = 0;
+          operator.verifyWindowStartedAt = null;
+          const saved = await admins.save(operator);
+          await this.recordChange(
+            manager,
+            principal.id,
+            saved,
+            'ADMIN_OPERATOR_GRANTED',
+          );
+          return { operator: saved } as const;
+        }),
       );
-      if (verification.status !== 'VERIFIED') {
-        return { verification } as const;
+      if ('verification' in outcome && outcome.verification) {
+        this.verification.assertVerified(outcome.verification);
+        throw new Error('unreachable');
       }
-      const passwordHash = await bcrypt.hash(
-        input.temporaryPassword,
-        ADMIN_BCRYPT_COST,
-      );
-      const operator =
-        existing ??
-        admins.create({
-          username: null,
-          role: AdminRole.OPERATOR,
-          linkedUserId: user.id,
-          tokenVersion: 0,
-        });
-      operator.username = null;
-      operator.role = AdminRole.OPERATOR;
-      operator.linkedUserId = user.id;
-      operator.passwordHash = passwordHash;
-      operator.isActive = true;
-      operator.mustChangePassword = true;
-      operator.tokenVersion += 1;
-      operator.verifyFailedCount = 0;
-      operator.verifyWindowStartedAt = null;
-      const saved = await admins.save(operator);
-      await this.recordChange(
-        manager,
-        principal.id,
-        saved,
-        'ADMIN_OPERATOR_GRANTED',
-      );
-      return { operator: saved } as const;
-    });
-    if ('verification' in outcome && outcome.verification) {
-      this.verification.assertVerified(outcome.verification);
-      throw new Error('unreachable');
+      return statusView(userId, outcome.operator);
+    } catch (error) {
+      if (isDuplicateEntry(error)) throw adminLoginPhoneConflict();
+      throw error;
     }
-    return statusView(userId, outcome.operator);
   }
 
   async revokeOperator(
@@ -281,6 +301,8 @@ export class AdminUsersService {
           mustChangePassword: operator.mustChangePassword,
           tokenVersion: operator.tokenVersion,
           linkedUserId: operator.linkedUserId,
+          loginPhonePresent: operator.loginPhone !== null,
+          loginPhoneMasked: maskAdminUserPhone(operator.loginPhone),
         },
       },
       manager,
@@ -300,8 +322,10 @@ type AdminUserRaw = {
   nickname: string | null;
   phone: string | null;
   phoneVerified: boolean | number | string;
+  wechatBound: boolean | number | string;
   createdAt: Date | string;
   operatorId: string | null;
+  operatorLoginPhone: string | null;
   operatorActive: boolean | number | string | null;
   mustChangePassword: boolean | number | string | null;
 };
@@ -309,8 +333,10 @@ type AdminUserRaw = {
 const toBoolean = (value: boolean | number | string | null): boolean =>
   value === true || value === 1 || value === '1';
 
-export const maskAdminUserPhone = (phone: string | null): string | null => {
-  if (phone === null) return null;
+export const maskAdminUserPhone = (
+  phone: string | null | undefined,
+): string | null => {
+  if (phone == null) return null;
   if (phone.length <= 7) {
     return `${phone.slice(0, 1)}${'*'.repeat(Math.max(4, phone.length - 2))}${phone.slice(-1)}`;
   }
@@ -322,13 +348,27 @@ export const maskAdminUserPhone = (phone: string | null): string | null => {
 };
 
 const userView = (
-  user: Pick<User, 'id' | 'nickname' | 'phone' | 'phoneVerified' | 'createdAt'>,
-  operator: Pick<AdminUser, 'id' | 'isActive' | 'mustChangePassword'> | null,
+  user: Pick<
+    User,
+    | 'id'
+    | 'nickname'
+    | 'phone'
+    | 'phoneVerified'
+    | 'wechatOpenid'
+    | 'wechatUnionid'
+    | 'createdAt'
+  >,
+  operator: Pick<
+    AdminUser,
+    'id' | 'loginPhone' | 'isActive' | 'mustChangePassword'
+  > | null,
 ): AdminUserView => ({
   id: user.id,
   nickname: user.nickname,
-  phoneMasked: maskAdminUserPhone(user.phone),
-  phoneVerified: user.phoneVerified,
+  identityPhoneMasked: maskAdminUserPhone(user.phone),
+  identityPhoneVerified: user.phoneVerified,
+  wechatBound: Boolean(user.wechatOpenid || user.wechatUnionid),
+  loginPhoneMasked: maskAdminUserPhone(operator?.loginPhone ?? null),
   createdAt: user.createdAt.toISOString(),
   isOperator: operator !== null,
   operatorActive: operator?.isActive ?? false,
@@ -338,8 +378,10 @@ const userView = (
 const toAdminUserView = (row: AdminUserRaw): AdminUserView => ({
   id: row.userId,
   nickname: row.nickname,
-  phoneMasked: maskAdminUserPhone(row.phone),
-  phoneVerified: toBoolean(row.phoneVerified),
+  identityPhoneMasked: maskAdminUserPhone(row.phone),
+  identityPhoneVerified: toBoolean(row.phoneVerified),
+  wechatBound: toBoolean(row.wechatBound),
+  loginPhoneMasked: maskAdminUserPhone(row.operatorLoginPhone ?? null),
   createdAt: new Date(row.createdAt).toISOString(),
   isOperator: row.operatorId !== null,
   operatorActive: toBoolean(row.operatorActive),
@@ -351,6 +393,28 @@ const userPhoneConflict = () =>
     code: ApiErrorCode.ADMIN_USER_CONFLICT,
     message: 'User phone already exists',
   });
+
+const adminLoginPhoneConflict = () =>
+  new ConflictException({
+    code: ApiErrorCode.ADMIN_LOGIN_PHONE_CONFLICT,
+    message: 'Admin login phone already exists',
+  });
+
+const isDeadlock = (error: unknown): boolean =>
+  typeof error === 'object' &&
+  error !== null &&
+  (('code' in error &&
+    (error as { code?: string }).code === 'ER_LOCK_DEADLOCK') ||
+    ('errno' in error && (error as { errno?: number }).errno === 1213));
+
+async function withDeadlockRetry<T>(operation: () => Promise<T>): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (!isDeadlock(error)) throw error;
+    return operation();
+  }
+}
 
 const isDuplicateEntry = (error: unknown): boolean =>
   typeof error === 'object' &&
@@ -364,23 +428,6 @@ const assertSuperAdmin = (principal: AuthenticatedAdmin): void => {
       code: ApiErrorCode.ADMIN_PERMISSION_DENIED,
       message: 'Only super admins may manage operators',
     });
-  }
-};
-
-const isEligibleUser = (user: User | null): user is User => {
-  if (
-    !user ||
-    !user.isActive ||
-    user.mergedIntoUserId !== null ||
-    !user.phoneVerified ||
-    user.phone === null
-  ) {
-    return false;
-  }
-  try {
-    return normalizeOperatorPhone(user.phone) === user.phone;
-  } catch {
-    return false;
   }
 };
 

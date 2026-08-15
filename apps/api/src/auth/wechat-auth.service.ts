@@ -255,6 +255,17 @@ function mapProfile(user: User): UserProfileView {
     avatarUrl: user.avatarUrl ?? undefined,
     phone: maskPhone(user.phone) ?? undefined,
     phoneVerified: user.phoneVerified,
+    orderContactPhone: user.orderContactPhone
+      ? {
+          configured: true,
+          maskedPhone: maskPhone(user.orderContactPhone) as string,
+          version: user.orderContactPhoneVersion,
+        }
+      : {
+          configured: false,
+          maskedPhone: null,
+          version: user.orderContactPhoneVersion,
+        },
   };
 }
 

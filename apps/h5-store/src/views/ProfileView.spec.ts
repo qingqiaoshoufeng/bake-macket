@@ -13,6 +13,7 @@ import ProfileView from './ProfileView.vue';
 const apiMocks = vi.hoisted(() => ({
   getMembership: vi.fn(),
   getProfile: vi.fn(),
+  updateOrderContactPhone: vi.fn(),
 }));
 
 vi.mock('./membership/api/index.js', () => ({
@@ -23,7 +24,10 @@ vi.mock('./membership/api/index.js', () => ({
   },
 }));
 vi.mock('./profile/api/index.js', () => ({
-  profileFeatureApi: { get: apiMocks.getProfile },
+  profileFeatureApi: {
+    get: apiMocks.getProfile,
+    updateOrderContactPhone: apiMocks.updateOrderContactPhone,
+  },
 }));
 vi.mock('vant', async (importOriginal) => {
   const actual = await importOriginal<typeof import('vant')>();
@@ -51,12 +55,15 @@ const overview: MembershipOverviewView = {
   simulatedPaymentEnabled: true,
 };
 
-async function mountProfile() {
+async function mountProfile(path = '/profile') {
   const router = createRouter({
     history: createMemoryHistory(),
-    routes: [{ path: '/profile', component: ProfileView }],
+    routes: [
+      { path: '/profile', component: ProfileView },
+      { path: '/checkout', component: { template: '<div>checkout</div>' } },
+    ],
   });
-  await router.push('/profile');
+  await router.push(path);
   const wrapper = mount(ProfileView, {
     global: { plugins: [createPinia(), router] },
   });
@@ -71,7 +78,18 @@ describe('ProfileView membership isolation', () => {
       id: 'user-1',
       nickname: '小麦',
       avatarUrl: null,
-      phone: '13800000000',
+      phone: '138****0000',
+      phoneVerified: true,
+      orderContactPhone: {
+        configured: false,
+        maskedPhone: null,
+        version: 0,
+      },
+    });
+    apiMocks.updateOrderContactPhone.mockResolvedValue({
+      configured: true,
+      maskedPhone: '139****0000',
+      version: 1,
     });
     apiMocks.getMembership.mockResolvedValue(overview);
   });
@@ -126,5 +144,34 @@ describe('ProfileView membership isolation', () => {
     expect(apiMocks.getMembership).toHaveBeenCalledTimes(2);
     expect(apiMocks.getProfile).toHaveBeenCalledOnce();
     expect(wrapper.text()).toContain('麦芽卡');
+  });
+
+  it('明确区分身份手机号与订单联系手机号', async () => {
+    const wrapper = await mountProfile();
+
+    expect(wrapper.text()).toContain('身份手机号');
+    expect(wrapper.text()).toContain('订单联系手机号');
+    expect(wrapper.get('[data-testid="edit-order-contact-phone"]').text()).toBe(
+      '设置',
+    );
+  });
+
+  it('query 自动展开并在保存后安全返回 checkout', async () => {
+    const wrapper = await mountProfile(
+      '/profile?edit=order-contact-phone&redirect=/checkout',
+    );
+    const router = wrapper.vm.$router;
+
+    await wrapper
+      .get('[data-testid="order-contact-phone-input"]')
+      .setValue('13900000000');
+    await wrapper.get('form.profile-contact__form').trigger('submit.prevent');
+    await flushPromises();
+
+    expect(apiMocks.updateOrderContactPhone).toHaveBeenCalledWith({
+      phone: '13900000000',
+      expectedVersion: 0,
+    });
+    expect(router.currentRoute.value.path).toBe('/checkout');
   });
 });

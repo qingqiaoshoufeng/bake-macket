@@ -2,9 +2,20 @@ import {
   createRouter,
   createWebHistory,
   type RouteRecordRaw,
+  type Router,
 } from 'vue-router';
 
 import { useAuthStore } from '../stores/auth.js';
+
+export type RouterAuthDependencies = Readonly<{
+  waitForCurrentAttempt: () => Promise<void>;
+}>;
+
+const settledAuthAttempt = Promise.resolve();
+
+function waitForSettledAuthAttempt(): Promise<void> {
+  return settledAuthAttempt;
+}
 
 /**
  * Application routes locked by the design spec:
@@ -50,7 +61,7 @@ const routes: RouteRecordRaw[] = [
     path: '/checkout',
     name: 'checkout',
     component: () => import('../views/CheckoutView.vue'),
-    meta: { requiresVerifiedPhone: true },
+    meta: { requiresAuth: true },
   },
   {
     path: '/orders',
@@ -107,31 +118,37 @@ const routes: RouteRecordRaw[] = [
   },
 ];
 
-export const router = createRouter({
-  history: createWebHistory(),
-  routes,
-});
+export function createStoreRouter(
+  dependencies: RouterAuthDependencies = {
+    waitForCurrentAttempt: waitForSettledAuthAttempt,
+  },
+): Router {
+  const router = createRouter({
+    history: createWebHistory(),
+    routes,
+  });
 
-/**
- * Global navigation guard:
- *
- * - Routes marked `requiresAuth` bounce anonymous visitors to
- *   `/login?redirect=<encoded path>`.
- * - Routes marked `requiresVerifiedPhone` use
- *   {@link useAuthStore.requireVerifiedPhone} so the user gets the same
- *   redirect shape whether they are anonymous or simply unverified.
- */
-router.beforeEach((to) => {
-  const auth = useAuthStore();
-  if (to.meta.requiresVerifiedPhone) {
-    const target = auth.requireVerifiedPhone(to.fullPath);
-    if (target) return target;
-  }
-  if (to.meta.requiresAuth && !auth.isAuthenticated) {
-    return `/login?redirect=${encodeURIComponent(to.fullPath)}`;
-  }
-  return true;
-});
+  /**
+   * Protected routes wait only for an already-running miniapp login exchange.
+   * Public catalog routes remain renderable while WeChat authentication runs.
+   */
+  router.beforeEach(async (to) => {
+    if (to.meta.requiresAuth || to.meta.requiresVerifiedPhone) {
+      await dependencies.waitForCurrentAttempt();
+    }
+    const auth = useAuthStore();
+    if (to.meta.requiresVerifiedPhone) {
+      const target = auth.requireVerifiedPhone(to.fullPath);
+      if (target) return target;
+    }
+    if (to.meta.requiresAuth && !auth.isAuthenticated) {
+      return `/login?redirect=${encodeURIComponent(to.fullPath)}`;
+    }
+    return true;
+  });
+
+  return router;
+}
 
 declare module 'vue-router' {
   interface RouteMeta {

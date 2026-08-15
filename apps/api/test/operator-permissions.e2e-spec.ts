@@ -66,8 +66,10 @@ const superAdmin = {
 
 const linkedUser = {
   id: '7',
-  phone: '13800000000',
-  phoneVerified: true,
+  phone: null,
+  phoneVerified: false,
+  wechatOpenid: 'operator-permissions-openid-7',
+  wechatUnionid: null,
   isActive: true,
   mergedIntoUserId: null,
 } as User;

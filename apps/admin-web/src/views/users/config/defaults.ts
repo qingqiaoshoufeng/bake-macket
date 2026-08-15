@@ -20,6 +20,7 @@ export function createUserDefaults(): CreateUserForm {
 
 export function createOperatorGrantDefaults(): OperatorGrantForm {
   return {
+    loginPhone: '',
     currentPassword: '',
     temporaryPassword: '',
     confirmTemporaryPassword: '',

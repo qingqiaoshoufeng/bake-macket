@@ -1,3 +1,4 @@
+import type { OrderContactPhoneView } from './customer.js';
 import { AdminPermission, AdminRole } from './enums.js';
 
 export const OPERATOR_PERMISSIONS = Object.freeze([
@@ -106,4 +107,5 @@ export type UserProfileView = {
   avatarUrl?: string;
   phone?: string;
   phoneVerified: boolean;
+  orderContactPhone: OrderContactPhoneView;
 };

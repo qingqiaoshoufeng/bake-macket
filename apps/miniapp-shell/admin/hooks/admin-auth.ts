@@ -20,7 +20,6 @@ const EMPTY_PASSWORD_FORM: AdminPasswordForm = Object.freeze({
 });
 
 type AdminAuthApi = Readonly<{
-  bindWechatPhone: (code: string) => Promise<CustomerAuthSessionView>;
   exchange: () => Promise<AdminSessionView>;
   loginWithWechat: (code: string) => Promise<CustomerAuthSessionView>;
 }>;
@@ -48,10 +47,6 @@ type AdminPasswordDependencies = Readonly<{
 
 function clonePasswordForm(form: AdminPasswordForm): AdminPasswordForm {
   return { ...form };
-}
-
-function validPhoneIdentity(session: CustomerAuthSessionView): boolean {
-  return session.profile.phoneVerified && Boolean(session.profile.phone);
 }
 
 function normalizedCredential(value: unknown): string | null {
@@ -127,7 +122,7 @@ export function createAdminAuthController(dependencies: AdminAuthDependencies) {
     const requestGeneration = begin();
     try {
       const customer = await freshCustomer(requestGeneration);
-      if (!customer || !validPhoneIdentity(customer)) return false;
+      if (!customer) return false;
       const admin = await exchange(requestGeneration);
       if (!admin) return false;
       if (current(requestGeneration))
@@ -150,11 +145,6 @@ export function createAdminAuthController(dependencies: AdminAuthDependencies) {
     try {
       const customer = await freshCustomer(requestGeneration);
       if (!customer) return false;
-      if (!validPhoneIdentity(customer)) {
-        if (current(requestGeneration))
-          dependencies.navigate(ADMIN_ROUTES.phone);
-        return false;
-      }
       const admin = await exchange(requestGeneration);
       if (!admin) return false;
       dependencies.adminSession.set(admin);
@@ -173,36 +163,7 @@ export function createAdminAuthController(dependencies: AdminAuthDependencies) {
     }
   }
 
-  async function authorizePhone(codeValue: unknown): Promise<boolean> {
-    const code = normalizedCredential(codeValue);
-    if (!code) {
-      dependencies.toast('未完成手机号授权');
-      return false;
-    }
-    const requestGeneration = begin();
-    try {
-      const customer = await dependencies.api.bindWechatPhone(code);
-      if (!current(requestGeneration)) return false;
-      dependencies.customerSession.set(customer);
-      const admin = await exchange(requestGeneration);
-      if (!admin) return false;
-      dependencies.adminSession.set(admin);
-      state = { eligible: true, loading: false };
-      dependencies.navigate(targetRoute(admin));
-      return true;
-    } catch (error) {
-      if (current(requestGeneration)) {
-        dependencies.adminSession.clear();
-        state = { eligible: false, loading: false };
-        dependencies.toast(safeAuthMessage(error));
-      }
-      return false;
-    } finally {
-      if (current(requestGeneration)) state = { ...state, loading: false };
-    }
-  }
-
-  return { authorizePhone, enterAdmin, refreshEligibility, snapshot } as const;
+  return { enterAdmin, refreshEligibility, snapshot } as const;
 }
 
 function validatePasswordForm(form: AdminPasswordForm): void {

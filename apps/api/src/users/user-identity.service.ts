@@ -6,9 +6,6 @@ import {
 } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 
-import { AdminRole } from '@bake-mall/contracts';
-
-import { AdminUser } from '../database/entities/admin-user.entity.js';
 import { User } from '../database/entities/user.entity.js';
 
 const PHONE_PATTERN = /^\+?\d{6,20}$/;
@@ -161,23 +158,8 @@ export class UserIdentityService {
   ): Promise<User> {
     const nextPhone = normalizePhoneIdentity(change);
     const phoneChanged = user.phone !== nextPhone;
-    const lostVerification = user.phoneVerified && !change.phoneVerified;
     const identityChanged =
       phoneChanged || user.phoneVerified !== change.phoneVerified;
-
-    if (phoneChanged || lostVerification) {
-      const operator = await manager
-        .getRepository(AdminUser)
-        .createQueryBuilder('admin')
-        .setLock('pessimistic_write')
-        .where('admin.linkedUserId = :userId', { userId: user.id })
-        .andWhere('admin.role = :role', { role: AdminRole.OPERATOR })
-        .getOne();
-      if (operator) {
-        operator.tokenVersion += 1;
-        await manager.getRepository(AdminUser).save(operator);
-      }
-    }
 
     if (identityChanged || change.forceTokenVersionIncrement) {
       user.tokenVersion += 1;

@@ -110,6 +110,8 @@ describe.sequential('membership purchase to order lifecycle (MySQL)', () => {
       source.getRepository(User).create({
         phone: `139${String(process.pid).padStart(8, '0').slice(-8)}`,
         phoneVerified: true,
+        orderContactPhone: '13900000009',
+        orderContactPhoneVersion: 1,
       }),
     );
     const admin = await source.getRepository(entities.AdminUser).save(
@@ -242,7 +244,7 @@ describe.sequential('membership purchase to order lifecycle (MySQL)', () => {
       cartItemIds: [cartItem.id],
       fulfillmentType: FulfillmentType.PICKUP,
       contactName: '会员用户',
-      contactPhone: user.phone!,
+      orderContactPhoneVersion: user.orderContactPhoneVersion,
       pickupTimeText: '明天 10:00',
       requestedCreditCents: 1_500,
       quoteToken: quote.quoteToken,

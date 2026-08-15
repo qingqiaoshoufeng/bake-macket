@@ -4,6 +4,8 @@ import type {
   CreateAddressRequest,
   CustomerProfileView,
   UpdateAddressRequest,
+  UpdateOrderContactPhoneRequest,
+  UpdateOrderContactPhoneResponse,
   UpsertCartItemRequest,
 } from '@bake-mall/contracts';
 
@@ -31,6 +33,15 @@ export const customerApi = {
 
   getMe(token?: string): Promise<CustomerProfileView> {
     return apiClient.get<CustomerProfileView>('/me', { token });
+  },
+
+  updateOrderContactPhone(
+    body: UpdateOrderContactPhoneRequest,
+  ): Promise<UpdateOrderContactPhoneResponse> {
+    return apiClient.request<UpdateOrderContactPhoneResponse>(
+      '/me/order-contact-phone',
+      { method: 'PUT', body },
+    );
   },
 
   listAddresses(): Promise<AddressView[]> {

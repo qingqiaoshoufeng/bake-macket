@@ -1,15 +1,17 @@
 <script setup lang="ts">
-const props = defineProps<{ contactName: string; contactPhone: string }>();
+import type { OrderContactPhoneView } from '@bake-mall/contracts';
+
+const props = defineProps<{
+  contactName: string;
+  orderContactPhone: OrderContactPhoneView | null;
+}>();
 const emit = defineEmits<{
   (event: 'update:contactName', value: string): void;
-  (event: 'update:contactPhone', value: string): void;
+  (event: 'manage-contact-phone'): void;
 }>();
 
-function updateName(event: Event): void {
-  emit('update:contactName', (event.target as HTMLInputElement).value);
-}
-function updatePhone(event: Event): void {
-  emit('update:contactPhone', (event.target as HTMLInputElement).value);
+function inputValue(event: Event): string {
+  return (event.target as HTMLInputElement).value;
 }
 </script>
 
@@ -17,7 +19,10 @@ function updatePhone(event: Event): void {
   <section class="store-form-card checkout__contact">
     <div class="store-form-card__heading">
       <span>03</span>
-      <h2>联系人</h2>
+      <div>
+        <h2>订单联系人</h2>
+        <p>订单联系手机号来自“我的”，提交时仅发送资料版本。</p>
+      </div>
     </div>
     <label class="checkout__control"
       ><span>联系人</span
@@ -28,20 +33,28 @@ function updatePhone(event: Event): void {
         autocomplete="name"
         placeholder="联系人姓名"
         data-testid="contact-name"
-        @input="updateName"
+        @input="emit('update:contactName', inputValue($event))"
     /></label>
-    <label class="checkout__control"
-      ><span>手机号</span
-      ><input
-        :value="props.contactPhone"
-        type="tel"
-        inputmode="numeric"
-        maxlength="11"
-        autocomplete="tel"
-        placeholder="11 位手机号"
-        data-testid="contact-phone"
-        @input="updatePhone"
-    /></label>
+    <div
+      class="checkout__phone-summary"
+      data-testid="order-contact-phone-summary"
+    >
+      <div>
+        <span>订单联系手机号</span>
+        <strong>{{
+          orderContactPhone?.configured
+            ? orderContactPhone.maskedPhone
+            : '尚未设置'
+        }}</strong>
+      </div>
+      <button
+        type="button"
+        data-testid="manage-order-contact-phone"
+        @click="emit('manage-contact-phone')"
+      >
+        {{ orderContactPhone?.configured ? '去我的修改' : '去我的设置' }}
+      </button>
+    </div>
   </section>
 </template>
 
@@ -71,9 +84,18 @@ function updatePhone(event: Event): void {
   font-size: 10px;
   font-weight: 700;
 }
-.store-form-card__heading h2 {
+.store-form-card__heading h2,
+.store-form-card__heading p {
   margin: 0;
+}
+.store-form-card__heading h2 {
   font-size: 15px;
+}
+.store-form-card__heading p {
+  margin-top: 2px;
+  color: var(--mall-text-muted);
+  font-size: 11px;
+  line-height: 1.5;
 }
 .checkout__contact {
   display: grid;
@@ -83,11 +105,13 @@ function updatePhone(event: Event): void {
   display: grid;
   gap: var(--mall-space-1);
 }
-.checkout__control > span {
+.checkout__control > span,
+.checkout__phone-summary span {
   color: var(--mall-text-muted);
   font-size: 12px;
 }
 .checkout__control input {
+  box-sizing: border-box;
   width: 100%;
   min-height: 44px;
   padding: var(--mall-space-2) var(--mall-space-3);
@@ -101,6 +125,37 @@ function updatePhone(event: Event): void {
 }
 .checkout__control input:focus {
   border-color: var(--mall-primary);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mall-primary) 14%, transparent);
+  box-shadow: 0 0 0 3px rgb(120 162 129 / 18%);
+}
+.checkout__phone-summary {
+  display: flex;
+  min-height: 64px;
+  padding: var(--mall-space-3);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mall-space-3);
+  border: 1px solid var(--mall-border);
+  border-radius: var(--mall-radius-control);
+  background: var(--mall-canvas);
+}
+.checkout__phone-summary div {
+  display: grid;
+  gap: 2px;
+}
+.checkout__phone-summary strong {
+  color: var(--mall-text);
+  font-size: 15px;
+}
+.checkout__phone-summary button {
+  min-height: 44px;
+  padding: 0 var(--mall-space-3);
+  border: 1px solid var(--mall-primary);
+  border-radius: var(--mall-radius-control);
+  background: var(--mall-surface);
+  color: var(--mall-primary-strong);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
 }
 </style>

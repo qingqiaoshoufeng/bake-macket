@@ -53,6 +53,8 @@ function createUser(overrides: Partial<User> = {}): User {
     avatarUrl: null,
     phone: null,
     phoneVerified: false,
+    orderContactPhone: null,
+    orderContactPhoneVersion: 0,
     isActive: true,
     mergedIntoUserId: null,
     tokenVersion: 1,

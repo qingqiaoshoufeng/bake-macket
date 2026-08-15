@@ -1,0 +1,18 @@
+<view class="wechat-login-page">
+  <view class="wechat-login-card">
+    <text class="wechat-login-title">微信登录</text>
+    <text class="wechat-login-copy"
+      >点击下方按钮后获取一次性微信登录凭证，并安全返回商城完成登录。</text
+    >
+    <button
+      class="wechat-login-button"
+      type="primary"
+      bindtap="onWechatLogin"
+      loading="{{loginLoading}}"
+      disabled="{{!loginEnabled || loginLoading}}"
+    >
+      {{loginLoading ? '正在登录…' : '微信登录'}}
+    </button>
+    <button class="wechat-login-cancel" bindtap="onCancel">暂不登录</button>
+  </view>
+</view>

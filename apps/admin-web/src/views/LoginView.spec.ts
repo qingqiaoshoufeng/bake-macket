@@ -101,6 +101,15 @@ afterEach(() => {
 });
 
 describe('LoginView', () => {
+  it('将 OPERATOR 标识明确标注为管理员登录手机号', async () => {
+    const { wrapper } = await mountLogin();
+    await wrapper
+      .find('[data-testid="admin-login-kind-operator"]')
+      .trigger('click');
+
+    expect(wrapper.text()).toContain('管理员登录手机号');
+    expect(wrapper.text()).not.toContain('操作员手机号');
+  });
   it('renders the branded split entry while keeping the form primary', async () => {
     const { wrapper } = await mountLogin();
 

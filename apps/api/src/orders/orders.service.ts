@@ -1,7 +1,6 @@
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
   UnprocessableEntityException,
@@ -95,7 +94,8 @@ export class OrdersService {
   /**
    * Create a new order inside a single MySQL transaction. Steps:
    *
-   * 1. Validate the user has a verified phone (pre-condition for ordering).
+   * 1. Validate the authenticated user exists and lock its order contact
+   *    profile before creating a new snapshot.
    * 2. Load and validate the requested cart items belong to this user, point
    *    to live, active SKUs with enough stock, and include product metadata
    *    needed for the immutable item snapshots.
@@ -118,17 +118,6 @@ export class OrdersService {
   ): Promise<OrderView> {
     if (!idempotencyKey) {
       throw new BadRequestException('Idempotency-Key header is required');
-    }
-
-    const user = await this.users.findOneBy({ id: userId });
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-    if (!user.phone || !user.phoneVerified) {
-      throw new ForbiddenException({
-        code: ApiErrorCode.PHONE_REQUIRED,
-        message: 'A verified phone number is required before placing an order.',
-      });
     }
 
     if (!dto.cartItemIds?.length) {
@@ -192,19 +181,28 @@ export class OrdersService {
         lock: { mode: 'pessimistic_write' },
       });
       if (!lockedUser) throw new NotFoundException('User not found');
-      if (!lockedUser.phone || !lockedUser.phoneVerified) {
-        throw new ForbiddenException({
-          code: ApiErrorCode.PHONE_REQUIRED,
-          message:
-            'A verified phone number is required before placing an order.',
-        });
-      }
-
       const racedReplay = await this.idempotencyService.reserve(
         manager,
         idempotencyInput,
       );
       if (racedReplay) return racedReplay;
+      if (!lockedUser.isActive || lockedUser.mergedIntoUserId !== null) {
+        throw new ConflictException('User is inactive');
+      }
+      if (!lockedUser.orderContactPhone) {
+        throw new ConflictException({
+          code: ApiErrorCode.ORDER_CONTACT_PHONE_REQUIRED,
+          message: '请先设置订单联系手机号',
+        });
+      }
+      if (
+        lockedUser.orderContactPhoneVersion !== dto.orderContactPhoneVersion
+      ) {
+        throw new ConflictException({
+          code: ApiErrorCode.ORDER_CONTACT_PHONE_VERSION_CONFLICT,
+          message: '订单联系手机号已发生变化，请刷新后重试',
+        });
+      }
 
       const lockedAccount = await this.credit.lockOrCreateAccount(
         manager,
@@ -341,7 +339,7 @@ export class OrdersService {
           status: OrderStatus.NEW,
           fulfillmentType: dto.fulfillmentType,
           contactName: dto.contactName,
-          contactPhone: dto.contactPhone,
+          contactPhone: lockedUser.orderContactPhone,
           pickupTimeText:
             dto.fulfillmentType === FulfillmentType.PICKUP
               ? (dto.pickupTimeText as string)
@@ -801,7 +799,7 @@ export class OrdersService {
       cartItemIds: [...dto.cartItemIds].sort(),
       fulfillmentType: dto.fulfillmentType,
       contactName: dto.contactName,
-      contactPhone: dto.contactPhone,
+      orderContactPhoneVersion: dto.orderContactPhoneVersion,
       pickupTimeText: dto.pickupTimeText ?? null,
       addressId: dto.addressId ?? null,
       requestedCreditCents: dto.requestedCreditCents ?? null,

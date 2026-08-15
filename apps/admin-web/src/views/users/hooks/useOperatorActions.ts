@@ -37,6 +37,8 @@ export type UseOperatorActionsResult = {
 const LOCAL_ERRORS = new Set([
   '仅超级管理员可管理操作员角色',
   '请选择需要授权的用户',
+  '仅可授权已绑定微信的用户',
+  '请输入 11 位中国大陆管理员登录手机号',
   '请完整填写三个密码字段',
   '两次输入的临时密码不一致',
   '请选择需要撤销角色的用户',
@@ -50,6 +52,7 @@ const API_ERROR_MESSAGES: Readonly<Partial<Record<ApiErrorCode, string>>> = {
   [ApiErrorCode.ADMIN_PASSWORD_POLICY_VIOLATION]:
     '临时密码不符合要求，请使用至少 6 位数字',
   [ApiErrorCode.ADMIN_USER_CONFLICT]: '该用户当前状态不允许角色变更',
+  [ApiErrorCode.ADMIN_LOGIN_PHONE_CONFLICT]: '该管理员登录手机号已被使用',
   [ApiErrorCode.ADMIN_PERMISSION_DENIED]: '仅超级管理员可管理操作员角色',
 };
 
@@ -73,6 +76,9 @@ function safeOperatorError(error: unknown, fallback: string): string {
 }
 
 function validateGrant(form: OperatorGrantForm): void {
+  if (!/^1\d{10}$/u.test(form.loginPhone.trim())) {
+    throw new Error('请输入 11 位中国大陆管理员登录手机号');
+  }
   if (
     !form.currentPassword ||
     !form.temporaryPassword ||
@@ -125,6 +131,10 @@ export function useOperatorActions(
 
   function openGrant(user: AdminUserView): void {
     if (!canManageRoles.value) return;
+    if (!user.wechatBound) {
+      lastError.value = '仅可授权已绑定微信的用户';
+      return;
+    }
     dialogSequence += 1;
     selectedUser.value = user;
     grantForm.value = createOperatorGrantDefaults();
@@ -149,7 +159,10 @@ export function useOperatorActions(
     assertNotSubmitting();
     const user = selectedUser.value;
     if (!user) throw new Error('请选择需要授权的用户');
-    const request = { ...grantForm.value };
+    const request = {
+      ...grantForm.value,
+      loginPhone: grantForm.value.loginPhone.trim(),
+    };
     const operationSequence = dialogSequence;
     submitting.value = true;
     lastError.value = null;

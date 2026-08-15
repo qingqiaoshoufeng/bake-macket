@@ -72,8 +72,10 @@ const exchangeWithExtraField: ExchangeOperatorSessionRequest = {
 const listedUser: AdminUserListItem = {
   id: 'user-1',
   nickname: '张三',
-  phoneMasked: '138****0000',
-  phoneVerified: true,
+  identityPhoneMasked: '138****0000',
+  identityPhoneVerified: true,
+  wechatBound: true,
+  loginPhoneMasked: null,
   createdAt: '2026-08-04T00:00:00.000Z',
   isOperator: false,
   operatorActive: false,
@@ -83,10 +85,12 @@ const listedUser: AdminUserListItem = {
 const listedUserWithRawPhone: AdminUserListItem = {
   id: 'user-1',
   nickname: '张三',
-  phoneMasked: '138****0000',
+  identityPhoneMasked: '138****0000',
+  identityPhoneVerified: true,
+  wechatBound: true,
+  loginPhoneMasked: null,
   // @ts-expect-error 管理端用户列表响应不得暴露原始手机号。
   phone: '13800000000',
-  phoneVerified: true,
   createdAt: '2026-08-04T00:00:00.000Z',
   isOperator: false,
   operatorActive: false,
@@ -134,6 +138,7 @@ const wrongInitialPasswordField: ChangeInitialOperatorPasswordRequest = {
 
 // @ts-expect-error 授权 OPERATOR 必须确认临时密码。
 const grantWithoutConfirmation: GrantOperatorRequest = {
+  loginPhone: '13800000000',
   currentPassword: 'super-admin-password',
   temporaryPassword: 'temporary-password',
 };

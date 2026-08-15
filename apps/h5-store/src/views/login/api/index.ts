@@ -14,9 +14,11 @@ export const loginFeatureApi = {
     authApi.loginWithDevelopmentCode(phone, code),
   getProfile: (accessToken: string) => customerApi.getMe(accessToken),
   loginWithWechatCode(code: string): Promise<WechatLoginResponse> {
-    return apiClient.post<WechatLoginResponse>('/auth/wechat/login', {
-      code,
-    } satisfies WechatLoginRequest);
+    return apiClient.post<WechatLoginResponse>(
+      '/auth/wechat/login',
+      { code } satisfies WechatLoginRequest,
+      { token: null },
+    );
   },
   bindWechatPhone(code: string): Promise<WechatPhoneResponse> {
     return apiClient.post<WechatPhoneResponse>('/auth/wechat/phone', {

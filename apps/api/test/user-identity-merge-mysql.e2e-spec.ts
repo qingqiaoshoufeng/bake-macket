@@ -61,7 +61,9 @@ const APP_USER = process.env.TEST_MYSQL_APP_USER ?? 'bake_app';
 const DATABASE_OPTIONS = { databaseName: DATABASE_NAME, appUser: APP_USER };
 const SECRET = 'fixed-mysql-identity-credential-secret';
 const BASE_NOW = new Date('2026-08-04T08:00:00.000Z');
-const IDENTITY_MIGRATIONS = migrationsThrough('UserAdminIdentity1718000000009');
+const IDENTITY_MIGRATIONS = migrationsThrough(
+  'OrderContactAndAdminLoginPhone1718000000013',
+);
 
 type InsertResult = { insertId: number | string };
 type Pair = { canonical: User; source: User; phone: string };
@@ -243,6 +245,7 @@ async function createOperator(
       username: null,
       role: AdminRole.OPERATOR,
       linkedUserId,
+      loginPhone: `137${linkedUserId.padStart(8, '0').slice(-8)}`,
       passwordHash: 'not-used-by-identity-e2e',
       isActive: true,
     }),
@@ -450,13 +453,15 @@ describe.sequential(
       });
     });
 
-    it('runs against real MySQL 8.4 with all migrations through 0010', async () => {
+    it('runs against real MySQL 8.4 with all migrations through 0014', async () => {
       const source = requireDatabase();
       expect(mysqlVersion).toMatch(/^8\.4\./u);
       const migrations = (await source.query(
         'SELECT name FROM migrations ORDER BY timestamp',
       )) as Array<{ name: string }>;
-      expect(migrations.at(-1)?.name).toBe('UserAdminIdentity1718000000009');
+      expect(migrations.at(-1)?.name).toBe(
+        'OrderContactAndAdminLoginPhone1718000000013',
+      );
       expect(migrations).toHaveLength(IDENTITY_MIGRATIONS.length);
     });
 
@@ -1397,6 +1402,35 @@ describe.sequential(
       },
     );
 
+    it('source OPERATOR alone also fails closed instead of moving authorization to canonical', async () => {
+      const source = requireDatabase();
+      const pair = await createPair(source, '300');
+      const sourceOperator = await createOperator(source, pair.source.id);
+      const { merge } = servicesFor(source);
+
+      await expect(
+        merge.mergeVerifiedPhone({
+          authenticatedUserId: pair.source.id,
+          normalizedPhone: pair.phone,
+        }),
+      ).rejects.toSatisfy(
+        (error: unknown) =>
+          exceptionCode(error) === ApiErrorCode.ADMIN_USER_CONFLICT,
+      );
+      await expect(
+        source.getRepository(AdminUser).findOneByOrFail({
+          id: sourceOperator.id,
+        }),
+      ).resolves.toMatchObject({
+        linkedUserId: pair.source.id,
+        isActive: true,
+        tokenVersion: 1,
+      });
+      await expect(
+        source.getRepository(User).findOneByOrFail({ id: pair.source.id }),
+      ).resolves.toMatchObject({ isActive: true, mergedIntoUserId: null });
+    });
+
     it('canonical and source OPERATOR collision rolls back and uses mapped linkedUserId SQL', async () => {
       const source = requireDatabase();
       const pair = await createPair(source, '303');
@@ -1470,7 +1504,7 @@ describe.sequential(
       );
     });
 
-    it('same-record verified phone change invalidates the linked OPERATOR and audits it', async () => {
+    it('same-record verified phone change leaves the independent linked OPERATOR active', async () => {
       const source = requireDatabase();
       const user = await createUser(source, {
         phone: '13900000307',
@@ -1491,7 +1525,7 @@ describe.sequential(
 
       expect(result).toMatchObject({
         userId: user.id,
-        operatorChanged: true,
+        operatorChanged: false,
         user: {
           id: user.id,
           phone: '13900000308',
@@ -1501,14 +1535,14 @@ describe.sequential(
       });
       await expect(
         source.getRepository(AdminUser).findOneByOrFail({ id: operator.id }),
-      ).resolves.toMatchObject({ tokenVersion: 2 });
+      ).resolves.toMatchObject({ tokenVersion: 1 });
       const audits = await auditRows(source, user.id, 'USER_PHONE_VERIFIED');
       expect(audits).toHaveLength(1);
       expect(audits[0]?.changeSummary).toEqual({
         canonicalUserId: user.id,
         sourceUserId: user.id,
         sameRecord: true,
-        operatorChanged: true,
+        operatorChanged: false,
       });
       expect(JSON.stringify(audits[0]?.changeSummary)).not.toMatch(
         /1390000030[78]|phone|openid/iu,

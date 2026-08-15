@@ -26,8 +26,10 @@ const api = vi.mocked(usersApi);
 const user: AdminUserView = {
   id: 'user-1',
   nickname: '小莓',
-  phoneMasked: '138****0000',
-  phoneVerified: true,
+  identityPhoneMasked: '138****0000',
+  identityPhoneVerified: true,
+  wechatBound: true,
+  loginPhoneMasked: null,
   createdAt: '2026-08-06T08:00:00.000Z',
   isOperator: false,
   operatorActive: false,
@@ -130,7 +132,11 @@ describe('useUsers', () => {
   });
 
   it('creates a placeholder by phone and refreshes page one without a stale filter', async () => {
-    const created = { ...user, id: 'user-created', phoneVerified: false };
+    const created = {
+      ...user,
+      id: 'user-created',
+      identityPhoneVerified: false,
+    };
     api.list.mockResolvedValue(result([created], 1, 20));
     api.create.mockResolvedValue(created);
     const auth = useAdminAuthStore();
@@ -154,7 +160,11 @@ describe('useUsers', () => {
   });
 
   it('reports a refresh warning without turning a successful creation into a failure', async () => {
-    const created = { ...user, id: 'user-created', phoneVerified: false };
+    const created = {
+      ...user,
+      id: 'user-created',
+      identityPhoneVerified: false,
+    };
     api.create.mockResolvedValue(created);
     api.list.mockRejectedValue(new Error('network details'));
     const auth = useAdminAuthStore();
@@ -175,7 +185,11 @@ describe('useUsers', () => {
 
   it('calls the create API only once while a creation is pending', async () => {
     const pendingCreate = deferred<AdminUserView>();
-    const created = { ...user, id: 'user-created', phoneVerified: false };
+    const created = {
+      ...user,
+      id: 'user-created',
+      identityPhoneVerified: false,
+    };
     api.create.mockReturnValue(pendingCreate.promise);
     api.list.mockResolvedValue(result([created]));
     const auth = useAdminAuthStore();

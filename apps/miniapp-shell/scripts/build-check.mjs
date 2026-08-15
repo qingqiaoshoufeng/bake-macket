@@ -18,6 +18,7 @@ const [
   appSource,
   indexTemplate,
   phoneTemplate,
+  wechatLoginTemplate,
   h5Runtime,
   apiRuntime,
   h5Declaration,
@@ -28,6 +29,7 @@ const [
   read('app.json'),
   read('pages/index/index.wxml'),
   read('pages/phone-auth/index.wxml'),
+  read('pages/wechat-login/index.wxml'),
   read('config/h5.generated.js'),
   read('config/api.generated.js'),
   read('config/h5.generated.d.ts'),
@@ -64,6 +66,9 @@ if (!project.setting?.useCompilerPlugins?.includes('typescript')) {
 if (!app.pages?.includes('pages/phone-auth/index')) {
   throw new Error('app.json must register pages/phone-auth/index');
 }
+if (!app.pages?.includes('pages/wechat-login/index')) {
+  throw new Error('app.json must register pages/wechat-login/index');
+}
 if (indexTemplate.includes('bindmessage')) {
   throw new Error(
     'index web-view must not use bindmessage as a real-time channel',
@@ -77,6 +82,12 @@ if (
   !phoneTemplate.includes('bindgetphonenumber="onGetPhoneNumber"')
 ) {
   throw new Error('phone authorization page must use the official button flow');
+}
+if (
+  !wechatLoginTemplate.includes('bindtap="onWechatLogin"') ||
+  wechatLoginTemplate.includes('open-type="getPhoneNumber"')
+) {
+  throw new Error('WeChat login page must use an explicit login button');
 }
 if (h5Runtime !== expectedSources.h5) {
   throw new Error(

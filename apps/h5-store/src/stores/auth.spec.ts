@@ -47,6 +47,7 @@ describe('useAuthStore', () => {
       nickname: 'Cake Fan',
       avatarUrl: undefined,
       phoneVerified: false,
+      orderContactPhone: { configured: false, maskedPhone: null, version: 0 },
     };
     expect(store.requireVerifiedPhone('/checkout')).toBe(
       '/login?redirect=%2Fcheckout',
@@ -61,6 +62,7 @@ describe('useAuthStore', () => {
       nickname: 'Cake Fan',
       avatarUrl: undefined,
       phoneVerified: true,
+      orderContactPhone: { configured: false, maskedPhone: null, version: 0 },
     };
     expect(store.requireVerifiedPhone('/checkout')).toBeNull();
   });
@@ -120,7 +122,12 @@ describe('useAuthStore', () => {
 
     auth.applySession(
       { accessToken: 'token-a', expiresAt: '2026-07-20T00:00:00.000Z' },
-      { id: 'user-a', phone: '13800000000', phoneVerified: true },
+      {
+        id: 'user-a',
+        phone: '13800000000',
+        phoneVerified: true,
+        orderContactPhone: { configured: false, maskedPhone: null, version: 0 },
+      },
     );
     cartStore.applyItems([cartItem]);
     cartStore.setLoading(true);
@@ -138,7 +145,12 @@ describe('useAuthStore', () => {
     auth.clearSession();
     auth.applySession(
       { accessToken: 'token-b', expiresAt: '2026-07-20T00:00:00.000Z' },
-      { id: 'user-b', phone: '13900000000', phoneVerified: true },
+      {
+        id: 'user-b',
+        phone: '13900000000',
+        phoneVerified: true,
+        orderContactPhone: { configured: false, maskedPhone: null, version: 0 },
+      },
     );
 
     expect(cartStore.$state).toMatchObject({
@@ -190,16 +202,34 @@ describe('useAuthStore', () => {
     });
   });
 
-  it('does not reset user-domain caches when hydrating the same session', () => {
+  it('does not reset user-domain caches when hydrating the same session without restricted runtime APIs', () => {
+    const originalHasOwn = Object.hasOwn;
+    const originalStructuredClone = globalThis.structuredClone;
+    Object.defineProperty(Object, 'hasOwn', {
+      configurable: true,
+      value: undefined,
+    });
+    Object.defineProperty(globalThis, 'structuredClone', {
+      configurable: true,
+      value: undefined,
+    });
     window.localStorage.setItem('bake_user_token', 'same-token');
     window.localStorage.setItem(
       'bake_user_profile',
-      JSON.stringify({ id: 'user-a', phoneVerified: true }),
+      JSON.stringify({
+        id: 'user-a',
+        phoneVerified: true,
+        orderContactPhone: { configured: false, maskedPhone: null, version: 0 },
+      }),
     );
     const auth = useAuthStore();
     auth.applySession(
       { accessToken: 'same-token', expiresAt: '2026-07-20T00:00:00.000Z' },
-      { id: 'user-a', phoneVerified: true },
+      {
+        id: 'user-a',
+        phoneVerified: true,
+        orderContactPhone: { configured: false, maskedPhone: null, version: 0 },
+      },
     );
     const cart = useCartStore();
     cart.applyItems([
@@ -225,10 +255,21 @@ describe('useAuthStore', () => {
       },
     ]);
 
-    auth.hydrate();
+    try {
+      auth.hydrate();
 
-    expect(cart.items).toHaveLength(1);
-    expect(cart.hydrated).toBe(true);
+      expect(cart.items).toHaveLength(1);
+      expect(cart.hydrated).toBe(true);
+    } finally {
+      Object.defineProperty(Object, 'hasOwn', {
+        configurable: true,
+        value: originalHasOwn,
+      });
+      Object.defineProperty(globalThis, 'structuredClone', {
+        configurable: true,
+        value: originalStructuredClone,
+      });
+    }
   });
 
   it('原子应用并持久化完整顾客 session', () => {
@@ -242,6 +283,7 @@ describe('useAuthStore', () => {
         avatarUrl: undefined,
         phone: '138****0000',
         phoneVerified: true,
+        orderContactPhone: { configured: false, maskedPhone: null, version: 0 },
       },
     } satisfies CustomerAuthSessionView;
 
@@ -285,6 +327,7 @@ describe('useAuthStore', () => {
         id: '',
         phone: '13800000000',
         phoneVerified: true,
+        orderContactPhone: { configured: false, maskedPhone: null, version: 0 },
       },
     );
 

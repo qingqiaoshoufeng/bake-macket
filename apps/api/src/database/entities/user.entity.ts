@@ -12,9 +12,9 @@ import {
 /**
  * Authenticated customer account.
  *
- * `phone` is the unique contact handle used for normalising identity across
- * WeChat OpenID/UnionID sources; it must be unique and verified before the
- * customer is allowed to create an order.
+ * `phone` is the historical identity phone used for normalising identity
+ * across WeChat OpenID/UnionID sources. `orderContactPhone` is a separate,
+ * non-unique fulfillment contact and never becomes an identity credential.
  */
 @Entity({ name: 'users' })
 @Index('uniq_users_phone', ['phone'], { unique: true })
@@ -52,6 +52,22 @@ export class User {
 
   @Column({ name: 'phone_verified', type: 'boolean', default: false })
   phoneVerified!: boolean;
+
+  @Column({
+    name: 'order_contact_phone',
+    type: 'varchar',
+    length: 32,
+    nullable: true,
+  })
+  orderContactPhone!: string | null;
+
+  @Column({
+    name: 'order_contact_phone_version',
+    type: 'int',
+    unsigned: true,
+    default: 0,
+  })
+  orderContactPhoneVersion!: number;
 
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive!: boolean;

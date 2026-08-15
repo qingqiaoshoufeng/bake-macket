@@ -1,9 +1,26 @@
 import {
   FulfillmentType,
   OrderStatus,
+  type CreateOrderRequest,
   type OrderItemView,
   type OrderView,
 } from './index.js';
+
+const validCreateOrder: CreateOrderRequest = {
+  cartItemIds: ['cart-1'],
+  fulfillmentType: FulfillmentType.PICKUP,
+  contactName: '张三',
+  orderContactPhoneVersion: 1,
+  pickupTimeText: '明天 10:00',
+  requestedCreditCents: 0,
+  quoteToken: 'quote-token',
+};
+
+const invalidCreateOrder: CreateOrderRequest = {
+  ...validCreateOrder,
+  // @ts-expect-error 创建订单不允许客户端提交完整联系手机号。
+  contactPhone: '13800000000',
+};
 
 const completeItem: OrderItemView = {
   id: 'item-1',
@@ -79,6 +96,8 @@ const partialMembershipSnapshot: OrderView = {
 };
 
 void [
+  validCreateOrder,
+  invalidCreateOrder,
   completeItem,
   completeOrder,
   legacyOrder,

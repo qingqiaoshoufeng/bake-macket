@@ -202,7 +202,7 @@ function discountText(basisPoints: number): string {
 }
 .checkout-pricing__control input:focus-visible {
   border-color: var(--mall-primary);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mall-primary) 14%, transparent);
+  box-shadow: 0 0 0 3px rgb(120 162 129 / 18%);
 }
 .checkout-pricing__hint,
 .checkout-pricing__error,
@@ -234,7 +234,7 @@ function discountText(basisPoints: number): string {
   cursor: pointer;
 }
 .checkout-pricing__confirm:focus-visible {
-  outline: 3px solid color-mix(in srgb, var(--mall-primary) 28%, transparent);
+  outline: 3px solid rgb(120 162 129 / 32%);
   outline-offset: 2px;
 }
 @media (prefers-reduced-motion: reduce) {

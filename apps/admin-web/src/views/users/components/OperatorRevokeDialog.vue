@@ -38,7 +38,7 @@ function updateForm(patch: Partial<OperatorRevokeForm>): void {
     @close="emit('close')"
   >
     <div class="operator-revoke__warning">
-      撤销后，{{ user?.nickname || user?.phoneMasked || '该用户' }}
+      撤销后，{{ user?.nickname || user?.identityPhoneMasked || '该用户' }}
       的现有后台会话将失效，且无法继续访问管理功能。
     </div>
     <ElForm label-position="top" @submit.prevent="emit('submit')">

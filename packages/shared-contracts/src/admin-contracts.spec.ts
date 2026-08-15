@@ -123,15 +123,19 @@ describe('admin identity contracts', () => {
     const item: AdminUserListItem = {
       id: 'user-1',
       nickname: '张三',
-      phoneMasked: '138****0000',
-      phoneVerified: true,
+      identityPhoneMasked: '138****0000',
+      identityPhoneVerified: true,
+      wechatBound: true,
+      loginPhoneMasked: null,
       createdAt: '2026-08-04T00:00:00.000Z',
       isOperator: false,
       operatorActive: false,
       mustChangePassword: false,
     };
 
-    expect(item.phoneMasked).toBe('138****0000');
+    expect(item.identityPhoneMasked).toBe('138****0000');
+    expect(item.loginPhoneMasked).toBeNull();
+    expect(item.wechatBound).toBe(true);
     expect(item).not.toHaveProperty('phone');
   });
 

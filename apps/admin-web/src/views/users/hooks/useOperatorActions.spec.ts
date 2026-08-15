@@ -26,8 +26,10 @@ const api = vi.mocked(usersApi);
 const user: AdminUserView = {
   id: 'user-1',
   nickname: '小莓',
-  phoneMasked: '138****0000',
-  phoneVerified: true,
+  identityPhoneMasked: '138****0000',
+  identityPhoneVerified: true,
+  wechatBound: true,
+  loginPhoneMasked: null,
   createdAt: '2026-08-06T08:00:00.000Z',
   isOperator: false,
   operatorActive: false,
@@ -92,6 +94,7 @@ describe('useOperatorActions', () => {
     const actions = useOperatorActions(refresh);
     actions.openGrant(user);
     actions.replaceGrantForm({
+      loginPhone: '13700000000',
       currentPassword: 'super-secret',
       temporaryPassword: 'operator-secret',
       confirmTemporaryPassword: 'operator-secret',
@@ -100,17 +103,59 @@ describe('useOperatorActions', () => {
     await expect(actions.grant()).resolves.toEqual(granted);
 
     expect(api.grantOperator).toHaveBeenCalledWith(user.id, {
+      loginPhone: '13700000000',
       currentPassword: 'super-secret',
       temporaryPassword: 'operator-secret',
       confirmTemporaryPassword: 'operator-secret',
     });
     expect(refresh).toHaveBeenCalledOnce();
     expect(actions.grantForm.value).toEqual({
+      loginPhone: '',
       currentPassword: '',
       temporaryPassword: '',
       confirmTemporaryPassword: '',
     });
     expect(actions.grantDialogVisible.value).toBe(false);
+  });
+
+  it('拒绝未绑定微信的用户和非法管理员登录手机号', async () => {
+    activate(superSession);
+    const actions = useOperatorActions(vi.fn());
+    actions.openGrant({ ...user, wechatBound: false });
+    expect(actions.grantDialogVisible.value).toBe(false);
+    expect(actions.lastError.value).toBe('仅可授权已绑定微信的用户');
+
+    actions.openGrant(user);
+    actions.replaceGrantForm({
+      loginPhone: '1380000000',
+      currentPassword: 'super-secret',
+      temporaryPassword: '123456',
+      confirmTemporaryPassword: '123456',
+    });
+    await expect(actions.grant()).rejects.toThrow(
+      '请输入 11 位中国大陆管理员登录手机号',
+    );
+    expect(api.grantOperator).not.toHaveBeenCalled();
+  });
+
+  it('将独立管理员登录手机号冲突映射为安全文案', async () => {
+    activate(superSession);
+    const actions = useOperatorActions(vi.fn());
+    actions.openGrant(user);
+    actions.replaceGrantForm({
+      loginPhone: '13700000000',
+      currentPassword: 'super-secret',
+      temporaryPassword: '123456',
+      confirmTemporaryPassword: '123456',
+    });
+    api.grantOperator.mockRejectedValueOnce({
+      code: 'ADMIN_LOGIN_PHONE_CONFLICT',
+      message: 'raw 13700000000',
+    });
+
+    await expect(actions.grant()).rejects.toThrow('该管理员登录手机号已被使用');
+    expect(actions.lastError.value).toBe('该管理员登录手机号已被使用');
+    expect(actions.lastError.value).not.toContain('13700000000');
   });
 
   it('reports a refresh warning without turning a successful grant into a failure', async () => {
@@ -120,6 +165,7 @@ describe('useOperatorActions', () => {
     const actions = useOperatorActions(refresh);
     actions.openGrant(user);
     actions.replaceGrantForm({
+      loginPhone: '13700000000',
       currentPassword: 'super-secret',
       temporaryPassword: 'operator-secret',
       confirmTemporaryPassword: 'operator-secret',
@@ -139,6 +185,7 @@ describe('useOperatorActions', () => {
     const actions = useOperatorActions(vi.fn());
     actions.openGrant(user);
     actions.replaceGrantForm({
+      loginPhone: '13700000000',
       currentPassword: 'super-secret',
       temporaryPassword: 'operator-secret',
       confirmTemporaryPassword: 'different-secret',
@@ -151,6 +198,7 @@ describe('useOperatorActions', () => {
     expect(actions.grantForm.value.confirmTemporaryPassword).toBe('');
 
     actions.replaceGrantForm({
+      loginPhone: '13700000000',
       currentPassword: 'super-secret',
       temporaryPassword: 'operator-secret',
       confirmTemporaryPassword: 'operator-secret',
@@ -229,6 +277,7 @@ describe('useOperatorActions', () => {
     const actions = useOperatorActions(vi.fn().mockResolvedValue(undefined));
     actions.openGrant(user);
     actions.replaceGrantForm({
+      loginPhone: '13700000000',
       currentPassword: 'super-secret',
       temporaryPassword: 'operator-secret',
       confirmTemporaryPassword: 'operator-secret',

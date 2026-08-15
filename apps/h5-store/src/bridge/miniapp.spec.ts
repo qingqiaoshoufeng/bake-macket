@@ -2,9 +2,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   MAX_MINIAPP_PHONE_ROUTE_LENGTH,
+  MAX_MINIAPP_WECHAT_LOGIN_ROUTE_LENGTH,
   createMiniappMessageHub,
   installMiniappBridge,
   requestMiniappPhoneCredential,
+  requestMiniappWechatLogin,
   type MiniappMessage,
 } from './miniapp.js';
 
@@ -27,32 +29,89 @@ function setMiniProgram(
 
 afterEach(() => {
   window.history.replaceState(null, '', '/');
+  window.localStorage.clear();
   if (originalMiniProgram) setMiniProgram(originalMiniProgram);
   else Reflect.deleteProperty(window, 'wx');
   vi.restoreAllMocks();
 });
 
 describe('installMiniappBridge', () => {
-  it('scrubs sensitive URL parameters before emitting a valid handoff', () => {
+  it('scrubs and rejects a WeChat code without a login state from this browser session', () => {
     window.history.replaceState(
       null,
       '',
       '/login?redirect=%2Forders&miniappSource=bake-miniapp&miniappType=WECHAT_CODE&wechatCode=%20code-1%20#form',
     );
-    const onMessage = vi.fn(() => {
-      expect(window.location.search).toBe('?redirect=%2Forders');
-    });
+    const onMessage = vi.fn();
 
     const teardown = installMiniappBridge(onMessage);
 
+    expect(onMessage).not.toHaveBeenCalled();
+    expect(window.location.search).toBe('?redirect=%2Forders');
+    expect(window.location.pathname).toBe('/login');
+    expect(window.location.hash).toBe('#form');
+    teardown();
+  });
+
+  it('emits a WeChat code only once when its state matches the pending browser login', async () => {
+    const navigateTo = vi.fn((options: NavigateOptions) => options.success());
+    setMiniProgram({ navigateTo });
+    await requestMiniappWechatLogin(async () => true, {
+      createState: () => 'state-1',
+    });
+    window.history.replaceState(
+      null,
+      '',
+      '/login#miniappSource=bake-miniapp&miniappType=WECHAT_CODE&wechatCode=code-1&wechatState=state-1',
+    );
+    const onMessage = vi.fn();
+
+    installMiniappBridge(onMessage);
+    window.history.replaceState(
+      null,
+      '',
+      '/login#miniappSource=bake-miniapp&miniappType=WECHAT_CODE&wechatCode=code-1&wechatState=state-1',
+    );
+    installMiniappBridge(onMessage);
+
+    expect(onMessage).toHaveBeenCalledOnce();
     expect(onMessage).toHaveBeenCalledWith({
       source: 'bake-miniapp',
       type: 'WECHAT_CODE',
       code: 'code-1',
     });
-    expect(window.location.pathname).toBe('/login');
-    expect(window.location.hash).toBe('#form');
-    teardown();
+    expect(window.location.search).toBe('');
+  });
+
+  it('rejects expired state and keeps a fresh state after an invalid code', async () => {
+    const navigateTo = vi.fn((options: NavigateOptions) => options.success());
+    setMiniProgram({ navigateTo });
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
+    await requestMiniappWechatLogin(async () => true, {
+      createState: () => 'state-1',
+    });
+
+    window.history.replaceState(
+      null,
+      '',
+      '/#miniappSource=bake-miniapp&miniappType=WECHAT_CODE&wechatCode=&wechatState=state-1',
+    );
+    const onMessage = vi.fn();
+    installMiniappBridge(onMessage);
+    expect(onMessage).not.toHaveBeenCalled();
+    expect(window.localStorage.getItem('bake_wechat_login_state')).toBe(
+      'state-1',
+    );
+
+    now.mockReturnValue(1_000_000 + 10 * 60 * 1_000 + 1);
+    window.history.replaceState(
+      null,
+      '',
+      '/#miniappSource=bake-miniapp&miniappType=WECHAT_CODE&wechatCode=code-1&wechatState=state-1',
+    );
+    installMiniappBridge(onMessage);
+    expect(onMessage).not.toHaveBeenCalled();
+    expect(window.localStorage.getItem('bake_wechat_login_state')).toBeNull();
   });
 
   it('parses the startup handoff when Object.hasOwn is unavailable', () => {
@@ -64,7 +123,7 @@ describe('installMiniappBridge', () => {
     window.history.replaceState(
       null,
       '',
-      '/?miniappSource=bake-miniapp&miniappType=WECHAT_CODE&wechatCode=legacy-webview-code',
+      '/?miniappSource=bake-miniapp&miniappType=PHONE_CREDENTIAL&phoneCredential=legacy-webview-code',
     );
     const onMessage = vi.fn();
 
@@ -73,8 +132,8 @@ describe('installMiniappBridge', () => {
 
       expect(onMessage).toHaveBeenCalledWith({
         source: 'bake-miniapp',
-        type: 'WECHAT_CODE',
-        code: 'legacy-webview-code',
+        type: 'PHONE_CREDENTIAL',
+        credential: 'legacy-webview-code',
       });
       teardown();
     } finally {
@@ -124,6 +183,25 @@ describe('installMiniappBridge', () => {
       teardown();
     },
   );
+
+  it('never accepts a WeChat code from legacy query parameters', () => {
+    window.localStorage.setItem('bake_wechat_login_state', 'state-1');
+    window.localStorage.setItem(
+      'bake_wechat_login_state_created_at',
+      String(Date.now()),
+    );
+    window.history.replaceState(
+      null,
+      '',
+      '/?miniappSource=bake-miniapp&miniappType=WECHAT_CODE&wechatCode=code-1&wechatState=state-1',
+    );
+    const onMessage = vi.fn();
+
+    installMiniappBridge(onMessage);
+
+    expect(onMessage).not.toHaveBeenCalled();
+    expect(window.location.search).toBe('');
+  });
 
   it('does not install a window message listener by default', () => {
     const onMessage = vi.fn();
@@ -216,6 +294,131 @@ describe('miniapp message hub', () => {
     hub.publish(message);
 
     expect(subscriber).toHaveBeenCalledOnce();
+  });
+});
+
+describe('requestMiniappWechatLogin', () => {
+  it('等待 JSSDK 后以一次性 state 导航原生微信登录页', async () => {
+    const navigateTo = vi.fn((options: NavigateOptions) => options.success());
+    const ensureJssdk = vi.fn(async () => true);
+    setMiniProgram({ navigateTo });
+    window.history.replaceState(
+      null,
+      '',
+      '/login?redirect=%2Fcheckout%3Ffrom%3Dcart#wechat',
+    );
+
+    await expect(
+      requestMiniappWechatLogin(ensureJssdk, {
+        createState: () => 'state-1',
+      }),
+    ).resolves.toBe(true);
+    expect(navigateTo).toHaveBeenCalledWith({
+      url: `/pages/wechat-login/index?returnUrl=${encodeURIComponent(window.location.href)}&state=state-1`,
+      success: expect.any(Function),
+      fail: expect.any(Function),
+    });
+    expect(window.localStorage.getItem('bake_wechat_login_state')).toBe(
+      'state-1',
+    );
+  });
+
+  it('导航失败时撤销 pending state，且缺少安全随机源时不导航', async () => {
+    setMiniProgram({ navigateTo: (options) => options.fail() });
+    await expect(
+      requestMiniappWechatLogin(async () => true, {
+        createState: () => 'state-1',
+      }),
+    ).resolves.toBe(false);
+    expect(window.localStorage.getItem('bake_wechat_login_state')).toBeNull();
+
+    const navigateTo = vi.fn();
+    setMiniProgram({ navigateTo });
+    await expect(
+      requestMiniappWechatLogin(async () => true, {
+        createState: () => {
+          throw new Error('secure randomness unavailable');
+        },
+      }),
+    ).resolves.toBe(false);
+    expect(navigateTo).not.toHaveBeenCalled();
+  });
+
+  it('显式登录取代等待 JSSDK 的自动尝试且只导航一次', async () => {
+    const navigateTo = vi.fn((options: NavigateOptions) => options.success());
+    setMiniProgram({ navigateTo });
+    const releases: Array<(ready: boolean) => void> = [];
+    const ensureJssdk = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          releases.push(resolve);
+        }),
+    );
+
+    const automatic = requestMiniappWechatLogin(ensureJssdk, {
+      automatic: true,
+      createState: () => 'automatic-state',
+    });
+    const explicit = requestMiniappWechatLogin(ensureJssdk, {
+      createState: () => 'explicit-state',
+    });
+    releases.forEach((release) => release(true));
+
+    await expect(Promise.all([automatic, explicit])).resolves.toEqual([
+      false,
+      true,
+    ]);
+    expect(navigateTo).toHaveBeenCalledOnce();
+    expect(navigateTo.mock.calls[0]?.[0].url).toContain('state=explicit-state');
+    expect(window.localStorage.getItem('bake_wechat_login_state')).toBe(
+      'explicit-state',
+    );
+  });
+
+  it('JSSDK 缺失、返回失败或抛错时不导航', async () => {
+    const navigateTo = vi.fn();
+    setMiniProgram({ navigateTo });
+
+    await expect(requestMiniappWechatLogin(async () => false)).resolves.toBe(
+      false,
+    );
+    await expect(
+      requestMiniappWechatLogin(async () => {
+        throw new Error('JSSDK unavailable');
+      }),
+    ).resolves.toBe(false);
+    expect(navigateTo).not.toHaveBeenCalled();
+  });
+
+  it('navigateTo fail 或同步抛错时返回 false', async () => {
+    setMiniProgram({ navigateTo: (options) => options.fail() });
+    await expect(requestMiniappWechatLogin(async () => true)).resolves.toBe(
+      false,
+    );
+
+    setMiniProgram({
+      navigateTo: () => {
+        throw new Error('bridge unavailable');
+      },
+    });
+    await expect(requestMiniappWechatLogin(async () => true)).resolves.toBe(
+      false,
+    );
+  });
+
+  it('编码后路由过长时拒绝导航', async () => {
+    const navigateTo = vi.fn();
+    setMiniProgram({ navigateTo });
+    window.history.replaceState(
+      null,
+      '',
+      `/login?next=${'a'.repeat(MAX_MINIAPP_WECHAT_LOGIN_ROUTE_LENGTH)}`,
+    );
+
+    await expect(requestMiniappWechatLogin(async () => true)).resolves.toBe(
+      false,
+    );
+    expect(navigateTo).not.toHaveBeenCalled();
   });
 });
 

@@ -179,6 +179,17 @@ docker run --rm --env-file /secure/path/api.env bake-mall-api:latest \
 
 根 `.env.production.example` 只提供两个变量的 `0` 占位，正常 API 配置 schema 不要求它们；紧急回滚时仅在单次 migration shell 覆盖为 `1`。
 
+### 0014 联系号与管理员登录号兼容迁移
+
+0014 将三个手机号域拆开：`User.phone` 保留为唯一历史身份；`User.order_contact_phone` 为非唯一履约资料并带 `order_contact_phone_version`；`AdminUser.login_phone` 为唯一 OPERATOR PC 登录号。发布迁移会：
+
+1. 将符合 11 位规则的历史 `users.phone` 回填到订单联系号并置 version 1，不修改 `phone_verified`；
+2. 对 legacy OPERATOR 仅在 linked User 有合法历史身份手机号时回填 `login_phone`；无法回填者设为 inactive 并递增 token version，待 SUPER_ADMIN 重新授权；
+3. 建立 loginPhone 唯一索引，并更新 SUPER_ADMIN/OPERATOR 的 `username`、`login_phone`、`linked_user_id` 角色互斥约束；
+4. 在 `down` 发现任何新联系号/version、管理员 loginPhone 或 legacy 停用状态时先拒绝，再执行零 DDL，不能丢弃新域数据。
+
+迁移前先备份并停止所有 identity/contact writer；迁移后用不输出完整手机号的聚合 SQL 检查 invalid role identity、重复 loginPhone、active OPERATOR 缺 loginPhone 等计数都为 0。不得在部署日志打印完整 `order_contact_phone` 或 `login_phone`。
+
 `EXPOSE 3000` 只是默认端口 metadata。healthcheck 读取 `PORT`，所以改为其他容器端口时应同时设置和发布该端口，例如：
 
 ```bash
@@ -212,7 +223,7 @@ docker run --rm -e PORT=3456 -p 127.0.0.1:3456:3456 --env-file /secure/path/api.
 3. H5/Admin 永不包含对象存储密钥；
 4. 入口配置 WAF、访问日志、速率限制与证书自动续签。
 
-## 微信发布阻塞
+## 微信发布门禁
 
 将 H5、API、COS/CDN 域名登记为微信 request/uploadFile/downloadFile 与 `web-view` 业务域名。小程序构建变量必须是根路径 HTTPS URL：
 
@@ -220,7 +231,9 @@ docker run --rm -e PORT=3456 -p 127.0.0.1:3456:3456 --env-file /secure/path/api.
 MINIAPP_H5_URL=https://mall.example.com/ pnpm --filter @bake-mall/miniapp-shell build
 ```
 
-当前微信发布仍被 API 换码能力阻塞：尚未实现 `wx.login` code 换 session/openid，也未实现 `getPhoneNumber` 动态 code 换手机号。完成服务端换码、重放/过期防护和脱敏日志前，不得发布微信登录/手机号绑定能力。
+API 的 `wx.login` code → `jscode2session` 链路已经实现，包含一次性凭证防重放、确定性失败快照和脱敏错误映射。发布前必须分别验收启动自动登录和 H5 显式按钮 → 同源原生页 → App 内存 handoff → 匹配 `deliveryId` 的 web-view load；code 不得进入 storage、日志、审计或跨 origin URL。
+
+顾客购物和 OPERATOR 不依赖收费的 `getPhoneNumber`。若会员仍保留微信手机号验证，按独立顾客能力单独配置与验收，不得作为管理员或订单发布门槛。SUPER_ADMIN 只可对具有微信 OpenID/UnionID 的 User 显式授权 OPERATOR，并配置唯一 `AdminUser.loginPhone`；撤权、linked User 停用/合并/失去微信身份必须立即阻断 exchange 与 guard。
 
 ## 发布前验证
 

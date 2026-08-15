@@ -6,6 +6,7 @@ import { DataSource, type EntityManager, In } from 'typeorm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { AuditService } from '../src/audit/audit.service.js';
+import { OrderContactPhoneService } from '../src/customer/order-contact-phone.service.js';
 import * as entities from '../src/database/entities/index.js';
 import { CartItem } from '../src/database/entities/cart-item.entity.js';
 import { Category } from '../src/database/entities/category.entity.js';
@@ -147,8 +148,18 @@ describe.sequential('order stock concurrency (MySQL)', () => {
     const userRepository = source.getRepository(User);
     const [firstUser, secondUser] = await userRepository.save(
       [
-        { phone: '13800000001', phoneVerified: true },
-        { phone: '13800000002', phoneVerified: true },
+        {
+          phone: '13800000001',
+          phoneVerified: true,
+          orderContactPhone: '13700000001',
+          orderContactPhoneVersion: 1,
+        },
+        {
+          phone: '13800000002',
+          phoneVerified: true,
+          orderContactPhone: '13700000002',
+          orderContactPhoneVersion: 1,
+        },
       ].map((fixture) => userRepository.create(fixture)),
     );
     const categoryRepository = source.getRepository(Category);
@@ -214,7 +225,7 @@ describe.sequential('order stock concurrency (MySQL)', () => {
           cartItemIds: [cartItem.id],
           fulfillmentType: FulfillmentType.PICKUP,
           contactName: `并发用户${user.id}`,
-          contactPhone: user.phone as string,
+          orderContactPhoneVersion: user.orderContactPhoneVersion,
           pickupTimeText: '明天 10:00',
         }),
       ),
@@ -317,7 +328,12 @@ describe.sequential('order stock concurrency (MySQL)', () => {
     const source = requireDatabase();
     const userRepository = source.getRepository(User);
     const user = await userRepository.save(
-      userRepository.create({ phone: '13800000005', phoneVerified: true }),
+      userRepository.create({
+        phone: '13800000005',
+        phoneVerified: true,
+        orderContactPhone: '13700000005',
+        orderContactPhoneVersion: 1,
+      }),
     );
     const categoryRepository = source.getRepository(Category);
     const category = await categoryRepository.save(
@@ -376,7 +392,7 @@ describe.sequential('order stock concurrency (MySQL)', () => {
           cartItemIds: [cartItem.id],
           fulfillmentType: FulfillmentType.PICKUP,
           contactName: '同用户并发',
-          contactPhone: user.phone as string,
+          orderContactPhoneVersion: user.orderContactPhoneVersion,
           pickupTimeText: '明天 11:00',
         }),
       ),
@@ -410,6 +426,126 @@ describe.sequential('order stock concurrency (MySQL)', () => {
       expect.objectContaining({ status: 'COMPLETED', userId: user.id }),
     ]);
     expect(remainingCartItems).toEqual([]);
+  });
+
+  it('allows at most one different contact update for the same expected version', async () => {
+    const source = requireDatabase();
+    const userRepository = source.getRepository(User);
+    const user = await userRepository.save(
+      userRepository.create({
+        phone: '13800000006',
+        phoneVerified: true,
+        orderContactPhone: '13700000006',
+        orderContactPhoneVersion: 1,
+      }),
+    );
+    const contacts = new OrderContactPhoneService(source);
+
+    const outcomes = await Promise.allSettled([
+      contacts.update(user.id, '13600000006', 1),
+      contacts.update(user.id, '13500000006', 1),
+    ]);
+
+    expect(
+      outcomes.filter(({ status }) => status === 'fulfilled'),
+    ).toHaveLength(1);
+    const rejected = outcomes.find(
+      (outcome): outcome is PromiseRejectedResult =>
+        outcome.status === 'rejected',
+    );
+    expect(errorCode(rejected?.reason)).toBe(
+      ApiErrorCode.ORDER_CONTACT_PHONE_UPDATE_VERSION_CONFLICT,
+    );
+    const saved = await userRepository.findOneByOrFail({ id: user.id });
+    expect(saved.orderContactPhoneVersion).toBe(2);
+    expect(['13600000006', '13500000006']).toContain(saved.orderContactPhone);
+  });
+
+  it('linearizes contact updates and order snapshots through the same User row lock', async () => {
+    const source = requireDatabase();
+    const userRepository = source.getRepository(User);
+    const user = await userRepository.save(
+      userRepository.create({
+        phone: '13800000007',
+        phoneVerified: true,
+        orderContactPhone: '13700000007',
+        orderContactPhoneVersion: 1,
+      }),
+    );
+    const category = await source
+      .getRepository(Category)
+      .save(source.getRepository(Category).create({ name: '联系号并发分类' }));
+    const product = await source.getRepository(Product).save(
+      source.getRepository(Product).create({
+        name: '联系号并发蛋糕',
+        categoryId: category.id,
+        detailHtml: '<p>contact concurrency</p>',
+        isActive: true,
+      }),
+    );
+    const sku = await source.getRepository(Sku).save(
+      source.getRepository(Sku).create({
+        productId: product.id,
+        name: '联系号并发规格',
+        attributes: {},
+        priceCents: 3_800,
+        stock: 1,
+        isActive: true,
+      }),
+    );
+    const cartItem = await source.getRepository(CartItem).save(
+      source.getRepository(CartItem).create({
+        userId: user.id,
+        skuId: sku.id,
+        quantity: 1,
+      }),
+    );
+    const orders = new OrdersService(
+      source,
+      userRepository,
+      source.getRepository(Order),
+      source.getRepository(OrderItem),
+      source.getRepository(CartItem),
+      source.getRepository(Sku),
+      source.getRepository(entities.Address),
+      source.getRepository(Product),
+      new AuditService(source.getRepository(entities.AuditLog)),
+      new OrderQuoteTokenService('x'.repeat(32), 300),
+      new MembershipCreditService(),
+      new IdempotencyService(source.getRepository(IdempotencyRecord)),
+    );
+    const contacts = new OrderContactPhoneService(source);
+
+    const [updateOutcome, orderOutcome] = await Promise.allSettled([
+      contacts.update(user.id, '13600000007', 1),
+      orders.create(user.id, `contact-order-race-${randomUUID()}`, {
+        cartItemIds: [cartItem.id],
+        fulfillmentType: FulfillmentType.PICKUP,
+        contactName: '联系号并发用户',
+        orderContactPhoneVersion: 1,
+        pickupTimeText: '明天 12:00',
+      }),
+    ]);
+
+    expect(updateOutcome.status).toBe('fulfilled');
+    if (orderOutcome.status === 'fulfilled') {
+      expect(orderOutcome.value.contactPhone).toBe('13700000007');
+    } else {
+      expect(errorCode(orderOutcome.reason)).toBe(
+        ApiErrorCode.ORDER_CONTACT_PHONE_VERSION_CONFLICT,
+      );
+    }
+    expect(
+      mysqlErrorCode(
+        orderOutcome.status === 'rejected' ? orderOutcome.reason : null,
+      ),
+    ).not.toBeOneOf(['ER_LOCK_DEADLOCK', 'ER_LOCK_WAIT_TIMEOUT']);
+    await expect(
+      userRepository.findOneByOrFail({ id: user.id }),
+    ).resolves.toMatchObject({
+      orderContactPhone: '13600000007',
+      orderContactPhoneVersion: 2,
+    });
   });
 
   it('materializes accounts for two different new users concurrently', async () => {

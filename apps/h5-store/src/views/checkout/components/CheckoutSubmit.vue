@@ -122,13 +122,13 @@ function updateRemark(event: Event): void {
 }
 .checkout__control textarea:focus {
   border-color: var(--mall-primary);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mall-primary) 14%, transparent);
+  box-shadow: 0 0 0 3px rgb(120 162 129 / 18%);
 }
 .checkout__error {
   margin: 0;
   padding: var(--mall-space-3);
   border-radius: var(--mall-radius-control);
-  background: color-mix(in srgb, var(--mall-danger) 9%, var(--mall-surface));
+  background: #fbeff0;
   color: var(--mall-danger);
   font-size: 13px;
 }

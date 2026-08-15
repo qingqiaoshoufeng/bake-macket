@@ -33,8 +33,13 @@ const customerSession = {
   profile: {
     id: '42',
     phoneVerified: false,
+    orderContactPhone: {
+      configured: false,
+      maskedPhone: null,
+      version: 0,
+    },
   },
-};
+} as const;
 
 describe('miniapp in-memory sessions', () => {
   it('keeps customer and admin sessions in independent memory stores', () => {

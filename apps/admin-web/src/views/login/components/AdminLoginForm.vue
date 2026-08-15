@@ -67,13 +67,13 @@ const emit = defineEmits<{
           @update:model-value="emit('update:email', $event)"
         />
       </ElFormItem>
-      <ElFormItem v-else label="操作员手机号">
+      <ElFormItem v-else label="管理员登录手机号">
         <ElInput
           :model-value="phone"
           type="tel"
           inputmode="numeric"
           autocomplete="username"
-          placeholder="请输入操作员手机号"
+          placeholder="请输入管理员登录手机号"
           data-testid="admin-phone"
           @update:model-value="emit('update:phone', $event)"
         />
@@ -124,8 +124,8 @@ const emit = defineEmits<{
   width: min(100%, 520px);
   min-height: min(680px, calc(100vh - 96px));
   padding: clamp(30px, 5vw, 54px);
-  background: color-mix(in srgb, var(--admin-surface) 96%, transparent);
-  border: 1px solid color-mix(in srgb, var(--admin-border) 84%, transparent);
+  background: rgb(255 255 255 / 96%);
+  border: 1px solid rgb(226 220 237 / 84%);
   border-radius: 28px;
   box-shadow: 0 24px 70px rgb(73 57 105 / 12%);
 }
@@ -207,7 +207,7 @@ const emit = defineEmits<{
 .admin-login-card__dev {
   padding: 13px 15px;
   background: #fcf5f8;
-  border: 1px dashed color-mix(in srgb, var(--admin-pink) 55%, white);
+  border: 1px dashed #e0a7bd;
   border-radius: var(--admin-radius-control);
   color: #716477;
   font-size: 12px;

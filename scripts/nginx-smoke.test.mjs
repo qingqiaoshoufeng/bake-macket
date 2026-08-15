@@ -21,6 +21,26 @@ test('nginx serves H5 and Admin at separate domain-root ports', () => {
   );
 });
 
+test('nginx excludes H5 login handoff query parameters from access logs', () => {
+  assert.match(
+    config,
+    /log_format bake_mall_safe[^;]*\$request_method \$uri \$server_protocol/s,
+  );
+  assert.doesNotMatch(config, /log_format bake_mall_safe[^;]*\$request_uri/s);
+  assert.doesNotMatch(
+    config,
+    /log_format bake_mall_safe[^;]*\$request(?=[\s'])/s,
+  );
+  assert.equal(
+    (
+      config.match(
+        /access_log \/var\/log\/nginx\/access\.log bake_mall_safe;/g,
+      ) ?? []
+    ).length,
+    2,
+  );
+});
+
 test('nginx prevents client request IDs from controlling API or response IDs', () => {
   assert.match(config, /map \$request_id \$bake_mall_request_id/);
   assert.match(config, /default \$request_id;/);

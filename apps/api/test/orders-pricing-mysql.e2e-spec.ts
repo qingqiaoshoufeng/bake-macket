@@ -122,6 +122,8 @@ describe.sequential('OrdersService MySQL pricing snapshots', () => {
       dataSource.getRepository(User).create({
         phone: '13900000002',
         phoneVerified: true,
+        orderContactPhone: '13900000009',
+        orderContactPhoneVersion: 1,
       }),
     );
     const categoryResult = await dataSource.query(
@@ -186,7 +188,7 @@ describe.sequential('OrdersService MySQL pricing snapshots', () => {
       cartItemIds: [cartItem.id],
       fulfillmentType: FulfillmentType.PICKUP,
       contactName: '张三',
-      contactPhone: '13900000002',
+      orderContactPhoneVersion: user.orderContactPhoneVersion,
       pickupTimeText: '明天 10:00',
     });
 
@@ -239,7 +241,12 @@ describe.sequential('OrdersService MySQL pricing snapshots', () => {
 
     const userRepo = dataSource.getRepository(User);
     const user = await userRepo.save(
-      userRepo.create({ phone: '13900000003', phoneVerified: true }),
+      userRepo.create({
+        phone: '13900000003',
+        phoneVerified: true,
+        orderContactPhone: '13700000003',
+        orderContactPhoneVersion: 1,
+      }),
     );
     const admin = await dataSource.getRepository(AdminUser).save(
       dataSource.getRepository(AdminUser).create({
@@ -402,7 +409,7 @@ describe.sequential('OrdersService MySQL pricing snapshots', () => {
       cartItemIds: [cartItem.id],
       fulfillmentType: FulfillmentType.PICKUP,
       contactName: '李四',
-      contactPhone: '13900000003',
+      orderContactPhoneVersion: user.orderContactPhoneVersion,
       pickupTimeText: '明天 11:00',
       requestedCreditCents: 1_500,
       quoteToken: token,

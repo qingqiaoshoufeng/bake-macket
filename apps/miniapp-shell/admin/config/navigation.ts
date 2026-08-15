@@ -3,7 +3,6 @@ import { AdminPermission } from '../../config/contracts.generated.js';
 export const ADMIN_ROUTES = Object.freeze({
   home: '/pages/admin-home/index',
   password: '/pages/admin-password/index',
-  phone: '/pages/phone-auth/index?flow=admin',
   printers: '/pages/admin-printers/index',
   printing: '/pages/admin-printing/index',
   users: '/pages/admin-users/index',

@@ -19,8 +19,11 @@ const admin = (overrides: Record<string, unknown> = {}) => ({
 
 const user = (overrides: Record<string, unknown> = {}) => ({
   id: '7',
-  phone: '13800000000',
-  phoneVerified: true,
+  phone: null,
+  phoneVerified: false,
+  orderContactPhone: null,
+  wechatOpenid: 'openid-7',
+  wechatUnionid: null,
   isActive: true,
   mergedIntoUserId: null,
   ...overrides,
@@ -138,7 +141,11 @@ describe('JwtAdminGuard', () => {
     ['linked user 不存在', admin(), null],
     ['linked user inactive', admin(), user({ isActive: false })],
     ['linked user 已合并', admin(), user({ mergedIntoUserId: '8' })],
-    ['linked phone 未验证', admin(), user({ phoneVerified: false })],
+    [
+      'linked user 微信 identity 被清空',
+      admin(),
+      user({ wechatOpenid: null, wechatUnionid: null }),
+    ],
   ])('拒绝%s', async (_label, persistedAdmin, linkedUser) => {
     const { guard } = build({ persistedAdmin, linkedUser });
     await expectInvalid(guard, context().execution);
