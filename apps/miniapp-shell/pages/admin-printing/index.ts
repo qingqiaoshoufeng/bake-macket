@@ -15,7 +15,10 @@ import {
   PRINT_JOB_STATUS_LABELS,
   formatCents,
 } from '../../admin/config/printing-orders.js';
-import { createPrintingOrdersController } from '../../admin/hooks/printing-orders.js';
+import {
+  createPrintingOrdersController,
+  printerUnavailableReason,
+} from '../../admin/hooks/printing-orders.js';
 import type {
   PrintingJobRow,
   PrintingOrderRow,
@@ -36,6 +39,7 @@ type PageData = PrintingOrdersState &
     printerOptions: readonly PrintingPrinterOption[];
     jobRows: readonly PrintingJobRow[];
     canSubmit: boolean;
+    selectedPrinterLabel: string;
   }>;
 
 type ToggleEvent = Readonly<{ detail: Readonly<{ orderId?: unknown }> }>;
@@ -77,9 +81,26 @@ function orderRow(
 
 function printerOption(
   printer: CloudPrinterView,
-  selectedPrinterId: string | null,
+  state: PrintingOrdersState,
+  at: number,
 ): PrintingPrinterOption {
-  return { ...printer, selected: printer.id === selectedPrinterId };
+  const unavailableReason = printerUnavailableReason(printer, at);
+  return {
+    ...printer,
+    selected: printer.id === state.selectedPrinterId,
+    available: unavailableReason === null,
+    current: printer.id === state.current?.printer?.id,
+    unavailableReason,
+  };
+}
+
+function selectedPrinterLabel(state: PrintingOrdersState): string {
+  const selected = state.printers.find(
+    (printer) => printer.id === state.selectedPrinterId,
+  );
+  return selected
+    ? `${selected.displayName}（${selected.serialNumberMasked}）`
+    : '尚未选择设备';
 }
 
 function jobRow(job: PrintJobView): PrintingJobRow {
@@ -94,25 +115,42 @@ function jobRow(job: PrintJobView): PrintingJobRow {
 
 function pageData(): PageData {
   const state = controller.snapshot();
+  const at = Date.now();
+  const printerOptions = state.printers.map((printer) =>
+    printerOption(printer, state, at),
+  );
+  const selectedOption = printerOptions.find(
+    (printer) => printer.id === state.selectedPrinterId,
+  );
   return {
     ...state,
     orderRows: state.orders.map((order) =>
       orderRow(order, state.selectedOrderIds),
     ),
-    printerOptions: state.printers.map((printer) =>
-      printerOption(printer, state.selectedPrinterId),
-    ),
+    printerOptions,
     jobRows: (state.result?.jobs ?? []).map(jobRow),
     canSubmit:
       !state.loading &&
       !state.submitting &&
+      state.loadSucceeded &&
+      state.selectionReady &&
       state.selectedOrderIds.length > 0 &&
-      state.selectedPrinterId !== null,
+      selectedOption?.available === true,
+    selectedPrinterLabel: selectedPrinterLabel(state),
   };
 }
 
 function safeMessage(error: unknown): string {
   return error instanceof Error ? error.message : '订单打印操作失败';
+}
+
+function syncPageAndHandleSession(
+  page: Readonly<{ setData: (data: PageData) => void }>,
+): void {
+  page.setData(pageData());
+  if (!app.adminSession.get()) {
+    void wx.reLaunch({ url: '/pages/index/index' });
+  }
 }
 
 function findJob(event: JobEvent): PrintJobView | null {
@@ -156,14 +194,16 @@ Page<PageData, PageCustom>({
 
   async onRetry(): Promise<void> {
     try {
-      await controller.load();
+      const loading = controller.load();
+      this.setData(pageData());
+      await loading;
     } catch (error) {
       void wx.showToast({ title: safeMessage(error), icon: 'none' });
       if (!app.adminSession.get()) {
         void wx.reLaunch({ url: '/pages/index/index' });
       }
     } finally {
-      this.setData(pageData());
+      syncPageAndHandleSession(this);
     }
   },
 
@@ -191,12 +231,13 @@ Page<PageData, PageCustom>({
   async onSubmit(): Promise<void> {
     try {
       const count = controller.snapshot().selectedOrderIds.length;
+      const intent = controller.createPrintIntent();
       const confirmed = await confirm(
-        `将向所选在线打印机提交 ${count} 笔订单。厂商接受不代表已经物理出纸。`,
+        `将向 ${intent.printerLabel} 提交 ${count} 笔订单。厂商接受不代表已经物理出纸。`,
         count === 1 ? '确认打印订单' : '确认批量打印',
       );
       if (!confirmed) return;
-      const result = await controller.submit();
+      const result = await controller.submit(intent);
       void wx.showToast({
         title: `厂商已接受 ${result.accepted} 项`,
         icon: result.failed + result.unknown > 0 ? 'none' : 'success',
@@ -204,7 +245,7 @@ Page<PageData, PageCustom>({
     } catch (error) {
       void wx.showToast({ title: safeMessage(error), icon: 'none' });
     } finally {
-      this.setData(pageData());
+      syncPageAndHandleSession(this);
     }
   },
 
@@ -221,7 +262,7 @@ Page<PageData, PageCustom>({
     } catch (error) {
       void wx.showToast({ title: safeMessage(error), icon: 'none' });
     } finally {
-      this.setData(pageData());
+      syncPageAndHandleSession(this);
     }
   },
 
@@ -233,20 +274,27 @@ Page<PageData, PageCustom>({
     } catch (error) {
       void wx.showToast({ title: safeMessage(error), icon: 'none' });
     } finally {
-      this.setData(pageData());
+      syncPageAndHandleSession(this);
     }
   },
 
   async onRetryFailed(event): Promise<void> {
     const job = findJob(event);
-    if (!job || !(await confirm('将从订单快照创建新的打印任务并立即提交。')))
-      return;
+    if (!job) return;
     try {
-      await controller.retryFailed(job);
+      const intent = controller.createPrintIntent();
+      if (
+        !(await confirm(
+          `将使用 ${intent.printerLabel} 从订单快照创建新的打印任务并立即提交。`,
+        ))
+      ) {
+        return;
+      }
+      await controller.retryFailed(job, intent);
     } catch (error) {
       void wx.showToast({ title: safeMessage(error), icon: 'none' });
     } finally {
-      this.setData(pageData());
+      syncPageAndHandleSession(this);
     }
   },
 
@@ -262,7 +310,7 @@ Page<PageData, PageCustom>({
     } catch (error) {
       void wx.showToast({ title: safeMessage(error), icon: 'none' });
     } finally {
-      this.setData(pageData());
+      syncPageAndHandleSession(this);
     }
   },
 
@@ -281,28 +329,31 @@ Page<PageData, PageCustom>({
     } catch (error) {
       void wx.showToast({ title: safeMessage(error), icon: 'none' });
     } finally {
-      this.setData(pageData());
+      syncPageAndHandleSession(this);
     }
   },
 
   async onDuplicateRiskRetry(event): Promise<void> {
     const job = findJob(event);
-    if (
-      !job ||
-      !(await confirm(
-        '该操作可能重复出纸。确认承担重复打印风险并创建新的打印任务？',
-      ))
-    )
-      return;
+    if (!job) return;
     try {
+      const intent = controller.createPrintIntent();
+      if (
+        !(await confirm(
+          `该操作可能重复出纸。确认使用 ${intent.printerLabel} 承担重复打印风险并创建新的打印任务？`,
+        ))
+      ) {
+        return;
+      }
       await controller.resolveManual(
         job,
         ManualPrintResolution.RETRY_WITH_DUPLICATE_RISK,
+        intent,
       );
     } catch (error) {
       void wx.showToast({ title: safeMessage(error), icon: 'none' });
     } finally {
-      this.setData(pageData());
+      syncPageAndHandleSession(this);
     }
   },
 
@@ -313,7 +364,7 @@ Page<PageData, PageCustom>({
     } catch (error) {
       void wx.showToast({ title: safeMessage(error), icon: 'none' });
     } finally {
-      this.setData(pageData());
+      syncPageAndHandleSession(this);
     }
   },
 
@@ -328,7 +379,7 @@ Page<PageData, PageCustom>({
     } catch (error) {
       void wx.showToast({ title: safeMessage(error), icon: 'none' });
     } finally {
-      this.setData(pageData());
+      syncPageAndHandleSession(this);
     }
   },
 });

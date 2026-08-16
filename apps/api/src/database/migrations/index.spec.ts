@@ -89,10 +89,10 @@ const timestampOf = (name: string): number => {
 };
 
 describe('DATABASE_MIGRATIONS 注册表完整性', () => {
-  it('统一注册十五项迁移，并以订单联系号与管理员登录手机号迁移作为当前尾项', () => {
-    expect(DATABASE_MIGRATIONS).toHaveLength(15);
+  it('统一注册十六项迁移，并以当前打印机设置迁移作为当前尾项', () => {
+    expect(DATABASE_MIGRATIONS).toHaveLength(16);
     expect(DATABASE_MIGRATIONS.at(-1)?.name).toBe(
-      'OrderContactAndAdminLoginPhone1718000000013',
+      'CloudPrinterCurrentSetting1718000000014',
     );
   });
 

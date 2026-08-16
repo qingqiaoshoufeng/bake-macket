@@ -13,6 +13,7 @@ import { AdminOperationIdempotency } from '../database/entities/admin-operation-
 import { AdminCloudPrintersController } from './admin-cloud-printers.controller.js';
 import { AdminPrintJobsController } from './admin-print-jobs.controller.js';
 import { AdminOperationIdempotencyService } from './admin-operation-idempotency.service.js';
+import { CloudPrinterCurrentService } from './cloud-printer-current.service.js';
 import { CloudPrinterReconciliationScheduler } from './cloud-printer-reconciliation.scheduler.js';
 import { CloudPrinterReconciliationService } from './cloud-printer-reconciliation.service.js';
 import { CloudPrinterService } from './cloud-printer.service.js';
@@ -101,6 +102,9 @@ describe('Printing dependency injection', () => {
     const adapter = moduleRef.get(XpyunAdapter);
     expect(adapter).toBeInstanceOf(XpyunAdapter);
     expect(moduleRef.get(XPYUN_VENDOR_PORT)).toBe(adapter);
+    expect(moduleRef.get(CloudPrinterCurrentService)).toBeInstanceOf(
+      CloudPrinterCurrentService,
+    );
     expect(moduleRef.get(CloudPrinterService)).toBeInstanceOf(
       CloudPrinterService,
     );

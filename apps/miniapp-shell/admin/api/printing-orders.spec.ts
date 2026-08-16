@@ -62,10 +62,12 @@ describe('printing orders api', () => {
 
     await api.listOrders({ page: 1, pageSize: 20 });
     await api.listPrinters({ page: 1, pageSize: 100 });
+    await api.getCurrentPrinter();
 
     expect(request.mock.calls.map(([options]) => options.url)).toEqual([
       'https://mall.example.com/api/v1/admin/orders?page=1&pageSize=20',
       'https://mall.example.com/api/v1/admin/cloud-printers?page=1&pageSize=100',
+      'https://mall.example.com/api/v1/admin/cloud-printers/current',
     ]);
     expect(
       request.mock.calls.every(

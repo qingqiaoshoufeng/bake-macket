@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -15,7 +16,11 @@ import {
   AdminPermission,
   ApiErrorCode,
   type BindCloudPrinterResult,
+  type ClearCurrentCloudPrinterResult,
   type CloudPrinterListResult,
+  type CloudPrinterView,
+  type CurrentCloudPrinterView,
+  type SetCurrentCloudPrinterResult,
   type ConfirmCloudPrinterResult,
   type RefreshCloudPrinterOnlineStatusResult,
   type RenameCloudPrinterResult,
@@ -36,6 +41,7 @@ import { type AuthenticatedAdmin } from '../auth/auth.types.js';
 import { CurrentAdmin } from '../auth/current-user.decorator.js';
 import { CanonicalUnsignedBigIntIdPipe } from '../common/canonical-unsigned-bigint-id.pipe.js';
 import { isCanonicalAdminOperationIdempotencyKey } from './admin-operation-idempotency.service.js';
+import { CloudPrinterCurrentService } from './cloud-printer-current.service.js';
 import { CloudPrinterService } from './cloud-printer.service.js';
 import { CloudPrinterReconciliationService } from './cloud-printer-reconciliation.service.js';
 import {
@@ -43,6 +49,10 @@ import {
   CloudPrinterListQueryDto,
 } from './dto/bind-cloud-printer.dto.js';
 import { ConfirmPrinterCodeDto } from './dto/confirm-printer-code.dto.js';
+import {
+  ClearCurrentCloudPrinterDto,
+  SetCurrentCloudPrinterDto,
+} from './dto/current-cloud-printer.dto.js';
 import { ConfirmCloudPrinterCompensationDeletionDto } from './dto/confirm-cloud-printer-compensation-deletion.dto.js';
 import { RenameCloudPrinterDto } from './dto/rename-cloud-printer.dto.js';
 import { RequeryCloudPrinterVendorRelationDto } from './dto/requery-cloud-printer-vendor-relation.dto.js';
@@ -66,6 +76,7 @@ const requireIdempotencyKey = (header: string | undefined): string => {
 export class AdminCloudPrintersController {
   constructor(
     private readonly cloudPrinters: CloudPrinterService,
+    private readonly currentPrinters: CloudPrinterCurrentService,
     private readonly reconciliation: CloudPrinterReconciliationService,
   ) {}
 
@@ -78,7 +89,42 @@ export class AdminCloudPrintersController {
       page: query.page,
       pageSize: query.pageSize,
       includeUnbound: query.includeUnbound ?? false,
+      status: query.status,
     });
+  }
+
+  @Get('current')
+  @RequireAdminPermissions(AdminPermission.PRINT_EXECUTE)
+  current(): Promise<CurrentCloudPrinterView> {
+    return this.currentPrinters.get();
+  }
+
+  @Put('current')
+  @RequireAdminPermissions(AdminPermission.PRINT_DEVICE_MANAGE)
+  setCurrent(
+    @CurrentAdmin() admin: AuthenticatedAdmin,
+    @Headers(IDEMPOTENCY_KEY_HEADER) idempotencyKey: string | undefined,
+    @Body() body: SetCurrentCloudPrinterDto,
+  ): Promise<SetCurrentCloudPrinterResult> {
+    return this.currentPrinters.set(
+      admin,
+      body,
+      requireIdempotencyKey(idempotencyKey),
+    );
+  }
+
+  @Post('current/clear')
+  @RequireAdminPermissions(AdminPermission.PRINT_DEVICE_MANAGE)
+  clearCurrent(
+    @CurrentAdmin() admin: AuthenticatedAdmin,
+    @Headers(IDEMPOTENCY_KEY_HEADER) idempotencyKey: string | undefined,
+    @Body() body: ClearCurrentCloudPrinterDto,
+  ): Promise<ClearCurrentCloudPrinterResult> {
+    return this.currentPrinters.clear(
+      admin,
+      body,
+      requireIdempotencyKey(idempotencyKey),
+    );
   }
 
   @Post('bind')
@@ -94,6 +140,14 @@ export class AdminCloudPrintersController {
       body,
       requireIdempotencyKey(idempotencyKey),
     );
+  }
+
+  @Get(':id')
+  @RequireAdminPermissions(AdminPermission.PRINT_DEVICE_MANAGE)
+  detail(
+    @Param('id', CanonicalUnsignedBigIntIdPipe) printerId: string,
+  ): Promise<CloudPrinterView> {
+    return this.cloudPrinters.detail(printerId);
   }
 
   @Post(':id/verification/confirm')

@@ -28,6 +28,14 @@
   font-weight: 600;
 }
 
+.printer-card__current {
+  padding: 4rpx 12rpx;
+  border-radius: 999rpx;
+  background: #e9f7ef;
+  color: #3f7f5e;
+  font-size: 22rpx;
+}
+
 .printer-card__online {
   color: #5f9477;
   font-size: 24rpx;

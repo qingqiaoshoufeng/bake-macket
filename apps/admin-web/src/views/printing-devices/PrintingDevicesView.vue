@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { ElAlert, ElButton, ElMessage, ElPagination } from 'element-plus';
+import {
+  ElAlert,
+  ElButton,
+  ElMessage,
+  ElPagination,
+  ElTabs,
+  ElTabPane,
+} from 'element-plus';
 import { computed, onMounted } from 'vue';
 
 import AdminDataPanel from '../../components/layout/AdminDataPanel.vue';
@@ -7,6 +14,7 @@ import AdminPage from '../../components/layout/AdminPage.vue';
 import AdminPageHeader from '../../components/layout/AdminPageHeader.vue';
 import { useAdminAuthStore } from '../../stores/admin-auth.js';
 import BindPrinterDialog from './components/BindPrinterDialog.vue';
+import PrinterDetailDialog from './components/PrinterDetailDialog.vue';
 import PrinterRecoveryActions from './components/PrinterRecoveryActions.vue';
 import PrinterTable from './components/PrinterTable.vue';
 import RenamePrinterDialog from './components/RenamePrinterDialog.vue';
@@ -31,7 +39,10 @@ const selectedPrinter = computed(
   () =>
     state.devices.value.find(
       (printer) => printer.id === state.dialog.value.resourceId,
-    ) ?? null,
+    ) ??
+    (state.detail.value?.id === state.dialog.value.resourceId
+      ? state.detail.value
+      : null),
 );
 
 onMounted(async () => {
@@ -62,11 +73,17 @@ function handleAction(
     | 'requery'
     | 'delete-confirm'
     | 'unbind'
-    | 'rename',
+    | 'rename'
+    | 'detail'
+    | 'set-current'
+    | 'clear-current',
   printer: CloudPrinterView,
 ): void {
   if (action === 'verify') state.openVerify(printer);
-  else if (action === 'unbind') {
+  else if (action === 'detail') void state.openDetail(printer.id);
+  else if (action === 'set-current' || action === 'clear-current') {
+    state.openRecovery(action === 'set-current' ? 'set-current' : 'clear-current', printer);
+  } else if (action === 'unbind') {
     if (window.confirm(`确认解绑“${printer.displayName}”吗？`)) {
       state.openRecovery('unbind', printer);
     }
@@ -85,7 +102,10 @@ function matchingPending(
     | 'requery'
     | 'delete-confirm'
     | 'unbind'
-    | 'rename',
+    | 'rename'
+    | 'detail'
+    | 'set-current'
+    | 'clear-current',
   resourceId?: string,
 ) {
   return state.pendingOperations.value.find(
@@ -123,13 +143,19 @@ function submitRecovery(): void {
     requery: () => state.requery(printerId),
     'delete-confirm': () => state.confirmDeletion(printerId),
     unbind: () => state.unbind(printerId),
+    'set-current': () => state.setCurrent(printerId),
+    'clear-current': () => state.clearCurrent(),
   } as const;
   const operation = matchingPending(action, printerId);
   void perform(
     operation
       ? () => state.retryOperation(action, printerId)
       : operations[action],
-    '设备恢复操作已提交',
+    action === 'set-current'
+      ? '已设为当前打印机'
+      : action === 'clear-current'
+        ? '已清除当前打印机'
+        : '设备状态操作已提交',
   );
 }
 
@@ -145,7 +171,28 @@ function submitRename(): void {
   );
 }
 
-function continuePendingOperation(): void {
+async function printerForPendingOperation(
+  printerId: string,
+): Promise<CloudPrinterView | null> {
+  const listed = state.devices.value.find(
+    (candidate) => candidate.id === printerId,
+  );
+  if (listed) return listed;
+  try {
+    await state.openDetail(printerId);
+    return state.detail.value;
+  } catch {
+    return null;
+  }
+}
+
+function discardFirstPendingOperation(): void {
+  const pending = state.pendingOperations.value[0];
+  if (!pending) return;
+  state.discardPendingOperation(pending.operation, pending.resourceId);
+}
+
+async function continuePendingOperation(): Promise<void> {
   const pending = state.pendingOperations.value[0];
   if (!pending) return;
   if (pending.operation === 'refresh' && pending.resourceId) {
@@ -159,9 +206,8 @@ function continuePendingOperation(): void {
     state.openBind();
     return;
   }
-  const printer = state.devices.value.find(
-    (candidate) => candidate.id === pending.resourceId,
-  );
+  if (!pending.resourceId) return;
+  const printer = await printerForPendingOperation(pending.resourceId);
   if (!printer) return;
   if (pending.operation === 'confirm') state.openVerify(printer);
   else if (pending.operation === 'rename') state.openRename(printer);
@@ -169,7 +215,9 @@ function continuePendingOperation(): void {
     pending.operation === 'resend' ||
     pending.operation === 'requery' ||
     pending.operation === 'delete-confirm' ||
-    pending.operation === 'unbind'
+    pending.operation === 'unbind' ||
+    pending.operation === 'set-current' ||
+    pending.operation === 'clear-current'
   ) {
     state.openRecovery(pending.operation, printer);
   }
@@ -218,9 +266,19 @@ function openExpiredRecovery(): void {
                   : '可沿用原幂等键安全重试。'
               }}
             </span>
-            <ElButton size="small" @click="continuePendingOperation">
-              继续原操作
-            </ElButton>
+            <div class="printing-devices-page__pending-actions">
+              <ElButton size="small" @click="state.load">刷新权威状态</ElButton>
+              <ElButton size="small" @click="discardFirstPendingOperation">
+                清除待恢复记录
+              </ElButton>
+              <ElButton
+                size="small"
+                data-testid="continue-pending-operation"
+                @click="continuePendingOperation"
+              >
+                继续原操作
+              </ElButton>
+            </div>
           </div>
         </template>
       </ElAlert>
@@ -238,6 +296,14 @@ function openExpiredRecovery(): void {
           </ElButton>
         </div>
       </template>
+
+      <ElTabs
+        :model-value="state.listScope.value"
+        @update:model-value="state.setListScope($event as 'existing' | 'removed')"
+      >
+        <ElTabPane label="现有设备" name="existing" />
+        <ElTabPane label="已移除设备" name="removed" />
+      </ElTabs>
 
       <PrinterTable
         :devices="state.devices.value"
@@ -260,6 +326,11 @@ function openExpiredRecovery(): void {
       </template>
     </AdminDataPanel>
 
+    <PrinterDetailDialog
+      :visible="state.dialog.value.kind === 'detail'"
+      :printer="state.detail.value"
+      @close="state.closeDialog"
+    />
     <BindPrinterDialog
       :visible="state.dialog.value.kind === 'bind'"
       :form="state.bindForm.value"
@@ -318,6 +389,12 @@ function openExpiredRecovery(): void {
 .printing-devices-page__toolbar div {
   display: grid;
   gap: 3px;
+}
+
+.printing-devices-page__pending-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .printing-devices-page__toolbar strong {

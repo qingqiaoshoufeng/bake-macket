@@ -36,6 +36,7 @@ function updateForm(patch: Partial<BindPrinterForm>): void {
         <ElInput
           :model-value="form.serialNumber"
           autocomplete="off"
+          maxlength="64"
           data-testid="bind-printer-serial"
           placeholder="例如 SN-1001"
           @update:model-value="updateForm({ serialNumber: String($event) })"

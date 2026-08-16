@@ -8,6 +8,7 @@ export * from './cart-item.entity.js';
 export * from './category.entity.js';
 export * from './homepage-draft.entity.js';
 export { CloudPrinter } from './cloud-printer.entity.js';
+export { CloudPrinterStoreSetting } from './cloud-printer-store-setting.entity.js';
 export * from './homepage-page.entity.js';
 export * from './idempotency-record.entity.js';
 export { MemberAccount } from './member-account.entity.js';

@@ -6,6 +6,7 @@ import { composeProjectName } from '../../../../scripts/compose.mjs';
 import {
   provisionMysqlTestDatabase,
   resolveMysqlContainer,
+  resolveMysqlPort,
   resolveRepositoryRoot,
 } from './mysql-test-database.js';
 
@@ -35,6 +36,25 @@ describe('MySQL test database helpers', () => {
         apiDirectory,
       ),
     ).toBe('explicit-mysql-container');
+  });
+
+  it('uses an explicit MySQL port before inspecting the selected container', () => {
+    expect(
+      resolveMysqlPort(
+        { TEST_MYSQL_PORT: '45555' },
+        apiDirectory,
+        () => '43306',
+      ),
+    ).toBe(45555);
+  });
+
+  it('derives the host port from the same selected container used for root SQL', () => {
+    expect(
+      resolveMysqlPort({}, apiDirectory, (container) => {
+        expect(container).toBe(resolveMysqlContainer({}, apiDirectory));
+        return '127.0.0.1:43306\n';
+      }),
+    ).toBe(43306);
   });
 
   it('drops a created schema without attempting REVOKE when GRANT fails', () => {

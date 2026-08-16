@@ -46,6 +46,36 @@ export function resolveMysqlContainer(
   return `${composeProjectName(branch)}-mysql-1`;
 }
 
+type DockerPortResolver = (container: string) => string;
+
+const dockerMysqlPort: DockerPortResolver = (container) =>
+  execFileSync('docker', ['port', container, '3306/tcp'], {
+    encoding: 'utf8',
+  });
+
+export function resolveMysqlPort(
+  environment: NodeJS.ProcessEnv = process.env,
+  startDirectory = process.cwd(),
+  portResolver: DockerPortResolver = dockerMysqlPort,
+): number {
+  const explicitPort = environment.TEST_MYSQL_PORT;
+  if (explicitPort) {
+    const port = Number(explicitPort);
+    if (!Number.isInteger(port) || port <= 0 || port > 65_535) {
+      throw new Error(`Invalid TEST_MYSQL_PORT: ${explicitPort}`);
+    }
+    return port;
+  }
+  const output = portResolver(
+    resolveMysqlContainer(environment, startDirectory),
+  ).trim();
+  const port = Number(output.match(/:(\d+)$/u)?.[1]);
+  if (!Number.isInteger(port) || port <= 0 || port > 65_535) {
+    throw new Error(`Unable to resolve MySQL host port from: ${output}`);
+  }
+  return port;
+}
+
 export function createDockerRootSqlExecutor(
   environment: NodeJS.ProcessEnv = process.env,
   startDirectory = process.cwd(),

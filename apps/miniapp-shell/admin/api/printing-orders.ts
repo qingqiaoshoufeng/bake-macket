@@ -9,6 +9,7 @@ import type {
   CreatePrintBatchResult,
   CreateSinglePrintRequest,
   CreateSinglePrintResult,
+  CurrentCloudPrinterView,
   FailedPrintRetryRequest,
   FailedPrintRetryResult,
   ManualPrintResolutionRequest,
@@ -63,6 +64,9 @@ export function createPrintingOrdersApi(
             : { includeUnbound: String(query.includeUnbound) }),
         },
       });
+    },
+    getCurrentPrinter(): Promise<CurrentCloudPrinterView> {
+      return client.get('/admin/cloud-printers/current', { audience: 'admin' });
     },
     listJobs(query: PrintJobListQuery): Promise<PrintJobListResult> {
       return client.get('/admin/print-jobs', { audience: 'admin', query });

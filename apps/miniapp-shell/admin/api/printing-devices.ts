@@ -1,12 +1,15 @@
 import type {
   BindCloudPrinterRequest,
   BindCloudPrinterResult,
+  ClearCurrentCloudPrinterRequest,
+  ClearCurrentCloudPrinterResult,
   CloudPrinterListQuery,
   CloudPrinterListResult,
   ConfirmCloudPrinterCompensationDeletionRequest,
   ConfirmCloudPrinterCompensationDeletionResult,
   ConfirmCloudPrinterRequest,
   ConfirmCloudPrinterResult,
+  CurrentCloudPrinterView,
   RefreshCloudPrinterOnlineStatusRequest,
   RefreshCloudPrinterOnlineStatusResult,
   RenameCloudPrinterRequest,
@@ -15,6 +18,8 @@ import type {
   RequeryCloudPrinterVendorRelationResult,
   ResendCloudPrinterVerificationRequest,
   ResendCloudPrinterVerificationResult,
+  SetCurrentCloudPrinterRequest,
+  SetCurrentCloudPrinterResult,
   UnbindCloudPrinterRequest,
   UnbindCloudPrinterResult,
 } from '@bake-mall/contracts';
@@ -61,8 +66,37 @@ export function createPrintingDevicesApi(
           ...(query.includeUnbound === undefined
             ? {}
             : { includeUnbound: String(query.includeUnbound) }),
+          ...(query.status === undefined ? {} : { status: query.status }),
         },
       });
+    },
+    detail(printerId: string): Promise<import('@bake-mall/contracts').CloudPrinterView> {
+      return client.get(`/admin/cloud-printers/${printerId}`, {
+        audience: 'admin',
+      });
+    },
+    current(): Promise<CurrentCloudPrinterView> {
+      return client.get('/admin/cloud-printers/current', { audience: 'admin' });
+    },
+    setCurrent(
+      body: SetCurrentCloudPrinterRequest,
+      idempotencyKey: string,
+    ): Promise<SetCurrentCloudPrinterResult> {
+      return client.put(
+        '/admin/cloud-printers/current',
+        body,
+        writeOptions(idempotencyKey),
+      );
+    },
+    clearCurrent(
+      body: ClearCurrentCloudPrinterRequest,
+      idempotencyKey: string,
+    ): Promise<ClearCurrentCloudPrinterResult> {
+      return client.post(
+        '/admin/cloud-printers/current/clear',
+        body,
+        writeOptions(idempotencyKey),
+      );
     },
     bind(
       body: BindCloudPrinterRequest,

@@ -333,6 +333,46 @@ describe('miniapp in-memory phone handoff', () => {
 });
 
 describe('miniapp page controllers', () => {
+  it('loads the clean base URL on the first show without a pending handoff', () => {
+    const rebuildWebView = createSuccessfulRebuild();
+    const controller = createIndexPageController({
+      baseUrl: rootBaseUrl,
+      baseOrigin: rootOrigin,
+      consumeWechatLoginHandoff: () => false,
+      peekWechatLoginHandoff: () => null,
+      peekPhoneHandoff: () => null,
+      consumePhoneHandoff: () => false,
+      rebuildWebView,
+      toast: vi.fn(),
+    });
+
+    expect(controller.handleShow()).toBe(true);
+    expect(controller.handleShow()).toBe(false);
+    expect(rebuildWebView).toHaveBeenCalledOnce();
+    expect(rebuildWebView).toHaveBeenCalledWith(rootBaseUrl, '');
+  });
+
+  it('retries the clean base URL after an initial web-view rebuild failure', () => {
+    const rebuildWebView = vi
+      .fn<(url: string, deliveryId: string) => boolean>()
+      .mockReturnValueOnce(false)
+      .mockReturnValueOnce(true);
+    const controller = createIndexPageController({
+      baseUrl: rootBaseUrl,
+      baseOrigin: rootOrigin,
+      consumeWechatLoginHandoff: () => false,
+      peekWechatLoginHandoff: () => null,
+      peekPhoneHandoff: () => null,
+      consumePhoneHandoff: () => false,
+      rebuildWebView,
+      toast: vi.fn(),
+    });
+
+    expect(controller.handleShow()).toBe(false);
+    expect(controller.handleShow()).toBe(true);
+    expect(rebuildWebView).toHaveBeenCalledTimes(2);
+  });
+
   it('rejects unbound automatic login codes and falls back to the clean base URL', () => {
     const rebuildWebView = createSuccessfulRebuild();
     const toast = vi.fn();

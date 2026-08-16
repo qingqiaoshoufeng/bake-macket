@@ -402,6 +402,7 @@ export function createIndexPageController(
   handleWebViewError: (deliveryId: unknown) => boolean;
   handleWebViewLoad: (deliveryId: unknown) => boolean;
 }> {
+  let baseUrlLoaded = false;
   let explicitLoginObserved = false;
   let generation = 0;
   let pendingDelivery: PendingDelivery | null = null;
@@ -409,7 +410,10 @@ export function createIndexPageController(
   function rebuild(url: string, deliveryId = ''): boolean {
     try {
       const rebuilt = dependencies.rebuildWebView(url, deliveryId);
-      if (rebuilt && !deliveryId) pendingDelivery = null;
+      if (rebuilt && !deliveryId) {
+        baseUrlLoaded = true;
+        pendingDelivery = null;
+      }
       return rebuilt;
     } catch {
       return false;
@@ -496,7 +500,8 @@ export function createIndexPageController(
       return deliverWechatLogin(loginHandoff);
     }
     const phoneHandoff = dependencies.peekPhoneHandoff();
-    return phoneHandoff ? deliverPhone(phoneHandoff) : false;
+    if (phoneHandoff) return deliverPhone(phoneHandoff);
+    return baseUrlLoaded ? false : rebuild(dependencies.baseUrl);
   }
 
   function handleWebViewLoad(deliveryId: unknown): boolean {

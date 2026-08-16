@@ -7,20 +7,43 @@
     <button size="mini" bindtap="onOpenBind">绑定打印机</button>
   </view>
 
+  <view class="printers-tabs">
+    <button
+      size="mini"
+      type="{{listScope === 'existing' ? 'primary' : 'default'}}"
+      data-scope="existing"
+      bindtap="onSwitchScope"
+    >现有设备</button>
+    <button
+      size="mini"
+      type="{{listScope === 'removed' ? 'primary' : 'default'}}"
+      data-scope="removed"
+      bindtap="onSwitchScope"
+    >已移除设备</button>
+  </view>
+
   <view wx:if="{{manualContinueRequired}}" class="printers-notice">
     <text
       >检测到未确认的设备操作，不会自动重放。请重新填写必要信息后手动继续。</text
     >
-    <button
-      wx:for="{{operations}}"
-      wx:key="idempotencyKey"
-      size="mini"
-      data-operation="{{item.operation}}"
-      data-printer-id="{{item.resourceId}}"
-      bindtap="onContinue"
-    >
-      继续 {{item.operation}}
-    </button>
+    <view wx:for="{{operations}}" wx:key="idempotencyKey">
+      <button
+        size="mini"
+        data-operation="{{item.operation}}"
+        data-printer-id="{{item.resourceId}}"
+        bindtap="onContinue"
+      >
+        继续 {{item.operation}}
+      </button>
+      <button
+        size="mini"
+        data-operation="{{item.operation}}"
+        data-printer-id="{{item.resourceId}}"
+        bindtap="onDiscardPending"
+      >
+        清除记录
+      </button>
+    </view>
   </view>
 
   <view wx:if="{{error}}" class="printers-error">
@@ -53,17 +76,28 @@
 
   <view wx:if="{{dialog.kind}}" class="dialog-mask">
     <view class="dialog-card">
-      <block wx:if="{{dialog.kind === 'bind'}}">
+      <block wx:if="{{dialog.kind === 'detail'}}">
+        <text class="dialog-title">打印机详情</text>
+        <text class="printer-detail">{{detail.displayName}}</text>
+        <text class="printer-detail">设备号 {{detail.serialNumberMasked}}</text>
+        <text class="printer-detail">绑定状态 {{detail.status}}</text>
+        <text class="printer-detail">在线状态 {{detail.onlineStatus}}</text>
+        <text class="printer-detail">{{detail.isCurrent ? '当前打印机' : '非当前打印机'}}</text>
+      </block>
+
+      <block wx:elif="{{dialog.kind === 'bind'}}">
         <text class="dialog-title">绑定打印机</text>
         <input
           value="{{forms.bind.serialNumber}}"
-          placeholder="打印机 SN"
+          maxlength="64"
+          placeholder="1–64 位字母、数字或短横线"
           data-field="serialNumber"
           bindinput="onBindInput"
         />
         <input
           value="{{forms.bind.displayName}}"
-          placeholder="显示名称"
+          maxlength="64"
+          placeholder="显示名称（1–64 个字符）"
           data-field="displayName"
           bindinput="onBindInput"
         />
@@ -88,7 +122,9 @@
         <text wx:else>验证码元数据缺失，请先刷新列表</text>
         <input
           value="{{forms.verify.code}}"
-          placeholder="验证码"
+          type="number"
+          maxlength="6"
+          placeholder="6 位数字验证码"
           data-field="code"
           bindinput="onVerifyInput"
         />
@@ -109,7 +145,7 @@
 
       <block wx:elif="{{dialog.kind === 'recovery'}}">
         <text class="dialog-title">
-          {{dialog.recoveryAction === 'unbind' ? '确认解绑打印机' : '恢复设备状态'}}
+          {{dialog.recoveryAction === 'unbind' ? '确认移除打印机' : dialog.recoveryAction === 'set-current' ? '设为当前打印机' : dialog.recoveryAction === 'clear-current' ? '清除当前打印机' : '确认设备状态操作'}}
         </text>
         <input
           password
@@ -124,7 +160,7 @@
         <text class="dialog-title">重命名打印机</text>
         <input
           value="{{forms.rename.displayName}}"
-          maxlength="128"
+          maxlength="64"
           placeholder="1–64 个 Unicode 字符"
           bindinput="onRenameInput"
         />

@@ -171,6 +171,7 @@ describe('cloud printer contracts', () => {
       status: CloudPrinterStatus.PENDING_VERIFICATION,
       onlineStatus: CloudPrinterOnlineStatus.ONLINE,
       lastStatusCheckedAt: '2026-08-04T00:00:00.000Z',
+      isCurrent: false,
       challenge: {
         challengeId: '1',
         expiresAt: '2026-08-04T00:05:00.000Z',
@@ -218,6 +219,10 @@ describe('cloud printer contracts', () => {
       ApiErrorCode.CLOUD_PRINTER_VENDOR_REJECTED,
       ApiErrorCode.CLOUD_PRINTER_VENDOR_UNAVAILABLE,
       ApiErrorCode.CLOUD_PRINTER_UNBIND_BLOCKED,
+      ApiErrorCode.CLOUD_PRINTER_NOT_FOUND,
+      ApiErrorCode.CLOUD_PRINTER_CURRENT_INELIGIBLE,
+      ApiErrorCode.CLOUD_PRINTER_CURRENT_VERSION_CONFLICT,
+      ApiErrorCode.CLOUD_PRINTER_CURRENT_UNBIND_FORBIDDEN,
       ApiErrorCode.PRINT_ORDER_NOT_PRINTABLE,
       ApiErrorCode.PRINT_BATCH_NOT_FOUND,
       ApiErrorCode.PRINT_BATCH_STATUS_CONFLICT,

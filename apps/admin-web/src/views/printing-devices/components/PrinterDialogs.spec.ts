@@ -147,7 +147,7 @@ describe('printer dialogs', () => {
     });
 
     expect(wrapper.props('action')).toBe('unbind');
-    expect(wrapper.html()).toContain('aria-label="确认解绑打印机"');
+    expect(wrapper.html()).toContain('aria-label="确认移除打印机"');
     expect(wrapper.html()).not.toContain('fetch(');
   });
 });

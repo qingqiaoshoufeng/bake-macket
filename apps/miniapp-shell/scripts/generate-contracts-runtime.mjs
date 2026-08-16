@@ -18,7 +18,9 @@ const ENUM_NAMES = new Set([
 ]);
 const PRINTING_RUNTIME_NAMES = new Set([
   'CLOUD_PRINTER_DISPLAY_NAME_MAX_LENGTH',
+  'CLOUD_PRINTER_SERIAL_NUMBER_PATTERN',
   'normalizeCloudPrinterDisplayName',
+  'normalizeCloudPrinterSerialNumber',
 ]);
 const contractsRoot = new URL(
   '../../../packages/shared-contracts/src/',

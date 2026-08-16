@@ -57,19 +57,19 @@ describe('Task 7 native admin page wiring', () => {
     ).resolves.toBeTruthy();
   });
 
-  it('renders native web-view diagnostics and the management entry as cover views', async () => {
+  it('uses a native modal for the management entry instead of covering web-view', async () => {
     const [indexPage, indexController] = await Promise.all([
       read('pages/index/index.wxml'),
       read('pages/index/index.ts'),
     ]);
 
-    expect(indexPage).toMatch(
-      /<web-view[\s\S]*class="web-view-diagnostic[^"]*"[\s\S]*webViewMessage[\s\S]*<cover-view[\s\S]*bindtap="onEnterAdmin"[\s\S]*>门店管理<\/cover-view>[\s\S]*<\/web-view>/u,
+    expect(indexPage).toContain('<web-view');
+    expect(indexPage).not.toContain('class="admin-entry"');
+    expect(indexController).toContain('wx.showModal({');
+    expect(indexController).toContain("confirmText: '进入管理'");
+    expect(indexController).toMatch(
+      /if \(eligible && \(await confirmAdminEntry\(\)\)\)[\s\S]*await this\.onEnterAdmin\(\)/u,
     );
-    expect(indexController).toContain("webViewMessage: '正在加载商城网页…'");
-    expect(indexController).toContain("webViewMessage: '商城网页已加载'");
-    expect(indexController).toContain("webViewMessage: '商城网页加载失败'");
-    expect(indexPage).not.toMatch(/<button[\s\S]*class="admin-entry"/u);
   });
 
   it('keeps admin flow independent from getPhoneNumber and phone-auth routing', async () => {
@@ -131,7 +131,7 @@ describe('Task 7 native admin page wiring', () => {
     });
   });
 
-  it('wires UNKNOWN, FAILED and MANUAL_REVIEW recovery actions on printing jobs', async () => {
+  it('wires current-printer selection and all print recovery actions', async () => {
     const sources = await Promise.all([
       read('admin/api/printing-orders.ts'),
       read('admin/hooks/printing-orders.ts'),
@@ -140,11 +140,21 @@ describe('Task 7 native admin page wiring', () => {
     ]);
     const source = sources.join('\n');
 
+    expect(source).toContain('/admin/cloud-printers/current');
     expect(source).toContain('/query-unknown');
     expect(source).toContain('/retry-failed');
     expect(source).toContain('/manual-resolution');
     expect(source).toContain('RETRY_WITH_DUPLICATE_RISK');
     expect(source).toContain('可能重复出纸');
+    expect(source).toContain('当前设备');
+    expect(source).toContain('不可用');
+    expect(source).toContain('selectedPrinterLabel');
+    expect(source).toContain('createPrintIntent');
+    expect(source).toContain('syncPageAndHandleSession');
+    expect(source).toContain('pendingBatchPrinterLabel');
+    expect(source).toMatch(
+      /确认打印订单[\s\S]*selectedPrinterLabel|selectedPrinterLabel[\s\S]*确认打印订单/u,
+    );
   });
 
   it('renders all three password fields for initial and current modes', async () => {

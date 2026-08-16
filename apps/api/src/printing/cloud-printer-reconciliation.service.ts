@@ -29,10 +29,13 @@ import {
   type AdminOperationClaim,
   type UnknownIdentityClaim,
 } from './admin-operation-idempotency.service.js';
+import { CloudPrinterCurrentService } from './cloud-printer-current.service.js';
+import { type XpyunVendorPort } from './cloud-printer.service.js';
 import {
+  normalizeCloudPrinterSnapshot,
+  projectCloudPrinterResult,
   toSnapshotView,
-  type XpyunVendorPort,
-} from './cloud-printer.service.js';
+} from './cloud-printer-view.js';
 import { XPYUN_VENDOR_PORT } from './xpyun/xpyun.types.js';
 
 export const CLOUD_PRINTER_RECONCILIATION_NOW = Symbol(
@@ -168,6 +171,8 @@ const recoveryUnknownSnapshot = (
   bindingOperationId: RecoveryCycle,
 ) => ({ printerId, bindingOperationId });
 
+export { normalizeCloudPrinterSnapshot as normalizeCloudPrinterReconciliationSnapshot } from './cloud-printer-view.js';
+
 const inProgress = (): ConflictException =>
   new ConflictException({
     code: ApiErrorCode.IDEMPOTENCY_IN_PROGRESS,
@@ -200,6 +205,8 @@ export class CloudPrinterReconciliationService {
     @Optional()
     @Inject(CLOUD_PRINTER_RECONCILIATION_NOW)
     private readonly now: () => Date = () => new Date(),
+    @Optional()
+    private readonly currentPrinters?: CloudPrinterCurrentService,
   ) {}
 
   async reconcileStaleBatch(): Promise<SchedulerBatchResult> {
@@ -268,7 +275,7 @@ export class CloudPrinterReconciliationService {
         (claim) => this.replay<RequeryCloudPrinterVendorRelationResult>(claim),
         true,
       );
-    if (preflight) return preflight;
+    if (preflight) return this.projectResult(preflight);
     await this.verifyPassword(principal.id, request.operationPassword);
 
     return this.withPrinterAdvisoryLock(printerId, async () => {
@@ -349,7 +356,9 @@ export class CloudPrinterReconciliationService {
           } satisfies RequeryIntent,
         };
       });
-      if ('replay' in prepared && prepared.replay) return prepared.replay;
+      if ('replay' in prepared && prepared.replay) {
+        return this.projectResult(prepared.replay);
+      }
       if ('failure' in prepared && prepared.failure) {
         throw this.failureException(prepared.failure);
       }
@@ -371,7 +380,7 @@ export class CloudPrinterReconciliationService {
             request.operationPassword,
           ),
         );
-        return this.unwrap(completion);
+        return this.projectResult(this.unwrap(completion));
       }
       const completion = await this.dataSource.transaction((manager) =>
         this.finishRequery(
@@ -382,7 +391,7 @@ export class CloudPrinterReconciliationService {
           request.operationPassword,
         ),
       );
-      return this.unwrap(completion);
+      return this.projectResult(this.unwrap(completion));
     });
   }
 
@@ -407,7 +416,7 @@ export class CloudPrinterReconciliationService {
           this.replay<ConfirmCloudPrinterCompensationDeletionResult>(claim),
         true,
       );
-    if (preflight) return preflight;
+    if (preflight) return this.projectResult(preflight);
     await this.verifyPassword(principal.id, request.operationPassword);
 
     return this.withPrinterAdvisoryLock(printerId, async () => {
@@ -493,7 +502,9 @@ export class CloudPrinterReconciliationService {
           } satisfies RequeryIntent,
         };
       });
-      if ('replay' in prepared && prepared.replay) return prepared.replay;
+      if ('replay' in prepared && prepared.replay) {
+        return this.projectResult(prepared.replay);
+      }
       if ('failure' in prepared && prepared.failure) {
         throw this.failureException(prepared.failure);
       }
@@ -513,7 +524,7 @@ export class CloudPrinterReconciliationService {
             request.operationPassword,
           ),
         );
-        return this.unwrap(completion);
+        return this.projectResult(this.unwrap(completion));
       }
 
       if (!intent) throw this.failureException('RECOVERY_REQUIRED');
@@ -528,7 +539,7 @@ export class CloudPrinterReconciliationService {
             request.operationPassword,
           ),
         );
-        return this.unwrap(completion);
+        return this.projectResult(this.unwrap(completion));
       }
       let deletion:
         | Readonly<{ kind: 'ACCEPTED'; vendorCode: string | null }>
@@ -558,7 +569,7 @@ export class CloudPrinterReconciliationService {
           request.operationPassword,
         ),
       );
-      return this.unwrap(completion);
+      return this.projectResult(this.unwrap(completion));
     });
   }
 
@@ -595,6 +606,7 @@ export class CloudPrinterReconciliationService {
 
     this.applyRelationEvidence(printer, evidence);
     const saved = await repository.save(printer);
+    await this.clearCurrentIfUnbound(manager, saved);
     await this.reconcileOriginalUnknownOperations(manager, saved, evidence);
     await this.recordAudit(
       manager,
@@ -689,6 +701,7 @@ export class CloudPrinterReconciliationService {
     }
     this.applyRelationEvidence(printer, evidence);
     const saved = await repository.save(printer);
+    await this.clearCurrentIfUnbound(manager, saved);
     const outcome =
       evidence.kind === 'UNKNOWN'
         ? {
@@ -772,6 +785,7 @@ export class CloudPrinterReconciliationService {
 
     this.applyRelationEvidence(printer, evidence);
     const saved = await repository.save(printer);
+    await this.clearCurrentIfUnbound(manager, saved);
     await this.reconcileOriginalUnknownOperations(manager, saved, evidence);
 
     if (evidence.kind === 'UNKNOWN') {
@@ -862,6 +876,7 @@ export class CloudPrinterReconciliationService {
       printer.vendorRelationState = VendorRelationState.UNKNOWN;
     }
     const saved = await repository.save(printer);
+    await this.clearCurrentIfUnbound(manager, saved);
     const outcome =
       evidence.kind === 'UNBOUND'
         ? {
@@ -931,7 +946,8 @@ export class CloudPrinterReconciliationService {
     });
     if (!printer) return { kind: 'UNKNOWN' };
     if (
-      (printer.bindingOperationId ?? null) !== intent.bindingOperationIdAtClaim ||
+      (printer.bindingOperationId ?? null) !==
+        intent.bindingOperationIdAtClaim ||
       printer.bindingStage !== PrinterBindingStage.UNBIND_DELETE
     ) {
       return this.supersedeOwnedRecovery(
@@ -964,6 +980,7 @@ export class CloudPrinterReconciliationService {
       printer.vendorRelationState = VendorRelationState.UNKNOWN;
     }
     const saved = await repository.save(printer);
+    await this.clearCurrentIfUnbound(manager, saved);
     const result = { printer: toSnapshotView(saved) };
     if (evidence.kind === 'UNKNOWN') {
       await this.idempotencyService.markUnknown(manager, {
@@ -1340,7 +1357,9 @@ export class CloudPrinterReconciliationService {
   private replay<T>(
     claim: Extract<AdminOperationClaim, { kind: 'REPLAY' }>,
   ): T {
-    if (claim.status === 'COMPLETED') return claim.responseSnapshot as T;
+    if (claim.status === 'COMPLETED') {
+      return normalizeCloudPrinterSnapshot(claim.responseSnapshot) as T;
+    }
     const code = claim.responseSnapshot?.code;
     throw this.failureException(
       code === 'RECOVERY_SUPERSEDED'
@@ -1433,6 +1452,19 @@ export class CloudPrinterReconciliationService {
     if (releaseError) throw printerLockUnavailable();
     if (skipped) return null;
     return operationResult!;
+  }
+
+  private async clearCurrentIfUnbound(
+    manager: EntityManager,
+    printer: CloudPrinter,
+  ): Promise<void> {
+    if (printer.status === CloudPrinterStatus.UNBOUND) {
+      await this.currentPrinters?.clearByReconciliation(manager, printer.id);
+    }
+  }
+
+  private projectResult<T>(result: T): Promise<T> {
+    return projectCloudPrinterResult(result, this.currentPrinters);
   }
 
   private async recordAudit(

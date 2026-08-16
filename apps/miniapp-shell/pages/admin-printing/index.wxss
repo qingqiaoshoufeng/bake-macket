@@ -30,6 +30,8 @@
 }
 
 .printer-option {
+  display: grid;
+  gap: 6rpx;
   margin: 0;
   color: #755f57;
   background: #fff6ef;
@@ -38,6 +40,34 @@
 .printer-option--selected {
   color: #ffffff;
   background: #d97854;
+}
+
+.printer-option--unavailable {
+  color: #8e776e;
+  background: #f4efeb;
+  opacity: 1;
+}
+
+.printer-option__badge,
+.printer-option__reason {
+  display: block;
+  font-size: 20rpx;
+}
+
+.printer-option__badge {
+  font-weight: 700;
+}
+
+.printing-selection-hint,
+.printing-selected-device {
+  display: block;
+  margin-top: 12rpx;
+  color: #755f57;
+  font-size: 24rpx;
+}
+
+.printing-selected-device {
+  font-weight: 600;
 }
 
 .printing-empty,

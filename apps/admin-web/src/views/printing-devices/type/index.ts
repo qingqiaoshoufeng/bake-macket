@@ -4,6 +4,9 @@ import type {
   CloudPrinterListQuery,
   CloudPrinterListResult,
   CloudPrinterView,
+  CurrentCloudPrinterView,
+  ClearCurrentCloudPrinterResult,
+  SetCurrentCloudPrinterResult,
   ConfirmCloudPrinterCompensationDeletionRequest,
   ConfirmCloudPrinterCompensationDeletionResult,
   ConfirmCloudPrinterRequest,
@@ -27,6 +30,9 @@ export type {
   CloudPrinterListQuery,
   CloudPrinterListResult,
   CloudPrinterView,
+  CurrentCloudPrinterView,
+  ClearCurrentCloudPrinterResult,
+  SetCurrentCloudPrinterResult,
   ConfirmCloudPrinterCompensationDeletionRequest,
   ConfirmCloudPrinterCompensationDeletionResult,
   ConfirmCloudPrinterRequest,
@@ -52,14 +58,18 @@ export type PrintingDeviceOperation =
   | 'requery'
   | 'delete-confirm'
   | 'unbind'
-  | 'rename';
+  | 'rename'
+  | 'set-current'
+  | 'clear-current';
 
 export type PrintingDeviceOperationStatus = 'PENDING' | 'RETRYABLE' | 'UNKNOWN';
+export type PrintingDeviceListScope = 'existing' | 'removed';
 
 export type PendingDeviceOperation = {
   readonly operation: PrintingDeviceOperation;
   readonly resourceId?: string;
   readonly idempotencyKey: string;
+  readonly expectedRevision?: number;
   readonly status: PrintingDeviceOperationStatus;
   readonly wasUncertain?: true;
 };

@@ -4,6 +4,8 @@ import {
   OPERATOR_PERMISSIONS,
   CloudPrinterOnlineStatus,
   CloudPrinterStatus,
+  type ClearCurrentCloudPrinterRequest,
+  type SetCurrentCloudPrinterRequest,
   PrinterBindingStage,
   VendorRelationState,
   type AdminSessionView,
@@ -31,6 +33,7 @@ const activePrinter: CloudPrinterView = {
   lastStatusCheckedAt: '2026-08-09T10:00:00.000Z',
   bindingStage: PrinterBindingStage.NONE,
   vendorRelationState: VendorRelationState.CONFIRMED_BOUND,
+  isCurrent: false,
 };
 
 function appData(): BakeMallAppData {
@@ -103,7 +106,14 @@ describe('createPrintingDevicesApi', () => {
       'https://mall.example.com/api/v1',
     );
 
-    await api.list({ page: 2, pageSize: 50, includeUnbound: true });
+    await api.list({
+      page: 2,
+      pageSize: 50,
+      includeUnbound: true,
+      status: CloudPrinterStatus.UNBOUND,
+    });
+    await api.detail('90071992547409931234');
+    await api.current();
     await api.refresh('90071992547409931234', {}, key);
     await api.unbind(
       '90071992547409931234',
@@ -112,7 +122,9 @@ describe('createPrintingDevicesApi', () => {
     );
 
     expect(harness.calls.map(({ url }) => url)).toEqual([
-      'https://mall.example.com/api/v1/admin/cloud-printers?page=2&pageSize=50&includeUnbound=true',
+      'https://mall.example.com/api/v1/admin/cloud-printers?page=2&pageSize=50&includeUnbound=true&status=UNBOUND',
+      'https://mall.example.com/api/v1/admin/cloud-printers/90071992547409931234',
+      'https://mall.example.com/api/v1/admin/cloud-printers/current',
       'https://mall.example.com/api/v1/admin/cloud-printers/90071992547409931234/online-status/refresh',
       'https://mall.example.com/api/v1/admin/cloud-printers/90071992547409931234/unbind',
     ]);
@@ -134,10 +146,18 @@ describe('createPrintingDevicesApi', () => {
         statusCode: 200,
         data: { items: [activePrinter], total: 1, page: 1, pageSize: 20 },
       },
+      {
+        statusCode: 200,
+        data: { printer: null, revision: 0, updatedAt: '2026-08-09T10:00:00Z' },
+      },
       { statusCode: 200, data: { printer: activePrinter } },
       {
         statusCode: 200,
         data: { items: [activePrinter], total: 1, page: 1, pageSize: 20 },
+      },
+      {
+        statusCode: 200,
+        data: { printer: null, revision: 0, updatedAt: '2026-08-09T10:00:00Z' },
       },
     ] as const;
     const request = vi.fn((options: WechatMiniprogram.RequestOption) => {
@@ -190,7 +210,7 @@ describe('createPrintingDevicesApi', () => {
 
     await controller.refreshOnlineStatus(activePrinter.id);
     expect(
-      (calls[3]!.header as Record<string, string>)['Idempotency-Key'],
+      (calls[4]!.header as Record<string, string>)['Idempotency-Key'],
     ).toBe(nextKey);
   });
 
@@ -260,6 +280,15 @@ describe('createPrintingDevicesApi', () => {
       displayName: '前台出单机',
       operationPassword: 'secret',
     };
+    const setCurrent: SetCurrentCloudPrinterRequest = {
+      printerId: '1001',
+      expectedRevision: 2,
+      operationPassword: 'secret',
+    };
+    const clearCurrent: ClearCurrentCloudPrinterRequest = {
+      expectedRevision: 2,
+      operationPassword: 'secret',
+    };
 
     await api.bind(bind, key);
     await api.confirm(
@@ -272,6 +301,8 @@ describe('createPrintingDevicesApi', () => {
     await api.requery('1001', { operationPassword: 'secret' }, key);
     await api.confirmDeletion('1001', { operationPassword: 'secret' }, key);
     await api.rename('1001', { displayName: '新名字' }, key);
+    await api.setCurrent(setCurrent, key);
+    await api.clearCurrent(clearCurrent, key);
 
     expect(harness.calls.map(({ method }) => method)).toEqual([
       'POST',
@@ -281,6 +312,8 @@ describe('createPrintingDevicesApi', () => {
       'POST',
       'POST',
       'PATCH',
+      'PUT',
+      'POST',
     ]);
     expect(
       harness.calls.every(
@@ -296,6 +329,8 @@ describe('createPrintingDevicesApi', () => {
       { operationPassword: 'secret' },
       { operationPassword: 'secret' },
       { displayName: '新名字' },
+      setCurrent,
+      clearCurrent,
     ]);
   });
 });

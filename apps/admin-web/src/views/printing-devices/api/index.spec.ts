@@ -1,12 +1,15 @@
-import type {
-  BindCloudPrinterRequest,
-  ConfirmCloudPrinterCompensationDeletionRequest,
-  ConfirmCloudPrinterRequest,
-  RefreshCloudPrinterOnlineStatusRequest,
-  RenameCloudPrinterRequest,
-  RequeryCloudPrinterVendorRelationRequest,
-  ResendCloudPrinterVerificationRequest,
-  UnbindCloudPrinterRequest,
+import {
+  CloudPrinterStatus,
+  type BindCloudPrinterRequest,
+  type ClearCurrentCloudPrinterRequest,
+  type ConfirmCloudPrinterCompensationDeletionRequest,
+  type ConfirmCloudPrinterRequest,
+  type RefreshCloudPrinterOnlineStatusRequest,
+  type RenameCloudPrinterRequest,
+  type RequeryCloudPrinterVendorRelationRequest,
+  type SetCurrentCloudPrinterRequest,
+  type ResendCloudPrinterVerificationRequest,
+  type UnbindCloudPrinterRequest,
 } from '@bake-mall/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -37,6 +40,15 @@ const unbindBody: UnbindCloudPrinterRequest = {
   operationPassword: 'secret',
 };
 const renameBody: RenameCloudPrinterRequest = { displayName: '前台打印机' };
+const setCurrentBody: SetCurrentCloudPrinterRequest = {
+  printerId: '1001',
+  expectedRevision: 3,
+  operationPassword: 'secret',
+};
+const clearCurrentBody: ClearCurrentCloudPrinterRequest = {
+  expectedRevision: 3,
+  operationPassword: 'secret',
+};
 
 function jsonResponse(): Response {
   return new Response(JSON.stringify({}), {
@@ -51,19 +63,26 @@ afterEach(() => {
 
 describe('printingDevicesApi', () => {
   it('composes the exact list route with the shared list query', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(jsonResponse());
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(jsonResponse()));
     vi.stubGlobal('fetch', fetchMock);
 
     await printingDevicesApi.list({
       page: 2,
       pageSize: 50,
       includeUnbound: true,
+      status: CloudPrinterStatus.UNBOUND,
     });
+    await printingDevicesApi.detail('1001');
+    await printingDevicesApi.current();
 
-    expect(fetchMock.mock.calls[0]?.[0]).toBe(
-      '/api/v1/admin/cloud-printers?page=2&pageSize=50&includeUnbound=true',
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      '/api/v1/admin/cloud-printers?page=2&pageSize=50&includeUnbound=true&status=UNBOUND',
+      '/api/v1/admin/cloud-printers/1001',
+      '/api/v1/admin/cloud-printers/current',
+    ]);
+    expect(fetchMock.mock.calls.every(([, init]) => init?.method === 'GET')).toBe(
+      true,
     );
-    expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('GET');
   });
 
   it('passes every shared write DTO unchanged and sends the lowercase UUID through the actual fetch headers', async () => {
@@ -80,6 +99,8 @@ describe('printingDevicesApi', () => {
     await printingDevicesApi.confirmDeletion('1001', deleteBody, key);
     await printingDevicesApi.unbind('1001', unbindBody, key);
     await printingDevicesApi.rename('1001', renameBody, key);
+    await printingDevicesApi.setCurrent(setCurrentBody, key);
+    await printingDevicesApi.clearCurrent(clearCurrentBody, key);
 
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
       '/api/v1/admin/cloud-printers/bind',
@@ -90,6 +111,8 @@ describe('printingDevicesApi', () => {
       '/api/v1/admin/cloud-printers/1001/compensation-delete/confirm',
       '/api/v1/admin/cloud-printers/1001/unbind',
       '/api/v1/admin/cloud-printers/1001/display-name',
+      '/api/v1/admin/cloud-printers/current',
+      '/api/v1/admin/cloud-printers/current/clear',
     ]);
     expect(fetchMock.mock.calls.map(([, init]) => init?.method)).toEqual([
       'POST',
@@ -100,6 +123,8 @@ describe('printingDevicesApi', () => {
       'POST',
       'POST',
       'PATCH',
+      'PUT',
+      'POST',
     ]);
     expect(
       fetchMock.mock.calls.every(
@@ -117,6 +142,8 @@ describe('printingDevicesApi', () => {
       deleteBody,
       unbindBody,
       renameBody,
+      setCurrentBody,
+      clearCurrentBody,
     ]);
   });
 });

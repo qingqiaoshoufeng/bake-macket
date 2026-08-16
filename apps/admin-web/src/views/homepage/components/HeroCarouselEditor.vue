@@ -17,6 +17,7 @@ import {
 } from 'element-plus';
 
 import CosImageUploader from '../../../components/CosImageUploader.vue';
+import { createSecureUuidV4 } from '../../../utils/random-uuid.js';
 import { AUTOPLAY_OPTIONS } from '../config/options.js';
 import HomepageLinkEditor from './HomepageLinkEditor.vue';
 
@@ -54,7 +55,7 @@ function addSlide(): void {
     slides: [
       ...props.section.slides.map((slide) => ({ ...slide })),
       {
-        id: `hero-slide-${crypto.randomUUID()}`,
+        id: `hero-slide-${createSecureUuidV4()}`,
         image: null,
         title: '',
         subtitle: '',

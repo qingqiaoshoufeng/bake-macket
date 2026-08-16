@@ -13,6 +13,13 @@ import {
   type CloudPrinterListQuery,
   type CloudPrinterListResult,
   type CloudPrinterView,
+  type CurrentCloudPrinterView,
+  type SetCurrentCloudPrinterClientRequest,
+  type SetCurrentCloudPrinterRequest,
+  type SetCurrentCloudPrinterResult,
+  type ClearCurrentCloudPrinterClientRequest,
+  type ClearCurrentCloudPrinterRequest,
+  type ClearCurrentCloudPrinterResult,
   type ConfirmCloudPrinterRequest,
   type ConfirmCloudPrinterResult,
   type ConfirmCloudPrinterCompensationDeletionRequest,
@@ -178,6 +185,11 @@ const listIncludingUnbound: CloudPrinterListQuery = {
   pageSize: 20,
   includeUnbound: true,
 };
+const listByStatus: CloudPrinterListQuery = {
+  page: 1,
+  pageSize: 20,
+  status: CloudPrinterStatus.UNBOUND,
+};
 
 const printer: CloudPrinterView = {
   id: 'printer-1',
@@ -188,6 +200,7 @@ const printer: CloudPrinterView = {
   lastStatusCheckedAt: null,
   bindingStage: PrinterBindingStage.PRINT_VERIFICATION_CODE,
   vendorRelationState: VendorRelationState.CONFIRMED_BOUND,
+  isCurrent: false,
   challenge: {
     challengeId: 'printer-1',
     expiresAt: '2026-08-04T00:05:00.000Z',
@@ -239,6 +252,56 @@ const printerWithStatusAlias: CloudPrinterView = {
   ...printer,
   // @ts-expect-error 不接受未定义的状态别名。
   status: 'VERIFICATION_PENDING',
+};
+
+const currentPrinter: CloudPrinterView = {
+  ...printer,
+  isCurrent: true,
+  onlineStatus: CloudPrinterOnlineStatus.OFFLINE,
+};
+const currentView: CurrentCloudPrinterView = {
+  printer: currentPrinter,
+  revision: 2,
+  updatedAt: '2026-08-16T00:00:00.000Z',
+};
+const setCurrentRequest: SetCurrentCloudPrinterRequest = {
+  printerId: '18446744073709551615',
+  expectedRevision: 1,
+  operationPassword: '123456',
+};
+const setCurrentWithBodyKey: SetCurrentCloudPrinterRequest = {
+  ...setCurrentRequest,
+  // @ts-expect-error Idempotency-Key 只通过 HTTP header 传递。
+  idempotencyKey: 'operation-key',
+};
+const clearCurrentRequest: ClearCurrentCloudPrinterRequest = {
+  expectedRevision: 2,
+  operationPassword: '123456',
+};
+const clearCurrentWithBodyKey: ClearCurrentCloudPrinterRequest = {
+  ...clearCurrentRequest,
+  // @ts-expect-error Idempotency-Key 只通过 HTTP header 传递。
+  idempotencyKey: 'operation-key',
+};
+const setCurrentResult: SetCurrentCloudPrinterResult = { current: currentView };
+const clearCurrentResult: ClearCurrentCloudPrinterResult = {
+  current: { ...currentView, printer: null, revision: 3 },
+};
+const setCurrentClientRequest: SetCurrentCloudPrinterClientRequest = {
+  headers: { 'Idempotency-Key': 'operation-key' },
+  body: setCurrentRequest,
+};
+const clearCurrentClientRequest: ClearCurrentCloudPrinterClientRequest = {
+  headers: { 'Idempotency-Key': 'operation-key' },
+  body: clearCurrentRequest,
+};
+// @ts-expect-error current 写 client contract 必须携带 Idempotency-Key header。
+const setCurrentWithoutHeader: SetCurrentCloudPrinterClientRequest = {
+  body: setCurrentRequest,
+};
+// @ts-expect-error current 写 client contract 必须携带 Idempotency-Key header。
+const clearCurrentWithoutHeader: ClearCurrentCloudPrinterClientRequest = {
+  body: clearCurrentRequest,
 };
 
 const bindResult: BindCloudPrinterResult = {
@@ -310,7 +373,20 @@ void [
   renameWithPassword,
   renameWithIdempotencyKey,
   listIncludingUnbound,
+  listByStatus,
   printer,
+  currentPrinter,
+  currentView,
+  setCurrentRequest,
+  setCurrentWithBodyKey,
+  clearCurrentRequest,
+  clearCurrentWithBodyKey,
+  setCurrentResult,
+  clearCurrentResult,
+  setCurrentClientRequest,
+  clearCurrentClientRequest,
+  setCurrentWithoutHeader,
+  clearCurrentWithoutHeader,
   printerWithChallengeCode,
   printerWithChallengeHash,
   printerWithFullSerial,

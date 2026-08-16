@@ -1,12 +1,15 @@
 import type {
   BindCloudPrinterRequest,
   BindCloudPrinterResult,
+  ClearCurrentCloudPrinterRequest,
+  ClearCurrentCloudPrinterResult,
   CloudPrinterListQuery,
   CloudPrinterListResult,
   ConfirmCloudPrinterCompensationDeletionRequest,
   ConfirmCloudPrinterCompensationDeletionResult,
   ConfirmCloudPrinterRequest,
   ConfirmCloudPrinterResult,
+  CurrentCloudPrinterView,
   RefreshCloudPrinterOnlineStatusRequest,
   RefreshCloudPrinterOnlineStatusResult,
   RenameCloudPrinterRequest,
@@ -15,6 +18,8 @@ import type {
   RequeryCloudPrinterVendorRelationResult,
   ResendCloudPrinterVerificationRequest,
   ResendCloudPrinterVerificationResult,
+  SetCurrentCloudPrinterRequest,
+  SetCurrentCloudPrinterResult,
   UnbindCloudPrinterRequest,
   UnbindCloudPrinterResult,
 } from '@bake-mall/contracts';
@@ -39,6 +44,32 @@ export const printingDevicesApi = {
   list(query: CloudPrinterListQuery): Promise<CloudPrinterListResult> {
     return apiClient.get(
       `/admin/cloud-printers?${toSearchParams(query).toString()}`,
+    );
+  },
+  detail(printerId: string): Promise<import('@bake-mall/contracts').CloudPrinterView> {
+    return apiClient.get(`/admin/cloud-printers/${printerId}`);
+  },
+  current(): Promise<CurrentCloudPrinterView> {
+    return apiClient.get('/admin/cloud-printers/current');
+  },
+  setCurrent(
+    body: SetCurrentCloudPrinterRequest,
+    idempotencyKey: string,
+  ): Promise<SetCurrentCloudPrinterResult> {
+    return apiClient.put(
+      '/admin/cloud-printers/current',
+      body,
+      idempotencyHeaders(idempotencyKey),
+    );
+  },
+  clearCurrent(
+    body: ClearCurrentCloudPrinterRequest,
+    idempotencyKey: string,
+  ): Promise<ClearCurrentCloudPrinterResult> {
+    return apiClient.post(
+      '/admin/cloud-printers/current/clear',
+      body,
+      idempotencyHeaders(idempotencyKey),
     );
   },
   bind(

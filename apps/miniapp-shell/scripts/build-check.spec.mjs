@@ -93,23 +93,28 @@ test('keeps the committed project config on the placeholder AppID', async () => 
   assert.equal(project.appid, 'touristappid');
 });
 
-test('package build-check self-bootstraps safe generated config without an environment URL', async () => {
+test('package build-check validates without overwriting runtime URL config', async () => {
   const packageJson = JSON.parse(
     await readFile(new URL('package.json', packageRootUrl), 'utf8'),
   );
   const env = { ...process.env };
   delete env.MINIAPP_H5_URL;
-
-  const prepareScript = fileURLToPath(
-    new URL('scripts/prepare-build-check.mjs', packageRootUrl),
+  const sentinelSources = createMiniappConfigSources(
+    'https://runtime-config.example.com/',
   );
+  await Promise.all([
+    writeFile(h5RuntimeUrl, sentinelSources.h5, 'utf8'),
+    writeFile(apiRuntimeUrl, sentinelSources.api, 'utf8'),
+  ]);
+
   const checkScript = fileURLToPath(
     new URL('scripts/build-check.mjs', packageRootUrl),
   );
-  await execFileAsync(process.execPath, [prepareScript], { env });
   await execFileAsync(process.execPath, [checkScript], { env });
 
-  assert.match(packageJson.scripts['build:check'], /prepare-build-check/);
+  assert.doesNotMatch(packageJson.scripts['build:check'], /prepare-build-check/);
+  assert.equal(await readFile(h5RuntimeUrl, 'utf8'), sentinelSources.h5);
+  assert.equal(await readFile(apiRuntimeUrl, 'utf8'), sentinelSources.api);
 });
 
 test('build generates local contracts runtime without bare workspace requires', async () => {

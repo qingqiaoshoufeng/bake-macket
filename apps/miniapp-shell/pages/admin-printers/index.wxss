@@ -44,11 +44,17 @@
   font-size: 24rpx;
 }
 
+.printers-tabs,
 .printers-notice,
 .printers-error,
 printer-list,
 .printers-pagination {
   margin-top: 24rpx;
+}
+
+.printers-tabs {
+  display: flex;
+  gap: 12rpx;
 }
 
 .printers-notice {
@@ -82,6 +88,12 @@ printer-list,
   padding: 32rpx;
   border-radius: 24rpx;
   background: #ffffff;
+}
+
+.printer-detail {
+  display: block;
+  margin-top: 14rpx;
+  color: #806d65;
 }
 
 .dialog-card input {

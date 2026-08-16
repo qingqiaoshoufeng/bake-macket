@@ -37,7 +37,14 @@ import {
 } from '@nestjs/common';
 import bcrypt from 'bcrypt';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { DataSource, In, type EntityManager, type Repository } from 'typeorm';
+import {
+  DataSource,
+  In,
+  IsNull,
+  Not,
+  type EntityManager,
+  type Repository,
+} from 'typeorm';
 
 import { AuditService } from '../audit/audit.service.js';
 import { type AuthenticatedAdmin } from '../auth/auth.types.js';
@@ -52,6 +59,13 @@ import {
   type FenceStaleInProgressResult,
   type OperationIdentity,
 } from './admin-operation-idempotency.service.js';
+import { CloudPrinterCurrentService } from './cloud-printer-current.service.js';
+import {
+  normalizeCloudPrinterSnapshot,
+  projectCloudPrinterResult,
+  toSnapshotView,
+  toView,
+} from './cloud-printer-view.js';
 import { XPYUN_VENDOR_PORT } from './xpyun/xpyun.types.js';
 import type {
   XpyunAddPrinterResult,
@@ -188,16 +202,6 @@ const ALREADY_EXISTS_VENDOR_CODES = new Set(['1011']);
 const OWNERSHIP_CONFLICT_VENDOR_CODES = new Set(['1001', '1022']);
 const NOT_REGISTERED_VENDOR_CODES = new Set(['1002']);
 const VERIFICATION_OPERATION_CONTEXT = { purpose: 'HIGH_RISK_ACTION' } as const;
-
-const maskSerialNumber = (serial: string): string => {
-  if (serial.length <= 4) return '*'.repeat(serial.length);
-  return `${serial.slice(0, 2)}${'*'.repeat(Math.max(2, serial.length - 4))}${serial.slice(-2)}`;
-};
-
-const safeDisplayName = (printer: CloudPrinter): string =>
-  displayNameContainsSensitiveSerial(printer.displayName, printer.serialNumber)
-    ? `打印机 ${maskSerialNumber(printer.serialNumber)}`
-    : printer.displayName;
 
 const invalidPrinterName = (): BadRequestException =>
   new BadRequestException({
@@ -406,6 +410,8 @@ export class CloudPrinterService {
     @Optional()
     @Inject(CLOUD_PRINTER_OPTIONS)
     options: CloudPrinterOptions = {},
+    @Optional()
+    private readonly currentPrinters?: CloudPrinterCurrentService,
   ) {
     this.verificationWindowMs =
       options.verificationWindowMs ?? VERIFICATION_WINDOW_MS;
@@ -446,7 +452,7 @@ export class CloudPrinterService {
       claimRequest,
       (claim) => this.handleReplay<BindCloudPrinterResult>(claim),
     );
-    if (preflight) return preflight;
+    if (preflight) return this.projectResult(preflight);
     await this.verifyPassword(principal, normalized.operationPassword);
     let intent: BindIntent | StableOperationOutcome<BindCloudPrinterResult>;
     try {
@@ -463,22 +469,24 @@ export class CloudPrinterService {
       );
     } catch (error) {
       if (this.isRecoverableIdempotencyError(error)) {
-        return this.reconcileUnknownOperation<BindCloudPrinterResult>({
-          principal,
-          operation,
-          key: idempotencyKey,
-          request: claimRequest,
-          fallbackPrinterId: null,
-          fallbackSerialNumber: normalized.serialNumber,
-          sensitiveValues: [
-            normalized.serialNumber,
-            normalized.operationPassword,
-          ],
-        });
+        return this.projectResult(
+          await this.reconcileUnknownOperation<BindCloudPrinterResult>({
+            principal,
+            operation,
+            key: idempotencyKey,
+            request: claimRequest,
+            fallbackPrinterId: null,
+            fallbackSerialNumber: normalized.serialNumber,
+            sensitiveValues: [
+              normalized.serialNumber,
+              normalized.operationPassword,
+            ],
+          }),
+        );
       }
       throw error;
     }
-    if ('snapshot' in intent) return intent.snapshot;
+    if ('snapshot' in intent) return this.projectResult(intent.snapshot);
     if ('failure' in intent) throw failedException(intent.failure);
 
     let add: VendorClassification;
@@ -610,8 +618,9 @@ export class CloudPrinterService {
       );
     }
 
+    let snapshot: BindCloudPrinterResult;
     try {
-      return await this.dataSource.transaction((manager) =>
+      snapshot = await this.dataSource.transaction((manager) =>
         this.completeChallenge(
           manager,
           principal,
@@ -635,6 +644,7 @@ export class CloudPrinterService {
       }
       throw resultUnknown('厂商已接受验证码打印，但本地完成提交中断');
     }
+    return this.projectResult(snapshot);
   }
 
   async confirm(
@@ -652,7 +662,7 @@ export class CloudPrinterService {
         claimRequest,
         (claim) => this.handleReplay<ConfirmCloudPrinterResult>(claim),
       );
-    if (preflight) return preflight;
+    if (preflight) return this.projectResult(preflight);
     await this.verifyPassword(principal, normalized.operationPassword);
 
     const prepared = await this.dataSource.transaction(async (manager) => {
@@ -688,7 +698,9 @@ export class CloudPrinterService {
         verificationFailedAttempts: printer.verificationFailedAttempts,
       };
     });
-    if ('replay' in prepared && prepared.replay) return prepared.replay;
+    if ('replay' in prepared && prepared.replay) {
+      return this.projectResult(prepared.replay);
+    }
     if ('failure' in prepared && prepared.failure) {
       throw failedException(prepared.failure);
     }
@@ -810,7 +822,7 @@ export class CloudPrinterService {
       throw failedException(outcome.failure);
     }
     if (!('snapshot' in outcome)) throw failedException('INVALID_STATE');
-    return outcome.snapshot;
+    return this.projectResult(outcome.snapshot);
   }
 
   async resend(
@@ -839,7 +851,7 @@ export class CloudPrinterService {
         (claim) =>
           this.handleReplay<ResendCloudPrinterVerificationResult>(claim),
       );
-    if (preflight) return preflight;
+    if (preflight) return this.projectResult(preflight);
     await this.verifyPassword(principal, request.operationPassword);
     let intent:
       | ChallengeIntent
@@ -912,22 +924,24 @@ export class CloudPrinterService {
       });
     } catch (error) {
       if (this.isRecoverableIdempotencyError(error)) {
-        return this.reconcileUnknownOperation<ResendCloudPrinterVerificationResult>(
-          {
-            principal,
-            operation: 'CLOUD_PRINTER_RESEND',
-            key: idempotencyKey,
-            request: claimRequest,
-            fallbackPrinterId: printerId,
-            fallbackSerialNumber: null,
-            sensitiveValues: [request.operationPassword],
-          },
+        return this.projectResult(
+          await this.reconcileUnknownOperation<ResendCloudPrinterVerificationResult>(
+            {
+              principal,
+              operation: 'CLOUD_PRINTER_RESEND',
+              key: idempotencyKey,
+              request: claimRequest,
+              fallbackPrinterId: printerId,
+              fallbackSerialNumber: null,
+              sensitiveValues: [request.operationPassword],
+            },
+          ),
         );
       }
       throw error;
     }
     if ('failure' in intent) throw failedException(intent.failure);
-    if ('snapshot' in intent) return intent.snapshot;
+    if ('snapshot' in intent) return this.projectResult(intent.snapshot);
 
     const code = generateVerificationCode();
     const codeHash = await bcrypt.hash(code, this.verificationCodeBcryptCost);
@@ -978,8 +992,9 @@ export class CloudPrinterService {
       throw failedException(mapPrintVendorFailure(print));
     }
 
+    let snapshot: ResendCloudPrinterVerificationResult;
     try {
-      return await this.dataSource.transaction((manager) =>
+      snapshot = await this.dataSource.transaction((manager) =>
         this.completeChallenge(
           manager,
           principal,
@@ -1003,6 +1018,7 @@ export class CloudPrinterService {
       }
       throw resultUnknown('厂商已接受重发，但本地完成提交中断');
     }
+    return this.projectResult(snapshot);
   }
 
   async rename(
@@ -1076,7 +1092,7 @@ export class CloudPrinterService {
     if ('failure' in outcome && outcome.failure) {
       throw failedException(outcome.failure);
     }
-    return outcome.snapshot;
+    return this.projectResult(outcome.snapshot);
   }
 
   async refreshStatus(
@@ -1176,7 +1192,9 @@ export class CloudPrinterService {
         };
       },
     );
-    if (prepared.kind === 'SNAPSHOT') return prepared.snapshot;
+    if (prepared.kind === 'SNAPSHOT') {
+      return this.projectResult(prepared.snapshot);
+    }
     if (prepared.kind === 'FAILURE') throw failedException(prepared.failure);
 
     const vendorResult = await this.queryOnlineStatus(
@@ -1197,7 +1215,7 @@ export class CloudPrinterService {
       throw failedException('ONLINE_STATUS_UNKNOWN');
     }
     if (outcome.kind === 'FAILURE') throw failedException(outcome.failure);
-    return outcome.snapshot;
+    return this.projectResult(outcome.snapshot);
   }
 
   private refreshCycle(printer: CloudPrinter): RefreshCycle {
@@ -1454,8 +1472,12 @@ export class CloudPrinterService {
         request: { printerId, operationPassword: request.operationPassword },
       });
       if (claim.kind === 'REPLAY') {
-        return { kind: 'REPLAY' as const, result: this.handleReplay<UnbindCloudPrinterResult>(claim) };
+        return {
+          kind: 'REPLAY' as const,
+          result: this.handleReplay<UnbindCloudPrinterResult>(claim),
+        };
       }
+      await this.currentPrinters?.assertNotCurrentForUnbind(manager, printerId);
       const printer = await manager.getRepository(CloudPrinter).findOne({
         where: { id: printerId },
         lock: { mode: 'pessimistic_write' },
@@ -1465,10 +1487,16 @@ export class CloudPrinterService {
           owner: claim.owner,
           resourceType: printer ? 'CLOUD_PRINTER' : null,
           resourceId: printer?.id ?? null,
-          responseSnapshot: this.failureSnapshot('RECOVERY_REQUIRED', printer?.id),
+          responseSnapshot: this.failureSnapshot(
+            'RECOVERY_REQUIRED',
+            printer?.id,
+          ),
           sensitiveValues: [request.operationPassword],
         });
-        return { kind: 'FAILURE' as const, failure: 'RECOVERY_REQUIRED' as const };
+        return {
+          kind: 'FAILURE' as const,
+          failure: 'RECOVERY_REQUIRED' as const,
+        };
       }
       const [blockingBatch, blockingJob] = await Promise.all([
         manager.getRepository(PrintBatch).findOne({
@@ -1512,12 +1540,16 @@ export class CloudPrinterService {
       const saved = await manager.getRepository(CloudPrinter).save(printer);
       return { kind: 'OWNER' as const, claim, printer: saved };
     });
-    if (prepared.kind === 'REPLAY') return prepared.result;
+    if (prepared.kind === 'REPLAY') {
+      return this.projectResult(prepared.result);
+    }
     if (prepared.kind === 'FAILURE') throw failedException(prepared.failure);
 
     let deletion: VendorClassification;
     try {
-      const result = await this.vendor.deletePrinter(prepared.printer.serialNumber);
+      const result = await this.vendor.deletePrinter(
+        prepared.printer.serialNumber,
+      );
       deletion = { kind: 'SUCCESS', vendorCode: result.vendorCode };
     } catch (error) {
       deletion = errorClassification(error);
@@ -1548,10 +1580,16 @@ export class CloudPrinterService {
           responseSnapshot: snapshot,
           sensitiveValues: [saved.serialNumber, request.operationPassword],
         });
-        await this.recordAudit(manager, principal.id, saved.id, 'CLOUD_PRINTER_UNBOUND', {
-          result: 'COMPLETED',
-          status: saved.status,
-        });
+        await this.recordAudit(
+          manager,
+          principal.id,
+          saved.id,
+          'CLOUD_PRINTER_UNBOUND',
+          {
+            result: 'COMPLETED',
+            status: saved.status,
+          },
+        );
         return { snapshot };
       }
       printer.status =
@@ -1591,27 +1629,51 @@ export class CloudPrinterService {
     if (!('snapshot' in outcome)) {
       throw failedException('IDEMPOTENCY_RESULT_UNKNOWN');
     }
-    return outcome.snapshot;
+    return this.projectResult(outcome.snapshot);
   }
 
   async list(query: CloudPrinterListQuery): Promise<CloudPrinterListResult> {
-    const all = await this.cloudPrinterRepository().find();
-    const filtered = query.includeUnbound
-      ? all
-      : all.filter(
-          (printer) =>
-            printer.status !== CloudPrinterStatus.UNBOUND &&
-            printer.unboundAt === null,
-        );
+    const current = this.currentPrinters
+      ? await this.currentPrinters.get()
+      : { printer: null };
+    const where = query.status
+      ? { status: query.status }
+      : query.includeUnbound
+        ? {}
+        : {
+            status: Not(CloudPrinterStatus.UNBOUND),
+            unboundAt: IsNull(),
+          };
+    const [printers, total] = await this.cloudPrinterRepository().findAndCount({
+      where,
+      order: { id: 'DESC' },
+      skip: (query.page - 1) * query.pageSize,
+      take: query.pageSize,
+    });
     return {
-      items: filtered
-        .sort((left, right) => right.id.localeCompare(left.id))
-        .slice((query.page - 1) * query.pageSize, query.page * query.pageSize)
-        .map(toView),
-      total: filtered.length,
+      items: printers.map((printer) =>
+        toView(printer, current.printer?.id === printer.id),
+      ),
+      total,
       page: query.page,
       pageSize: query.pageSize,
     };
+  }
+
+  async detail(printerId: string): Promise<CloudPrinterView> {
+    const [printer, current] = await Promise.all([
+      this.cloudPrinterRepository().findOne({ where: { id: printerId } }),
+      this.currentPrinters
+        ? this.currentPrinters.get()
+        : Promise.resolve({ printer: null }),
+    ]);
+    if (!printer) {
+      throw new NotFoundException({
+        code: ApiErrorCode.CLOUD_PRINTER_NOT_FOUND,
+        message: '打印机不存在',
+      });
+    }
+    return toView(printer, current.printer?.id === printer.id);
   }
 
   private async claimBindIntent(
@@ -2249,12 +2311,14 @@ export class CloudPrinterService {
 
   private replayOutcome<T>(claim: ReplayClaim): StableOperationOutcome<T> {
     return claim.status === 'COMPLETED'
-      ? { snapshot: claim.responseSnapshot as T }
+      ? { snapshot: normalizeCloudPrinterSnapshot(claim.responseSnapshot) as T }
       : { failure: this.failureCodeFromSnapshot(claim.responseSnapshot) };
   }
 
   private handleReplay<T>(claim: ReplayClaim): T {
-    if (claim.status === 'COMPLETED') return claim.responseSnapshot as T;
+    if (claim.status === 'COMPLETED') {
+      return normalizeCloudPrinterSnapshot(claim.responseSnapshot) as T;
+    }
     throw failedException(this.failureCodeFromSnapshot(claim.responseSnapshot));
   }
 
@@ -2488,6 +2552,10 @@ export class CloudPrinterService {
     );
   }
 
+  private projectResult<T>(result: T): Promise<T> {
+    return projectCloudPrinterResult(result, this.currentPrinters);
+  }
+
   private async recordAudit(
     manager: EntityManager,
     adminId: string,
@@ -2512,39 +2580,10 @@ export class CloudPrinterService {
   }
 }
 
-const challengeView = (printer: CloudPrinter): CloudPrinterView['challenge'] =>
-  printer.verificationCodeHash !== null &&
-  printer.verificationExpiresAt !== null &&
-  printer.status === CloudPrinterStatus.PENDING_VERIFICATION
-    ? {
-        challengeId: printer.id,
-        expiresAt: printer.verificationExpiresAt.toISOString(),
-        remainingAttempts: Math.max(
-          0,
-          VERIFICATION_MAX_ATTEMPTS - printer.verificationFailedAttempts,
-        ),
-      }
-    : undefined;
-
-const baseView = (printer: CloudPrinter): CloudPrinterView => ({
-  id: printer.id,
-  displayName: safeDisplayName(printer),
-  serialNumberMasked: maskSerialNumber(printer.serialNumber),
-  status: printer.status,
-  onlineStatus: printer.lastOnlineStatus,
-  lastStatusCheckedAt: printer.lastStatusCheckedAt
-    ? printer.lastStatusCheckedAt.toISOString()
-    : null,
-  ...(challengeView(printer) ? { challenge: challengeView(printer) } : {}),
-});
-
-export const toView = (printer: CloudPrinter): CloudPrinterView => ({
-  ...baseView(printer),
-  bindingStage: printer.bindingStage,
-  vendorRelationState: printer.vendorRelationState,
-});
-
-export const toSnapshotView = (printer: CloudPrinter): CloudPrinterView =>
-  baseView(printer);
+export {
+  normalizeCloudPrinterSnapshot,
+  toSnapshotView,
+  toView,
+} from './cloud-printer-view.js';
 
 void AdminOperationIdempotency;

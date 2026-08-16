@@ -1,6 +1,7 @@
 import type {
   AdminOrderListItem,
   CloudPrinterView,
+  CurrentCloudPrinterView,
   PrintBatchView,
   PrintJobView,
 } from '@bake-mall/contracts';
@@ -16,7 +17,22 @@ export type PrintingOrderRow = AdminOrderListItem &
 export type PrintingPrinterOption = CloudPrinterView &
   Readonly<{
     selected: boolean;
+    available: boolean;
+    current: boolean;
+    unavailableReason: string | null;
   }>;
+
+export type PrintingPrinterSelectionSource =
+  | 'restored'
+  | 'manual'
+  | 'current'
+  | 'single-available';
+
+export type PrintingPrinterIntent = Readonly<{
+  printerId: string;
+  printerLabel: string;
+  selectionRevision: number;
+}>;
 
 export type PrintingJobRow = PrintJobView &
   Readonly<{
@@ -39,8 +55,17 @@ export type PrintingResultSummary = Readonly<{
 export type PrintingOrdersState = Readonly<{
   orders: readonly AdminOrderListItem[];
   printers: readonly CloudPrinterView[];
+  availablePrinters: readonly CloudPrinterView[];
+  current: CurrentCloudPrinterView | null;
   selectedOrderIds: readonly string[];
   selectedPrinterId: string | null;
+  selectionSource: PrintingPrinterSelectionSource | null;
+  rememberedManualPrinterId: string | null;
+  selectionMessage: string;
+  selectionRevision: number;
+  printersLoadedAt: number | null;
+  loadSucceeded: boolean;
+  selectionReady: boolean;
   page: number;
   pageSize: number;
   total: number;
@@ -49,6 +74,7 @@ export type PrintingOrdersState = Readonly<{
   manualContinueRequired: boolean;
   setupContinueRequired: boolean;
   pendingBatchId: string | null;
+  pendingBatchPrinterLabel: string | null;
   pendingOperationKeys: Readonly<Record<string, string>>;
   error: string | null;
   result: PrintingResultSummary | null;

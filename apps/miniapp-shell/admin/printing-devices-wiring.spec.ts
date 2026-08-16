@@ -36,6 +36,7 @@ describe('native printing devices wiring and static safety', () => {
     expect(template).toContain('onlineStatus');
     expect(template).toContain('离线，不能提交打印任务');
     expect(template).toContain('status');
+    expect(template).toContain('当前打印机');
     expect(template).toContain('action.value');
     expect(`${component}\n${template}`).not.toMatch(/api|request|wx\.request/u);
   });
@@ -61,8 +62,16 @@ describe('native printing devices wiring and static safety', () => {
       'disabled="{{action.disabled}}"',
     );
     const template = await read('pages/admin-printers/index.wxml');
+    expect(template).toContain('现有设备');
+    expect(template).toContain('已移除设备');
+    expect(template).toContain('maxlength="64"');
+    expect(template).toContain('maxlength="6"');
     expect(template).toContain('remainingAttempts <= 0');
     expect(template).toContain('验证码尝试次数已耗尽，请重发验证码');
+    expect(page).toContain("operation === 'set-current'");
+    expect(page).toContain("operation === 'clear-current'");
+    expect(page).toContain('printerForPendingOperation(printerId)');
+    expect(page).toContain('controller.openDetail(printerId)');
   });
 
   it('keeps feature networking on api-client and storage free of forbidden secrets', async () => {
@@ -80,7 +89,8 @@ describe('native printing devices wiring and static safety', () => {
     expect(api).not.toContain('wx.request');
     expect(source).not.toContain('wx.request');
     expect(hook).toContain('pendingDeviceOperations');
-    expect(hook).toContain('lastPrinterId');
+    expect(hook).not.toContain('lastPrinterId?: string');
+    expect(hook).not.toContain('...(lastPrinterId');
     const persistence = hook.slice(
       hook.indexOf('function persistLifecycleState'),
       hook.indexOf('function clearOperations'),

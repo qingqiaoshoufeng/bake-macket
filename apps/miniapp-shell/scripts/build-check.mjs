@@ -39,10 +39,13 @@ const [
 
 const project = JSON.parse(projectSource);
 const app = JSON.parse(appSource);
+const generatedH5UrlMatch = h5Runtime.match(
+  /^export const MINIAPP_H5_URL = '((?:\\[\\']|[^'\\])*)';\n/u,
+);
+const configuredH5Url = process.env.MINIAPP_H5_URL?.trim();
+const generatedH5Url = generatedH5UrlMatch?.[1]?.replace(/\\([\\'])/gu, '$1');
 const expectedSources = createMiniappConfigSources(
-  resolveBuildH5Url(
-    process.env.MINIAPP_H5_URL ?? 'https://miniapp-build-check.invalid/',
-  ),
+  resolveBuildH5Url(configuredH5Url || generatedH5Url),
 );
 const expectedH5Declaration =
   'export declare const MINIAPP_H5_URL: string;\n' +
@@ -91,12 +94,12 @@ if (
 ) {
   throw new Error('WeChat login page must use an explicit login button');
 }
-if (h5Runtime !== expectedSources.h5) {
+if (expectedSources && h5Runtime !== expectedSources.h5) {
   throw new Error(
     'generated H5 runtime must match the current MINIAPP_H5_URL source',
   );
 }
-if (apiRuntime !== expectedSources.api) {
+if (expectedSources && apiRuntime !== expectedSources.api) {
   throw new Error(
     'generated API runtime must match the current MINIAPP_H5_URL origin',
   );

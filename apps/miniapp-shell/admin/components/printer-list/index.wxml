@@ -3,6 +3,7 @@
   <view wx:for="{{printers}}" wx:key="id" class="printer-card">
     <view class="printer-card__head">
       <text class="printer-card__name">{{item.displayName}}</text>
+      <text wx:if="{{item.isCurrent}}" class="printer-card__current">当前打印机</text>
       <text class="printer-card__online">{{item.onlineStatus}}</text>
     </view>
     <text class="printer-card__meta">设备号 {{item.serialNumberMasked}}</text>
@@ -18,6 +19,7 @@
         size="mini"
         data-printer-id="{{item.id}}"
         data-action="{{action.value}}"
+        type="{{action.danger ? 'warn' : 'default'}}"
         disabled="{{action.disabled}}"
         bindtap="onAction"
       >

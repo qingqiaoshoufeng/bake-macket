@@ -19,6 +19,19 @@ function freshWechatLogin(): Promise<string> {
   });
 }
 
+function confirmAdminEntry(): Promise<boolean> {
+  return new Promise((resolve) => {
+    wx.showModal({
+      title: '门店管理',
+      content: '检测到门店管理权限，是否进入管理页面？',
+      confirmText: '进入管理',
+      cancelText: '继续逛店',
+      success: ({ confirm }): void => resolve(confirm),
+      fail: (): void => resolve(false),
+    });
+  });
+}
+
 type IndexPageData = Readonly<{
   adminEligible: boolean;
   adminLoading: boolean;
@@ -35,6 +48,7 @@ type WebViewEvent = Readonly<{
 
 type IndexPageCustom = {
   adminController?: ReturnType<typeof createAdminAuthController>;
+  adminFlowActive: boolean;
   controller?: ReturnType<typeof createIndexPageController>;
   onEnterAdmin: () => Promise<void>;
   onWebViewError: (event: WebViewEvent) => void;
@@ -42,6 +56,8 @@ type IndexPageCustom = {
 };
 
 Page<IndexPageData, IndexPageCustom>({
+  adminFlowActive: false,
+
   data: {
     adminEligible: false,
     adminLoading: false,
@@ -59,7 +75,15 @@ Page<IndexPageData, IndexPageCustom>({
       customerSession: app.customerSession,
       login: freshWechatLogin,
       navigate: (url): void => {
-        void wx.navigateTo({ url });
+        void wx.navigateTo({
+          url,
+          fail: (): void => {
+            void wx.showToast({
+              title: '管理页面打开失败，请重新进入',
+              icon: 'none',
+            });
+          },
+        });
       },
       toast: (title): void => {
         void wx.showToast({ title, icon: 'none' });
@@ -98,23 +122,29 @@ Page<IndexPageData, IndexPageCustom>({
   async onShow(): Promise<void> {
     this.controller?.handleShow();
     const adminController = this.adminController;
-    if (!adminController) return;
-    this.setData({ ...this.data, adminEligible: false, adminLoading: true });
-    await adminController.refreshEligibility();
-    this.setData({
-      ...this.data,
-      adminEligible: adminController.snapshot().eligible,
-      adminLoading: false,
-    });
+    if (!adminController || this.adminFlowActive) return;
+
+    this.adminFlowActive = true;
+    try {
+      this.setData({ adminEligible: false, adminLoading: true });
+      const eligible = await adminController.refreshEligibility();
+      this.setData({ adminEligible: eligible, adminLoading: false });
+
+      if (eligible && (await confirmAdminEntry())) {
+        await this.onEnterAdmin();
+      }
+    } finally {
+      this.adminFlowActive = false;
+    }
   },
 
   async onEnterAdmin(): Promise<void> {
     const adminController = this.adminController;
     if (!adminController || this.data.adminLoading) return;
-    this.setData({ ...this.data, adminEligible: false, adminLoading: true });
+
+    this.setData({ adminEligible: false, adminLoading: true });
     await adminController.enterAdmin();
     this.setData({
-      ...this.data,
       adminEligible: adminController.snapshot().eligible,
       adminLoading: false,
     });

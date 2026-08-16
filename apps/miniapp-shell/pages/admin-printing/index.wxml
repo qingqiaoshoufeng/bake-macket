@@ -1,19 +1,26 @@
 <view class="printing-page">
   <view class="printing-card">
-    <text class="printing-card__title">选择在线打印机</text>
+    <text class="printing-card__title">选择打印机</text>
+    <text class="printing-selection-hint">{{selectionMessage}}</text>
     <view wx:if="{{printerOptions.length === 0}}" class="printing-empty">
-      暂无 ACTIVE 且在线的打印机，请先完成设备绑定和状态刷新。
+      暂无打印机，请先完成设备绑定和状态刷新。
     </view>
     <view class="printer-options">
       <button
         wx:for="{{printerOptions}}"
         wx:key="id"
         size="mini"
-        class="printer-option {{item.selected ? 'printer-option--selected' : ''}}"
+        disabled="{{!item.available || selectionSource === 'restored'}}"
+        class="printer-option {{item.selected ? 'printer-option--selected' : ''}} {{!item.available ? 'printer-option--unavailable' : ''}}"
         data-printer-id="{{item.id}}"
         bindtap="onSelectPrinter"
-      >{{item.displayName}} · {{item.serialNumberMasked}}</button>
+      >
+        <text>{{item.displayName}} · {{item.serialNumberMasked}}</text>
+        <text wx:if="{{item.current}}" class="printer-option__badge">当前设备</text>
+        <text wx:if="{{!item.available}}" class="printer-option__reason">不可用：{{item.unavailableReason}}</text>
+      </button>
     </view>
+    <text class="printing-selected-device">本次使用：{{selectedPrinterLabel}}</text>
   </view>
 
   <view wx:if="{{error}}" class="printing-error">
@@ -45,7 +52,7 @@
     wx:if="{{setupContinueRequired}}"
     type="warn"
     loading="{{submitting}}"
-    disabled="{{submitting}}"
+    disabled="{{loading || submitting || !loadSucceeded || !selectionReady}}"
     bindtap="onResumeSetup"
   >恢复上次未确认的打印请求</button>
 
@@ -53,9 +60,13 @@
     wx:if="{{manualContinueRequired}}"
     type="primary"
     loading="{{submitting}}"
-    disabled="{{submitting}}"
+    disabled="{{loading || submitting || !pendingBatchPrinterLabel}}"
     bindtap="onContinueBatch"
-  >继续批次 #{{pendingBatchId}}（最多 20 项）</button>
+  >继续批次 #{{pendingBatchId}} · {{pendingBatchPrinterLabel || '设备无法确认'}}（最多 20 项）</button>
+
+  <view wx:if="{{pendingBatchId}}" class="printing-selection-hint">
+    批次固化设备：{{pendingBatchPrinterLabel || '旧状态无法确认设备，请勿按当前设备判断'}}
+  </view>
 
   <view wx:if="{{result}}" class="printing-result">
     <text class="printing-result__title">本次提交结果</text>
@@ -70,21 +81,21 @@
         <button
           wx:if="{{item.canQueryUnknown}}"
           size="mini"
-          disabled="{{submitting}}"
+          disabled="{{loading || submitting || !loadSucceeded}}"
           data-job-id="{{item.id}}"
           bindtap="onQueryUnknown"
         >查询厂商状态</button>
         <button
           wx:if="{{item.canRetryFailed}}"
           size="mini"
-          disabled="{{submitting}}"
+          disabled="{{loading || submitting || !loadSucceeded}}"
           data-job-id="{{item.id}}"
           bindtap="onRetryFailed"
         >重试明确失败</button>
         <block wx:if="{{item.canResolveManually}}">
-          <button size="mini" disabled="{{submitting}}" data-job-id="{{item.id}}" bindtap="onConfirmPrinted">确认已打印</button>
-          <button size="mini" disabled="{{submitting}}" data-job-id="{{item.id}}" bindtap="onConfirmNotPrinted">确认未打印</button>
-          <button size="mini" type="warn" disabled="{{submitting}}" data-job-id="{{item.id}}" bindtap="onDuplicateRiskRetry">风险重打</button>
+          <button size="mini" disabled="{{loading || submitting || !loadSucceeded}}" data-job-id="{{item.id}}" bindtap="onConfirmPrinted">确认已打印</button>
+          <button size="mini" disabled="{{loading || submitting || !loadSucceeded}}" data-job-id="{{item.id}}" bindtap="onConfirmNotPrinted">确认未打印</button>
+          <button size="mini" type="warn" disabled="{{loading || submitting || !loadSucceeded}}" data-job-id="{{item.id}}" bindtap="onDuplicateRiskRetry">风险重打</button>
         </block>
       </view>
     </view>

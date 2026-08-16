@@ -18,6 +18,7 @@ export const PRINTING_DEVICES_MOCK: CloudPrinterListResult = Object.freeze({
       lastStatusCheckedAt: '2026-08-09T10:00:00.000Z',
       bindingStage: PrinterBindingStage.NONE,
       vendorRelationState: VendorRelationState.CONFIRMED_BOUND,
+      isCurrent: true,
     },
   ],
   total: 1,

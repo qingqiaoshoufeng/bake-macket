@@ -32,6 +32,7 @@ import {
   createDockerRootSqlExecutor,
   mysqlTestDatabaseState,
   provisionMysqlTestDatabase,
+  resolveMysqlPort,
 } from './helpers/mysql-test-database.js';
 
 const DATABASE_NAME = `bake_mall_cloud_printers_${process.pid}_${randomUUID().replaceAll('-', '').slice(0, 8)}`;
@@ -290,7 +291,7 @@ describe.sequential('CloudPrinterService binding (real MySQL)', () => {
       dataSource = new DataSource({
         type: 'mysql',
         host: process.env.TEST_MYSQL_HOST ?? '127.0.0.1',
-        port: Number(process.env.TEST_MYSQL_PORT ?? 44306),
+        port: resolveMysqlPort(),
         database: DATABASE_NAME,
         username: APP_USER,
         password: process.env.TEST_MYSQL_APP_PASSWORD ?? 'bake_app_password',

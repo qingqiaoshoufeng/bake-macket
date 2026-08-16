@@ -18,6 +18,7 @@ export const PRINTING_DEVICE_LIST_MOCK: CloudPrinterListResult = {
       lastStatusCheckedAt: '2026-08-09T10:00:00.000Z',
       bindingStage: PrinterBindingStage.NONE,
       vendorRelationState: VendorRelationState.CONFIRMED_BOUND,
+      isCurrent: true,
     },
   ],
   total: 1,

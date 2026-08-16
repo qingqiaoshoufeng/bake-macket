@@ -46,6 +46,7 @@ const printer: CloudPrinterView = {
   lastStatusCheckedAt: null,
   bindingStage: PrinterBindingStage.PRINT_VERIFICATION_CODE,
   vendorRelationState: VendorRelationState.CONFIRMED_BOUND,
+  isCurrent: false,
   challenge,
 };
 const activePrinter: CloudPrinterView = {
@@ -117,6 +118,14 @@ function apiHarness(): PrintingDevicesApi {
     confirmDeletion: vi.fn(),
     unbind: vi.fn(),
     rename: vi.fn(),
+    detail: vi.fn().mockResolvedValue(activePrinter),
+    current: vi.fn().mockResolvedValue({
+      printer: null,
+      revision: 0,
+      updatedAt: '2026-08-09T10:00:00.000Z',
+    }),
+    setCurrent: vi.fn(),
+    clearCurrent: vi.fn(),
   };
 }
 
@@ -463,10 +472,65 @@ describe('printing device idempotency and storage', () => {
     await resending;
   });
 
+  it.each(['set-current', 'clear-current'] as const)(
+    'clears the %s retry password immediately without changing the request body',
+    async (operation) => {
+      const currentPending = deferred<{
+        current: {
+          printer: CloudPrinterView | null;
+          revision: number;
+          updatedAt: string;
+        };
+      }>();
+      const harness = controllerHarness({
+        adminId: '42',
+        pendingDeviceOperations: [
+          {
+            operation,
+            resourceId: activePrinter.id,
+            idempotencyKey: UUIDS[0],
+            expectedRevision: 7,
+          },
+        ],
+      });
+      harness.controller.setRecoveryPassword('current-secret');
+      const method = vi.mocked(
+        operation === 'set-current'
+          ? harness.api.setCurrent
+          : harness.api.clearCurrent,
+      );
+      method.mockReturnValueOnce(currentPending.promise as never);
+
+      const continuing = harness.controller.continueOperation(
+        operation,
+        activePrinter.id,
+      );
+
+      expect(harness.controller.snapshot().forms.recoveryPassword).toBe('');
+      expect(method).toHaveBeenCalledWith(
+        operation === 'set-current'
+          ? {
+              printerId: activePrinter.id,
+              expectedRevision: 7,
+              operationPassword: 'current-secret',
+            }
+          : { expectedRevision: 7, operationPassword: 'current-secret' },
+        UUIDS[0],
+      );
+      currentPending.resolve({
+        current: {
+          printer: operation === 'set-current' ? activePrinter : null,
+          revision: 8,
+          updatedAt: '2026-08-09T10:03:00.000Z',
+        },
+      });
+      await continuing;
+    },
+  );
+
   it('persists the exact whitelist, hydrates without replay, and clears on logout/admin mismatch', () => {
     const initial = {
       adminId: '42',
-      lastPrinterId: printer.id,
       pendingDeviceOperations: [
         {
           operation: 'refresh',
@@ -521,30 +585,7 @@ describe('printing device idempotency and storage', () => {
     );
   });
 
-  it.each([
-    ['missing', listResult],
-    [printer.id, listResult],
-  ])(
-    'clears lastPrinterId %s when the authoritative list has no matching active printer',
-    async (lastPrinterId, result) => {
-      const harness = controllerHarness({
-        adminId: '42',
-        lastPrinterId,
-        pendingDeviceOperations: [],
-      });
-      vi.mocked(harness.api.list).mockResolvedValueOnce(result);
-
-      await harness.controller.load();
-      harness.controller.persistLifecycleState();
-
-      expect(harness.persisted.value()).toEqual({
-        adminId: '42',
-        pendingDeviceOperations: [],
-      });
-    },
-  );
-
-  it('does not replace the last selected printer ID after a device-management operation', async () => {
+  it('does not persist a local current-printer selection after a device-management operation', async () => {
     const pendingPrinter = {
       ...printer,
       id: '1002',
@@ -552,7 +593,6 @@ describe('printing device idempotency and storage', () => {
     };
     const harness = controllerHarness({
       adminId: '42',
-      lastPrinterId: activePrinter.id,
       pendingDeviceOperations: [],
     });
     harness.controller.setRenameName('待验证设备');
@@ -570,9 +610,185 @@ describe('printing device idempotency and storage', () => {
 
     expect(harness.persisted.value()).toEqual({
       adminId: '42',
-      lastPrinterId: activePrinter.id,
       pendingDeviceOperations: [],
     });
+  });
+});
+
+describe('authoritative current printer, detail, filters, migration, and validation', () => {
+  it('loads current with the list, switches removed filter, and opens detail', async () => {
+    const harness = controllerHarness();
+    vi.mocked(harness.api.current).mockResolvedValue({
+      printer: { ...activePrinter, isCurrent: true },
+      revision: 5,
+      updatedAt: '2026-08-09T10:00:00.000Z',
+    });
+
+    await harness.controller.load();
+    await harness.controller.setListScope('removed');
+    await harness.controller.openDetail(activePrinter.id);
+
+    expect(harness.api.list).toHaveBeenNthCalledWith(1, {
+      page: 1,
+      pageSize: 20,
+      includeUnbound: false,
+    });
+    expect(harness.api.list).toHaveBeenNthCalledWith(2, {
+      page: 1,
+      pageSize: 20,
+      includeUnbound: true,
+      status: CloudPrinterStatus.UNBOUND,
+    });
+    expect(harness.controller.snapshot().current.revision).toBe(5);
+    expect(harness.controller.snapshot().detail).toEqual(activePrinter);
+  });
+
+  it('migrates legacy lastPrinterId away while preserving strictly valid pending operations', () => {
+    const pendingDeviceOperations = [
+      {
+        operation: 'set-current',
+        resourceId: activePrinter.id,
+        idempotencyKey: UUIDS[0],
+        expectedRevision: 7,
+      },
+    ] as const;
+    const harness = controllerHarness({
+      adminId: '42',
+      lastPrinterId: activePrinter.id,
+      pendingDeviceOperations,
+    });
+
+    expect(harness.controller.snapshot().current.printer).toBeNull();
+    expect(harness.controller.snapshot().operations).toMatchObject([
+      { ...pendingDeviceOperations[0], status: 'UNKNOWN' },
+    ]);
+    expect(harness.persisted.storage.set).toHaveBeenCalledWith(
+      PRINTING_DEVICES_STORAGE_KEY,
+      { adminId: '42', pendingDeviceOperations },
+    );
+    expect(harness.persisted.storage.remove).not.toHaveBeenCalled();
+  });
+
+  it('clears the whole legacy record only when pending operations are invalid', () => {
+    const harness = controllerHarness({
+      adminId: '42',
+      lastPrinterId: activePrinter.id,
+      pendingDeviceOperations: [
+        {
+          operation: 'refresh',
+          resourceId: activePrinter.id,
+          idempotencyKey: 'not-a-uuid',
+        },
+      ],
+    });
+
+    expect(harness.controller.snapshot().operations).toEqual([]);
+    expect(harness.persisted.storage.remove).toHaveBeenCalledWith(
+      PRINTING_DEVICES_STORAGE_KEY,
+    );
+    expect(harness.persisted.storage.set).not.toHaveBeenCalled();
+  });
+
+  it.each(['set-current', 'clear-current'] as const)(
+    'hydrates %s with its original revision instead of the newer loaded revision',
+    async (operation) => {
+      const harness = controllerHarness({
+        adminId: '42',
+        pendingDeviceOperations: [
+          {
+            operation,
+            resourceId: activePrinter.id,
+            idempotencyKey: UUIDS[0],
+            expectedRevision: 7,
+          },
+        ],
+      });
+      vi.mocked(harness.api.current).mockResolvedValueOnce({
+        printer: { ...activePrinter, isCurrent: true },
+        revision: 12,
+        updatedAt: '2026-08-09T10:02:00.000Z',
+      });
+      await harness.controller.load();
+      harness.controller.setRecoveryPassword('current-secret');
+      const method = vi.mocked(
+        operation === 'set-current'
+          ? harness.api.setCurrent
+          : harness.api.clearCurrent,
+      );
+      method.mockResolvedValueOnce({
+        current: {
+          printer: operation === 'set-current' ? activePrinter : null,
+          revision: 8,
+          updatedAt: '2026-08-09T10:03:00.000Z',
+        },
+      } as never);
+
+      await harness.controller.continueOperation(operation, activePrinter.id);
+
+      expect(method).toHaveBeenCalledWith(
+        operation === 'set-current'
+          ? {
+              printerId: activePrinter.id,
+              expectedRevision: 7,
+              operationPassword: 'current-secret',
+            }
+          : { expectedRevision: 7, operationPassword: 'current-secret' },
+        UUIDS[0],
+      );
+    },
+  );
+
+  it.each(['set-current', 'clear-current'] as const)(
+    'fails safe for legacy hydrated %s without a revision and allows refresh plus discard',
+    async (operation) => {
+      const harness = controllerHarness({
+        adminId: '42',
+        pendingDeviceOperations: [
+          {
+            operation,
+            resourceId: activePrinter.id,
+            idempotencyKey: UUIDS[0],
+          },
+        ],
+      });
+      harness.controller.setRecoveryPassword('current-secret');
+
+      expect(() =>
+        harness.controller.continueOperation(operation, activePrinter.id),
+      ).toThrow('缺少原始版本，无法安全重试');
+      expect(harness.controller.snapshot().error).toContain(
+        '缺少原始版本，无法安全重试',
+      );
+      expect(harness.api.setCurrent).not.toHaveBeenCalled();
+      expect(harness.api.clearCurrent).not.toHaveBeenCalled();
+
+      await harness.controller.load();
+      harness.controller.discardOperation(operation, activePrinter.id);
+      expect(harness.controller.snapshot().operations).toEqual([]);
+      expect(harness.persisted.storage.remove).toHaveBeenCalledWith(
+        PRINTING_DEVICES_STORAGE_KEY,
+      );
+    },
+  );
+
+  it('validates bind fields and six-digit code before issuing writes', async () => {
+    const harness = controllerHarness();
+    harness.controller.setBindForm({
+      serialNumber: 'bad sn',
+      displayName: '  ',
+      operationPassword: '',
+    });
+    await expect(harness.controller.bind()).rejects.toThrow(
+      '设备序列号格式不正确',
+    );
+    expect(harness.api.bind).not.toHaveBeenCalled();
+
+    harness.controller.openVerify(printer);
+    harness.controller.setVerifyForm({ code: '12ab', operationPassword: 'secret' });
+    expect(() => harness.controller.confirm(printer.id)).toThrow(
+      '验证码必须为 6 位数字',
+    );
+    expect(harness.api.confirm).not.toHaveBeenCalled();
   });
 });
 
@@ -753,14 +969,31 @@ describe('challenge, fencing, actions, and validation', () => {
     );
   });
 
+  it('provides detail in every printer status action set like Admin', () => {
+    const harness = controllerHarness();
+    const statuses = Object.values(CloudPrinterStatus).map((status) => ({
+      ...printer,
+      status,
+    }));
+
+    expect(
+      statuses.every((device) =>
+        harness.controller.actionsFor(device).includes('detail'),
+      ),
+    ).toBe(true);
+  });
+
   it('uses the approved action matrix and exposes unbind only for ACTIVE', () => {
     const harness = controllerHarness();
     expect(harness.controller.actionsFor(printer)).toEqual([
+      'detail',
       'verify',
       'resend',
       'rename',
     ]);
     expect(harness.controller.actionsFor(activePrinter)).toEqual([
+      'detail',
+      'set-current',
       'refresh',
       'unbind',
       'rename',
@@ -771,21 +1004,21 @@ describe('challenge, fencing, actions, and validation', () => {
         status: CloudPrinterStatus.ERROR,
         bindingStage: PrinterBindingStage.COMPENSATION_DELETE,
       }),
-    ).toEqual(['delete-confirm', 'rename']);
+    ).toEqual(['detail', 'delete-confirm', 'rename']);
     expect(
       harness.controller.actionsFor({
         ...printer,
         status: CloudPrinterStatus.ERROR,
         bindingStage: PrinterBindingStage.UNBIND_DELETE,
       }),
-    ).toEqual(['delete-confirm', 'rename']);
+    ).toEqual(['detail', 'delete-confirm', 'rename']);
     expect(
       harness.controller.actionsFor({
         ...printer,
         status: CloudPrinterStatus.UNBINDING,
         bindingStage: PrinterBindingStage.UNBIND_DELETE,
       }),
-    ).toEqual(['rename']);
+    ).toEqual(['detail', 'rename']);
     expect(harness.controller.actionsFor(printer)).not.toContain('unbind');
   });
 

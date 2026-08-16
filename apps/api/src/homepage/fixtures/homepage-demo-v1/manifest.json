@@ -1,0 +1,151 @@
+{
+  "version": 1,
+  "acquiredAt": "2026-08-16",
+  "licenseUrl": "https://unsplash.com/license",
+  "assets": [
+    {
+      "role": "hero-birthday",
+      "fileName": "hero-birthday-cake.webp",
+      "purpose": "生日蛋糕首屏竖版 Hero",
+      "mime": "image/webp",
+      "width": 1500,
+      "height": 2668,
+      "sha256": "084a77cd72766ae59afb5643f1b2561fbf7b9635f78d37bf2393aded580aeb0e",
+      "source": {
+        "platform": "Unsplash",
+        "photoId": "kPxsqUGneXQ",
+        "url": "https://images.unsplash.com/photo-1578985545062-69928b1d9587",
+        "pageUrl": "https://unsplash.com/photos/kPxsqUGneXQ",
+        "author": "David Holifield"
+      }
+    },
+    {
+      "role": "hero-afternoon-tea",
+      "fileName": "hero-afternoon-tea.webp",
+      "purpose": "下午茶首屏竖版 Hero",
+      "mime": "image/webp",
+      "width": 1500,
+      "height": 2668,
+      "sha256": "26140b2d90e57186e1a86a774488066ccec3d5599e06aa48f942c241506f8039",
+      "source": {
+        "platform": "Unsplash",
+        "photoId": "S2jw81lfrG0",
+        "url": "https://images.unsplash.com/photo-1563729784474-d77dbb933a9e",
+        "pageUrl": "https://unsplash.com/photos/baked-cupcake-S2jw81lfrG0",
+        "author": "Deva Williamson"
+      }
+    },
+    {
+      "role": "shortcut-cake",
+      "fileName": "shortcut-cake.webp",
+      "purpose": "生日蛋糕快捷入口",
+      "mime": "image/webp",
+      "width": 800,
+      "height": 800,
+      "sha256": "80dabe22755fea2415166f763ac03583994a09427810262d8b9512be82c269ae",
+      "source": {
+        "platform": "Unsplash",
+        "photoId": "Nl8Oa6ZuNcA",
+        "url": "https://images.unsplash.com/photo-1542826438-bd32f43d626f",
+        "pageUrl": "https://unsplash.com/photos/cake-with-slice-strawberry-fruits-Nl8Oa6ZuNcA",
+        "author": "SwapnIl Dwivedi"
+      }
+    },
+    {
+      "role": "shortcut-bread",
+      "fileName": "shortcut-bread.webp",
+      "purpose": "每日面包快捷入口",
+      "mime": "image/webp",
+      "width": 800,
+      "height": 800,
+      "sha256": "7549ceacee3e5c517942290cf2c3806b37cdf178ee953a69b5716a915ef63816",
+      "source": {
+        "platform": "Unsplash",
+        "photoId": "rsWZ-P9FbQ4",
+        "url": "https://images.unsplash.com/photo-1509440159596-0249088772ff",
+        "pageUrl": "https://unsplash.com/photos/cereal-and-three-buns-rsWZ-P9FbQ4",
+        "author": "Wesual Click"
+      }
+    },
+    {
+      "role": "shortcut-gift",
+      "fileName": "shortcut-gift.webp",
+      "purpose": "心意礼盒快捷入口",
+      "mime": "image/webp",
+      "width": 800,
+      "height": 800,
+      "sha256": "19913cfb6b0b7b99b9265fe550dc6877be65a9e1f9d51b61c38f63ee4fefa925",
+      "source": {
+        "platform": "Unsplash",
+        "photoId": "qZ5lPCPvdXE",
+        "url": "https://images.unsplash.com/photo-1555507036-ab1f4038808a",
+        "pageUrl": "https://unsplash.com/photos/close-up-photography-of-baked-treats-on-tray-qZ5lPCPvdXE",
+        "author": "Mink Mingle"
+      }
+    },
+    {
+      "role": "shortcut-service",
+      "fileName": "shortcut-service.webp",
+      "purpose": "联系客服快捷入口装饰图",
+      "mime": "image/webp",
+      "width": 800,
+      "height": 800,
+      "sha256": "03252914f18601ed7527cad0aabeb2f05b9e757149383954b5f5dbfa2f642d72",
+      "source": {
+        "platform": "Unsplash",
+        "photoId": "kID9sxbJ3BQ",
+        "url": "https://images.unsplash.com/photo-1558961363-fa8fdf82db35",
+        "pageUrl": "https://unsplash.com/photos/kID9sxbJ3BQ",
+        "author": "Mae Mu"
+      }
+    },
+    {
+      "role": "block-morning-bread",
+      "fileName": "block-morning-bread.webp",
+      "purpose": "晨间面包 16:9 配图区",
+      "mime": "image/webp",
+      "width": 1600,
+      "height": 900,
+      "sha256": "b7c222b12a5befc2fe629d63e542d0d869f35417acae127bcfdabad071975e26",
+      "source": {
+        "platform": "Unsplash",
+        "photoId": "wJLGRhZsn5w",
+        "url": "https://images.unsplash.com/photo-1586444248902-2f64eddc13df",
+        "pageUrl": "https://unsplash.com/photos/brown-bread-on-white-table-wJLGRhZsn5w",
+        "author": "Sergio Arze"
+      }
+    },
+    {
+      "role": "block-weekend-box",
+      "fileName": "block-weekend-box.webp",
+      "purpose": "周末甜点礼盒 16:9 配图区",
+      "mime": "image/webp",
+      "width": 1600,
+      "height": 900,
+      "sha256": "38aaf2239105f87fbc230f287093c15382aa22c584c0400268dc5e832894bba6",
+      "source": {
+        "platform": "Unsplash",
+        "photoId": "pGM4sjt_BdQ",
+        "url": "https://images.unsplash.com/photo-1486427944299-d1955d23e34d",
+        "pageUrl": "https://unsplash.com/photos/six-teal-icing-cupcakes-with-sprinkles-pGM4sjt_BdQ",
+        "author": "Brooke Lark"
+      }
+    },
+    {
+      "role": "customer-service-placeholder",
+      "fileName": "customer-service-placeholder.webp",
+      "purpose": "明确标注开发示例且不可扫码的原创客服占位图",
+      "mime": "image/webp",
+      "width": 800,
+      "height": 800,
+      "sha256": "169001b7d7c57cda9ec8e0d8571a734686731804479c00d8d0885d1d678458b6",
+      "source": {
+        "platform": "Bake Mall original fixture",
+        "photoId": null,
+        "url": "local-generated://homepage/customer-service-placeholder-v1",
+        "pageUrl": null,
+        "author": "Bake Mall development fixture"
+      }
+    }
+  ]
+}

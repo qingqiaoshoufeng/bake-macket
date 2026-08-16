@@ -98,6 +98,9 @@ function formatCheckedAt(value: string | null): string {
           <span class="printer-table__icon" aria-hidden="true">P</span>
           <div>
             <strong>{{ row.displayName }}</strong>
+            <ElTag v-if="row.isCurrent" type="success" size="small" round>
+              当前打印机
+            </ElTag>
             <small>{{ row.serialNumberMasked }} · ID {{ row.id }}</small>
           </div>
         </div>
@@ -127,14 +130,23 @@ function formatCheckedAt(value: string | null): string {
           <ElButton
             v-for="action in actionsForPrinter(asPrinter(row))"
             :key="action"
-            type="primary"
+            :type="action === 'unbind' ? 'danger' : 'primary'"
             link
+            :disabled="action === 'unbind' && row.isCurrent"
             :loading="pendingResourceIds.includes(row.id)"
+            :title="
+              action === 'unbind' && row.isCurrent
+                ? '请先清除当前打印机，再移除设备'
+                : undefined
+            "
             :data-printer-action="action"
             @click="emit('action', action, asPrinter(row))"
           >
             {{ PRINTER_ACTION_LABELS[action] }}
           </ElButton>
+          <small v-if="row.isCurrent" class="printer-table__current-hint">
+            请先清除当前打印机再移除
+          </small>
         </div>
       </template>
     </ElTableColumn>
@@ -190,6 +202,11 @@ function formatCheckedAt(value: string | null): string {
 .printer-table__actions {
   flex-wrap: wrap;
   gap: 2px 8px;
+}
+
+.printer-table__current-hint {
+  color: var(--admin-muted);
+  font-size: 11px;
 }
 
 .printer-table__empty {

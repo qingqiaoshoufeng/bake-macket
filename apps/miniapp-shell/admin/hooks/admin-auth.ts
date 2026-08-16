@@ -128,11 +128,10 @@ export function createAdminAuthController(dependencies: AdminAuthDependencies) {
       if (current(requestGeneration))
         state = { eligible: true, loading: false };
       return true;
-    } catch (error) {
+    } catch {
       if (current(requestGeneration)) {
         dependencies.adminSession.clear();
         state = { eligible: false, loading: false };
-        if (!isIneligible(error)) dependencies.toast(safeAuthMessage(error));
       }
       return false;
     } finally {

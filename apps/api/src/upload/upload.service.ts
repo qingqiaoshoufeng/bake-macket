@@ -1,6 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { S3Client } from '@aws-sdk/client-s3';
 import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
 import { randomUUID } from 'node:crypto';
 import { extname } from 'node:path';
@@ -9,6 +8,7 @@ import type { PresignUploadResponse } from '@bake-mall/contracts';
 
 import { type AppConfig } from '../config/env.schema.js';
 import { joinMediaUrl } from '../media-url.js';
+import { createObjectStorageClient } from '../object-storage/object-storage-client.js';
 import { PresignUploadDto } from './dto.js';
 
 @Injectable()
@@ -21,15 +21,7 @@ export class UploadService {
     const env = this.config.get('appEnv', { infer: true });
     const extension = extensionFor(dto.fileName, dto.contentType);
     const objectKey = `${dto.scope}/${randomUUID()}${extension}`;
-    const client = new S3Client({
-      region: env.OBJECT_STORAGE_REGION,
-      endpoint: env.OBJECT_STORAGE_ENDPOINT,
-      forcePathStyle: env.OBJECT_STORAGE_FORCE_PATH_STYLE,
-      credentials: {
-        accessKeyId: env.OBJECT_STORAGE_ACCESS_KEY,
-        secretAccessKey: env.OBJECT_STORAGE_SECRET_KEY,
-      },
-    });
+    const client = createObjectStorageClient(env);
     const signed = await createPresignedPost(client, {
       Bucket: env.OBJECT_STORAGE_BUCKET,
       Key: objectKey,

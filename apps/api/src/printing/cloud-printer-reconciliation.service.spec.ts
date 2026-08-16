@@ -11,7 +11,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { CloudPrinter } from '../database/entities/cloud-printer.entity.js';
 import { createAdminOperationIdempotencyTestService } from '../../test/helpers/admin-operation-idempotency.js';
 import { AdminOperationIdempotencyService } from './admin-operation-idempotency.service.js';
-import { CloudPrinterReconciliationService } from './cloud-printer-reconciliation.service.js';
+import {
+  CloudPrinterReconciliationService,
+  normalizeCloudPrinterReconciliationSnapshot,
+} from './cloud-printer-reconciliation.service.js';
 import type { XpyunVendorPort } from './cloud-printer.service.js';
 
 const ADMIN_ID = '1';
@@ -291,6 +294,16 @@ const buildFixture = (input?: {
       return { status: 'VERIFIED', admin: { id: ADMIN_ID } };
     }),
   };
+  const currentPrinters = {
+    get: vi.fn(async () => ({
+      printer: printers.some(({ id }) => id === '1')
+        ? { id: '1', isCurrent: true }
+        : null,
+      revision: 1,
+      updatedAt: NOW.toISOString(),
+    })),
+    clearByReconciliation: vi.fn(async () => true),
+  };
   const audit = {
     record: vi.fn(async (entry: Record<string, unknown>) => {
       expect(transactionContext.getStore()).toBe(true);
@@ -305,6 +318,7 @@ const buildFixture = (input?: {
     idempotency,
     vendor,
     () => NOW,
+    currentPrinters as never,
   );
   return {
     service,
@@ -313,6 +327,7 @@ const buildFixture = (input?: {
     printers,
     operations,
     audits,
+    currentPrinters,
     transactionContext,
     printerRepository,
     dataSource,
@@ -341,6 +356,46 @@ const expectTransactionsCommitted = async (
 };
 
 describe('CloudPrinterReconciliationService administrator recovery', () => {
+  it('旧恢复幂等快照缺少 isCurrent 时安全补 false', () => {
+    expect(
+      normalizeCloudPrinterReconciliationSnapshot({
+        printer: {
+          id: '1',
+          displayName: '前台',
+          serialNumberMasked: 'SN****01',
+          status: CloudPrinterStatus.UNBOUND,
+          onlineStatus: CloudPrinterOnlineStatus.UNKNOWN,
+          lastStatusCheckedAt: null,
+        },
+      }),
+    ).toMatchObject({ printer: { isCurrent: false } });
+  });
+
+  it('动态投影 current 设备 requery 首次结果与旧快照 replay 的 isCurrent', async () => {
+    const key = newKey();
+    const fixture = buildFixture();
+
+    const first = await fixture.service.requery(
+      { id: ADMIN_ID },
+      '1',
+      { operationPassword: PASSWORD },
+      key,
+    );
+    const snapshot = fixture.operations[0]?.responseSnapshot as {
+      printer?: { isCurrent?: boolean };
+    };
+    delete snapshot.printer?.isCurrent;
+    const replay = await fixture.service.requery(
+      { id: ADMIN_ID },
+      '1',
+      { operationPassword: PASSWORD },
+      key,
+    );
+
+    expect(first.printer.isCurrent).toBe(true);
+    expect(replay.printer.isCurrent).toBe(true);
+  });
+
   it('does not start an advisory lock, printer/idempotency transaction, or vendor call when password verification fails', async () => {
     const fixture = buildFixture();
     fixture.verification.verifyPassword.mockRejectedValueOnce(
@@ -515,6 +570,10 @@ describe('CloudPrinterReconciliationService administrator recovery', () => {
     expect(first.printer.status).toBe(CloudPrinterStatus.UNBOUND);
     expect(replay).toEqual(first);
     expect(fixture.vendor.queryOnline).toHaveBeenCalledTimes(1);
+    expect(fixture.currentPrinters.clearByReconciliation).toHaveBeenCalledWith(
+      expect.anything(),
+      '1',
+    );
     expect(fixture.printers[0]).toMatchObject({
       bindingStage: PrinterBindingStage.NONE,
       vendorRelationState: VendorRelationState.CONFIRMED_UNBOUND,

@@ -8,7 +8,7 @@
   },
   "scripts": {
     "build": "node scripts/build.mjs && tsc -p tsconfig.json --noEmit",
-    "build:check": "node scripts/prepare-build-check.mjs && node scripts/build-check.mjs && tsc -p tsconfig.json --noEmit",
+    "build:check": "node scripts/build-check.mjs && tsc -p tsconfig.json --noEmit",
     "lint": "eslint \"**/*.ts\" \"scripts/**/*.mjs\"",
     "test": "node scripts/generate-contracts-runtime.mjs && vitest run --exclude scripts/**/*.spec.mjs && node --test scripts/**/*.spec.mjs && tsc -p tsconfig.spec.json --noEmit",
     "typecheck": "node scripts/generate-contracts-runtime.mjs && tsc -p tsconfig.json --noEmit",

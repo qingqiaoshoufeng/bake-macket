@@ -22,6 +22,7 @@ function printer(patch: Partial<CloudPrinterView> = {}): CloudPrinterView {
     lastStatusCheckedAt: '2026-08-09T10:00:00.000Z',
     bindingStage: PrinterBindingStage.NONE,
     vendorRelationState: VendorRelationState.CONFIRMED_BOUND,
+    isCurrent: false,
     ...patch,
   };
 }
@@ -67,55 +68,55 @@ describe('PrinterTable', () => {
       CloudPrinterStatus.PENDING_VERIFICATION,
       PrinterBindingStage.NONE,
       VendorRelationState.CONFIRMED_BOUND,
-      ['verify', 'resend', 'rename'],
+      ['detail', 'verify', 'resend', 'rename'],
     ],
     [
       CloudPrinterStatus.PENDING_VERIFICATION,
       PrinterBindingStage.PRINT_VERIFICATION_CODE,
       VendorRelationState.CONFIRMED_BOUND,
-      ['verify', 'resend', 'rename'],
+      ['detail', 'verify', 'resend', 'rename'],
     ],
     [
       CloudPrinterStatus.BINDING,
       PrinterBindingStage.PRINT_VERIFICATION_CODE,
       VendorRelationState.CONFIRMED_BOUND,
-      ['resend', 'rename'],
+      ['detail', 'resend', 'rename'],
     ],
     [
       CloudPrinterStatus.ERROR,
       PrinterBindingStage.RECONCILIATION,
       VendorRelationState.CONFIRMED_BOUND,
-      ['resend', 'rename'],
+      ['detail', 'resend', 'rename'],
     ],
     [
       CloudPrinterStatus.ERROR,
       PrinterBindingStage.RECONCILIATION,
       VendorRelationState.UNKNOWN,
-      ['requery', 'rename'],
+      ['detail', 'requery', 'rename'],
     ],
     [
       CloudPrinterStatus.ERROR,
       PrinterBindingStage.UNBIND_DELETE,
       VendorRelationState.CONFIRMED_BOUND,
-      ['delete-confirm', 'rename'],
+      ['detail', 'delete-confirm', 'rename'],
     ],
     [
       CloudPrinterStatus.UNBINDING,
       PrinterBindingStage.UNBIND_DELETE,
       VendorRelationState.CONFIRMED_BOUND,
-      ['rename'],
+      ['detail', 'rename'],
     ],
     [
       CloudPrinterStatus.ERROR,
       PrinterBindingStage.COMPENSATION_DELETE,
       VendorRelationState.CONFIRMED_BOUND,
-      ['delete-confirm', 'rename'],
+      ['detail', 'delete-confirm', 'rename'],
     ],
     [
       CloudPrinterStatus.ACTIVE,
       PrinterBindingStage.PRINT_VERIFICATION_CODE,
       VendorRelationState.CONFIRMED_BOUND,
-      ['refresh', 'unbind', 'rename'],
+      ['detail', 'set-current', 'refresh', 'unbind', 'rename'],
     ],
   ])(
     'emits only status-driven recovery actions for %s/%s/%s',
@@ -130,6 +131,29 @@ describe('PrinterTable', () => {
       expect(actionNames).toEqual(expectedActions);
     },
   );
+
+  it('labels current printer, exposes detail/set/clear, and disables dangerous removal for current or removed devices', () => {
+    const current = mountTable([printer({ isCurrent: true })]);
+    expect(current.text()).toContain('当前打印机');
+    expect(
+      current.findAll('[data-printer-action]').map((button) =>
+        button.attributes('data-printer-action'),
+      ),
+    ).toEqual(['detail', 'clear-current', 'refresh', 'unbind', 'rename']);
+    expect(
+      current.get('[data-printer-action="unbind"]').attributes('disabled'),
+    ).toBeDefined();
+    expect(current.text()).toContain('请先清除当前打印机');
+
+    const removed = mountTable([
+      printer({ status: CloudPrinterStatus.UNBOUND, onlineStatus: CloudPrinterOnlineStatus.UNKNOWN }),
+    ]);
+    expect(
+      removed.findAll('[data-printer-action]').map((button) =>
+        button.attributes('data-printer-action'),
+      ),
+    ).toEqual(['detail']);
+  });
 
   it('emits the action selected by the pure action matrix', async () => {
     const selected = printer({

@@ -54,6 +54,7 @@ export type CloudPrinterView = {
   status: CloudPrinterStatus;
   onlineStatus: CloudPrinterOnlineStatus;
   lastStatusCheckedAt: string | null;
+  isCurrent: boolean;
   bindingStage?: PrinterBindingStage;
   vendorRelationState?: VendorRelationState;
   challenge?: PrinterVerificationChallengeView;
@@ -131,9 +132,35 @@ export type CloudPrinterListQuery = {
   page: number;
   pageSize: number;
   includeUnbound?: boolean;
+  status?: CloudPrinterStatus;
 };
 
 export type CloudPrinterListResult = PaginatedView<CloudPrinterView>;
+
+export type CurrentCloudPrinterView = {
+  printer: CloudPrinterView | null;
+  revision: number;
+  updatedAt: string;
+};
+
+export type SetCurrentCloudPrinterRequest = {
+  printerId: string;
+  expectedRevision: number;
+  operationPassword: string;
+};
+
+export type SetCurrentCloudPrinterResult = {
+  current: CurrentCloudPrinterView;
+};
+
+export type ClearCurrentCloudPrinterRequest = {
+  expectedRevision: number;
+  operationPassword: string;
+};
+
+export type ClearCurrentCloudPrinterResult = {
+  current: CurrentCloudPrinterView;
+};
 
 const PRINT_BATCH_TRANSITIONS: Readonly<
   Record<PrintBatchStatus, readonly PrintBatchStatus[]>
@@ -435,3 +462,7 @@ export type DuplicateRiskPrintRetryClientRequest =
   IdempotentPrintingWrite<DuplicateRiskPrintRetryRequest>;
 export type UnbindCloudPrinterClientRequest =
   IdempotentPrintingWrite<UnbindCloudPrinterRequest>;
+export type SetCurrentCloudPrinterClientRequest =
+  IdempotentPrintingWrite<SetCurrentCloudPrinterRequest>;
+export type ClearCurrentCloudPrinterClientRequest =
+  IdempotentPrintingWrite<ClearCurrentCloudPrinterRequest>;

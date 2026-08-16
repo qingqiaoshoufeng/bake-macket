@@ -28,6 +28,10 @@ vi.mock('../api/index.js', () => ({
     requery: vi.fn(),
     confirmDeletion: vi.fn(),
     rename: vi.fn(),
+    detail: vi.fn(),
+    current: vi.fn(),
+    setCurrent: vi.fn(),
+    clearCurrent: vi.fn(),
   },
 }));
 
@@ -57,6 +61,7 @@ const printer: CloudPrinterView = {
   lastStatusCheckedAt: null,
   bindingStage: PrinterBindingStage.PRINT_VERIFICATION_CODE,
   vendorRelationState: VendorRelationState.CONFIRMED_BOUND,
+  isCurrent: false,
   challenge,
 };
 const activePrinter: CloudPrinterView = {
@@ -121,6 +126,12 @@ beforeEach(() => {
   vi.unstubAllGlobals();
   installUuidSequence();
   api.list.mockResolvedValue(listResult);
+  api.current.mockResolvedValue({
+    printer: null,
+    revision: 0,
+    updatedAt: '2026-08-09T10:00:00.000Z',
+  });
+  api.detail.mockResolvedValue(activePrinter);
 });
 
 describe('printing operation idempotency', () => {
@@ -419,6 +430,210 @@ describe('printing operation idempotency', () => {
   });
 });
 
+describe('authoritative current printer, filters, detail, and compatibility', () => {
+  it('loads the list and current view together, switches removed filter, and opens authoritative detail', async () => {
+    const currentPrinter = { ...activePrinter, isCurrent: true };
+    api.current.mockResolvedValue({
+      printer: currentPrinter,
+      revision: 4,
+      updatedAt: '2026-08-09T10:00:00.000Z',
+    });
+    api.detail.mockResolvedValueOnce(currentPrinter);
+    const state = createState();
+
+    await state.load();
+    await state.setListScope('removed');
+    await state.openDetail(activePrinter.id);
+
+    expect(api.current).toHaveBeenCalledTimes(2);
+    expect(api.list).toHaveBeenNthCalledWith(1, {
+      page: 1,
+      pageSize: 20,
+      includeUnbound: false,
+    });
+    expect(api.list).toHaveBeenNthCalledWith(2, {
+      page: 1,
+      pageSize: 20,
+      includeUnbound: true,
+      status: CloudPrinterStatus.UNBOUND,
+    });
+    expect(state.current.value).toMatchObject({ revision: 4 });
+    expect(state.detail.value).toEqual(currentPrinter);
+    expect(state.dialog.value.kind).toBe('detail');
+  });
+
+  it('sets current with the authoritative revision and refreshes current/list after 409', async () => {
+    api.current
+      .mockResolvedValueOnce({
+        printer: null,
+        revision: 2,
+        updatedAt: '2026-08-09T10:00:00.000Z',
+      })
+      .mockResolvedValueOnce({
+        printer: { ...activePrinter, isCurrent: true },
+        revision: 3,
+        updatedAt: '2026-08-09T10:01:00.000Z',
+      });
+    api.setCurrent.mockRejectedValueOnce(
+      new ApiClientError(409, '当前打印机已被其他管理员修改', {
+        code: ApiErrorCode.CLOUD_PRINTER_CURRENT_VERSION_CONFLICT,
+      }),
+    );
+    const state = createState();
+    await state.load();
+    state.recoveryForm.value = { operationPassword: 'secret' };
+
+    await expect(state.setCurrent(activePrinter.id)).rejects.toMatchObject({
+      status: 409,
+    });
+
+    expect(api.setCurrent).toHaveBeenCalledWith(
+      {
+        printerId: activePrinter.id,
+        expectedRevision: 2,
+        operationPassword: 'secret',
+      },
+      UUIDS[0],
+    );
+    expect(api.current).toHaveBeenCalledTimes(2);
+    expect(state.current.value).toMatchObject({ revision: 3 });
+    expect(state.pendingOperations.value).toEqual([]);
+  });
+
+  it.each(['set-current', 'clear-current'] as const)(
+    'hydrates %s with its original revision and never substitutes a newer authoritative revision',
+    async (operation) => {
+      window.sessionStorage.setItem(
+        PENDING_DEVICE_OPERATIONS_STORAGE_KEY,
+        JSON.stringify({
+          adminId: '42',
+          pendingDeviceOperations: [
+            {
+              operation,
+              resourceId: activePrinter.id,
+              idempotencyKey: UUIDS[0],
+              expectedRevision: 7,
+            },
+          ],
+        }),
+      );
+      api.current.mockResolvedValueOnce({
+        printer: { ...activePrinter, isCurrent: true },
+        revision: 12,
+        updatedAt: '2026-08-09T10:02:00.000Z',
+      });
+      const state = createState();
+      await state.load();
+      state.recoveryForm.value = { operationPassword: 'current-secret' };
+      const result = {
+        current: {
+          printer: operation === 'set-current' ? activePrinter : null,
+          revision: 8,
+          updatedAt: '2026-08-09T10:03:00.000Z',
+        },
+      };
+      const method = operation === 'set-current' ? api.setCurrent : api.clearCurrent;
+      method.mockResolvedValueOnce(result as never);
+
+      await state.retryOperation(operation, activePrinter.id);
+
+      expect(method).toHaveBeenCalledWith(
+        operation === 'set-current'
+          ? {
+              printerId: activePrinter.id,
+              expectedRevision: 7,
+              operationPassword: 'current-secret',
+            }
+          : { expectedRevision: 7, operationPassword: 'current-secret' },
+        UUIDS[0],
+      );
+    },
+  );
+
+  it.each(['set-current', 'clear-current'] as const)(
+    'fails safe for legacy hydrated %s without a revision and can discard it after authoritative refresh',
+    async (operation) => {
+      window.sessionStorage.setItem(
+        PENDING_DEVICE_OPERATIONS_STORAGE_KEY,
+        JSON.stringify({
+          adminId: '42',
+          pendingDeviceOperations: [
+            {
+              operation,
+              resourceId: activePrinter.id,
+              idempotencyKey: UUIDS[0],
+            },
+          ],
+        }),
+      );
+      const state = createState();
+      state.recoveryForm.value = { operationPassword: 'current-secret' };
+
+      await expect(
+        state.retryOperation(operation, activePrinter.id),
+      ).rejects.toThrow('缺少原始版本，无法安全重试');
+      expect(state.error.value).toMatchObject({
+        kind: 'stable',
+        message: expect.stringContaining('缺少原始版本，无法安全重试'),
+      });
+      expect(api.setCurrent).not.toHaveBeenCalled();
+      expect(api.clearCurrent).not.toHaveBeenCalled();
+
+      await state.load();
+      state.discardPendingOperation(operation, activePrinter.id);
+      expect(state.pendingOperations.value).toEqual([]);
+      expect(
+        window.sessionStorage.getItem(PENDING_DEVICE_OPERATIONS_STORAGE_KEY),
+      ).toBeNull();
+    },
+  );
+
+  it('validates bind SN, display name, operation password, and six-digit confirmation before requests', async () => {
+    const state = createState();
+    state.bindForm.value = {
+      serialNumber: 'bad sn',
+      displayName: '  ',
+      operationPassword: '',
+    };
+    await expect(state.bind()).rejects.toThrow('设备序列号格式不正确');
+    expect(api.bind).not.toHaveBeenCalled();
+
+    state.openVerify(printer);
+    state.verifyForm.value = {
+      challengeId: challenge.challengeId,
+      code: '12ab',
+      operationPassword: 'secret',
+    };
+    await expect(state.confirm(printer.id)).rejects.toThrow('验证码必须为 6 位数字');
+    expect(api.confirm).not.toHaveBeenCalled();
+  });
+
+  it('hydrates pending operations when Object.hasOwn is unavailable', () => {
+    const descriptor = Object.getOwnPropertyDescriptor(Object, 'hasOwn');
+    Object.defineProperty(Object, 'hasOwn', { configurable: true, value: undefined });
+    try {
+      window.sessionStorage.setItem(
+        PENDING_DEVICE_OPERATIONS_STORAGE_KEY,
+        JSON.stringify({
+          adminId: '42',
+          pendingDeviceOperations: [
+            {
+              operation: 'refresh',
+              resourceId: printer.id,
+              idempotencyKey: UUIDS[0],
+            },
+          ],
+        }),
+      );
+      const state = createState();
+      expect(state.pendingOperations.value).toHaveLength(1);
+    } finally {
+      if (descriptor) Object.defineProperty(Object, 'hasOwn', descriptor);
+      else Reflect.deleteProperty(Object, 'hasOwn');
+    }
+  });
+});
+
 describe('sensitive forms, storage, hydration, and identity', () => {
   it('clears bind serial/password and confirm code/password immediately after submission', async () => {
     const bindPending = deferred<{
@@ -558,6 +773,59 @@ describe('sensitive forms, storage, hydration, and identity', () => {
     resendPending.resolve({ printer, challenge });
     await resending;
   });
+
+  it.each(['set-current', 'clear-current'] as const)(
+    'clears the %s retry password immediately without changing the submitted body',
+    async (operation) => {
+      const pendingRequest = deferred<{
+        current: {
+          printer: CloudPrinterView | null;
+          revision: number;
+          updatedAt: string;
+        };
+      }>();
+      window.sessionStorage.setItem(
+        PENDING_DEVICE_OPERATIONS_STORAGE_KEY,
+        JSON.stringify({
+          adminId: '42',
+          pendingDeviceOperations: [
+            {
+              operation,
+              resourceId: activePrinter.id,
+              idempotencyKey: UUIDS[0],
+              expectedRevision: 7,
+            },
+          ],
+        }),
+      );
+      const state = createState();
+      state.recoveryForm.value = { operationPassword: 'current-secret' };
+      const method = operation === 'set-current' ? api.setCurrent : api.clearCurrent;
+      method.mockReturnValueOnce(pendingRequest.promise as never);
+
+      const retrying = state.retryOperation(operation, activePrinter.id);
+
+      expect(state.recoveryForm.value.operationPassword).toBe('');
+      expect(method).toHaveBeenCalledWith(
+        operation === 'set-current'
+          ? {
+              printerId: activePrinter.id,
+              expectedRevision: 7,
+              operationPassword: 'current-secret',
+            }
+          : { expectedRevision: 7, operationPassword: 'current-secret' },
+        UUIDS[0],
+      );
+      pendingRequest.resolve({
+        current: {
+          printer: operation === 'set-current' ? activePrinter : null,
+          revision: 8,
+          updatedAt: '2026-08-09T10:03:00.000Z',
+        },
+      });
+      await retrying;
+    },
+  );
 
   it('persists only the strict adminId and operation-key whitelist', async () => {
     api.bind.mockRejectedValueOnce(networkError());

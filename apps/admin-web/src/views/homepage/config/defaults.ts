@@ -8,8 +8,9 @@ import {
 } from '@bake-mall/contracts';
 
 import { cloneJson } from '../../../utils/json.js';
+import { createSecureUuidV4 } from '../../../utils/random-uuid.js';
 
-const id = (prefix: string): string => `${prefix}-${crypto.randomUUID()}`;
+const id = (prefix: string): string => `${prefix}-${createSecureUuidV4()}`;
 
 export const createEmptyLink = () => ({ type: HomepageLinkType.NONE }) as const;
 

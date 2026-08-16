@@ -145,6 +145,89 @@ const createPublishService = (publishedVersion: number | null) => {
   return { page, service };
 };
 
+describe('HomepageService 配置草稿原子创建', () => {
+  it('在同一个事务中以完整配置创建草稿并记录审计，不需要后续保存事务', async () => {
+    const page = {
+      id: 'page-1',
+      pageKey: 'HOME' as const,
+      publishedConfig: null,
+      publishedVersion: null,
+      publishedDraftId: null,
+      publishedDraftVersion: null,
+      publishedByAdminId: null,
+      publishedAt: null,
+    };
+    const savedDraft = {
+      id: 'draft-configured',
+      homepagePageId: page.id,
+      name: '专业烘焙示例（开发）',
+      draftConfig: publishableDraftConfig,
+      version: 1,
+      updatedByAdminId: 'admin-1',
+      updatedAt: new Date('2026-08-16T00:00:00.000Z'),
+      createdAt: new Date('2026-08-16T00:00:00.000Z'),
+    };
+    const pages = {
+      createQueryBuilder: vi.fn(() => ({
+        where: vi.fn().mockReturnThis(),
+        getOne: vi.fn().mockResolvedValue(page),
+      })),
+    };
+    const drafts = {
+      findOneBy: vi.fn().mockResolvedValue(null),
+      create: vi.fn((draft) => draft),
+      save: vi.fn().mockResolvedValue(savedDraft),
+    };
+    const manager = {
+      getRepository: vi.fn((entity) => {
+        if (entity.name === 'HomepagePage') return pages;
+        if (entity.name === 'HomepageDraft') return drafts;
+        throw new Error(`Unexpected repository: ${entity.name}`);
+      }),
+    };
+    const transaction = vi.fn(
+      (callback: (transactionManager: unknown) => unknown) => callback(manager),
+    );
+    const mediaPolicy = { assertHomepageAsset: vi.fn() };
+    const audit = { record: vi.fn().mockResolvedValue(undefined) };
+    const service = new (
+      HomepageService as unknown as HomepageServiceConstructor
+    )({}, {}, {}, {}, mediaPolicy, audit, { manager, transaction });
+
+    await expect(
+      service.createDraftWithConfig(
+        '专业烘焙示例（开发）',
+        publishableDraftConfig,
+        'admin-1',
+      ),
+    ).resolves.toMatchObject({
+      id: 'draft-configured',
+      draftConfig: publishableDraftConfig,
+      version: 1,
+    });
+    expect(transaction).toHaveBeenCalledOnce();
+    expect(drafts.findOneBy).toHaveBeenCalledWith({
+      homepagePageId: page.id,
+      name: '专业烘焙示例（开发）',
+    });
+    expect(drafts.create).toHaveBeenCalledWith({
+      homepagePageId: page.id,
+      name: '专业烘焙示例（开发）',
+      draftConfig: publishableDraftConfig,
+      version: 1,
+      updatedByAdminId: 'admin-1',
+    });
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targetId: 'draft-configured',
+        action: 'HOMEPAGE_DRAFT_CREATED',
+      }),
+      manager,
+    );
+    expect(mediaPolicy.assertHomepageAsset).toHaveBeenCalledTimes(6);
+  });
+});
+
 describe('HomepageService legacy singleton compatibility', () => {
   it('reads the migrated current HOME draft instead of removed homepage_pages draft columns', async () => {
     const pages = {

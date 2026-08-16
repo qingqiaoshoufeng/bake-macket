@@ -1,10 +1,16 @@
 import {
   ApiErrorCode,
+  CloudPrinterStatus,
   normalizeCloudPrinterDisplayName,
+  normalizeCloudPrinterSerialNumber,
   type BindCloudPrinterResult,
+  type ClearCurrentCloudPrinterResult,
+  type CloudPrinterListQuery,
   type CloudPrinterView,
   type ConfirmCloudPrinterCompensationDeletionResult,
   type ConfirmCloudPrinterResult,
+  type CurrentCloudPrinterView,
+  type SetCurrentCloudPrinterResult,
   type PrinterVerificationChallengeView,
   type RefreshCloudPrinterOnlineStatusResult,
   type RenameCloudPrinterResult,
@@ -24,6 +30,8 @@ import {
 
 import { ApiClientError } from '../../../api/http.js';
 import { PENDING_DEVICE_OPERATIONS_STORAGE_KEY } from '../../../config/session-storage.js';
+import { hasOwn } from '../../../utils/object.js';
+import { createSecureUuidV4 } from '../../../utils/random-uuid.js';
 import { printingDevicesApi } from '../api/index.js';
 import {
   createBindPrinterDefaults,
@@ -38,6 +46,7 @@ import type {
   PersistedPendingDeviceOperation,
   PrintingDeviceError,
   PrintingDeviceOperation,
+  PrintingDeviceListScope,
   PrinterChallengeState,
   RecoveryPrinterForm,
   RenamePrinterForm,
@@ -58,25 +67,23 @@ const OPERATIONS = new Set<PrintingDeviceOperation>([
   'delete-confirm',
   'unbind',
   'rename',
+  'set-current',
+  'clear-current',
 ]);
 const UNKNOWN_CODES = new Set<ApiErrorCode>([
   ApiErrorCode.IDEMPOTENCY_IN_PROGRESS,
   ApiErrorCode.IDEMPOTENCY_RESULT_UNKNOWN,
 ]);
-const STABLE_CONFIRM_CODES = new Set<ApiErrorCode>([
-  ApiErrorCode.CLOUD_PRINTER_VERIFICATION_CODE_INVALID,
-  ApiErrorCode.CLOUD_PRINTER_VERIFICATION_EXPIRED,
-  ApiErrorCode.CLOUD_PRINTER_VERIFICATION_ATTEMPTS_EXHAUSTED,
-]);
-
 type DialogState = {
-  readonly kind: 'bind' | 'verify' | 'recovery' | 'rename' | null;
+  readonly kind: 'bind' | 'verify' | 'recovery' | 'rename' | 'detail' | null;
   readonly resourceId?: string;
   readonly recoveryAction?:
     | 'resend'
     | 'requery'
     | 'delete-confirm'
-    | 'unbind';
+    | 'unbind'
+    | 'set-current'
+    | 'clear-current';
 };
 
 type PersistedOperations = {
@@ -101,6 +108,16 @@ type OperationRequest =
       readonly operation: 'rename';
       readonly resourceId: string;
       readonly body: RenamePrinterForm;
+    }
+  | {
+      readonly operation: 'set-current';
+      readonly resourceId: string;
+      readonly body: { expectedRevision: number; operationPassword: string };
+    }
+  | {
+      readonly operation: 'clear-current';
+      readonly resourceId: string;
+      readonly body: { expectedRevision: number; operationPassword: string };
     };
 
 type OperationResult =
@@ -111,7 +128,9 @@ type OperationResult =
   | RequeryCloudPrinterVendorRelationResult
   | ConfirmCloudPrinterCompensationDeletionResult
   | UnbindCloudPrinterResult
-  | RenameCloudPrinterResult;
+  | RenameCloudPrinterResult
+  | SetCurrentCloudPrinterResult
+  | ClearCurrentCloudPrinterResult;
 
 export type UsePrintingDevicesOptions = {
   readonly adminId: Ref<string | null>;
@@ -120,6 +139,9 @@ export type UsePrintingDevicesOptions = {
 
 export type UsePrintingDevicesResult = {
   readonly devices: Ref<readonly CloudPrinterView[]>;
+  readonly current: Ref<CurrentCloudPrinterView>;
+  readonly detail: Ref<CloudPrinterView | null>;
+  readonly listScope: Ref<PrintingDeviceListScope>;
   readonly total: Ref<number>;
   readonly page: Ref<number>;
   readonly pageSize: Ref<number>;
@@ -144,6 +166,10 @@ export type UsePrintingDevicesResult = {
   readonly load: () => Promise<void>;
   readonly setPage: (page: number) => Promise<void>;
   readonly setPageSize: (pageSize: number) => Promise<void>;
+  readonly setListScope: (scope: PrintingDeviceListScope) => Promise<void>;
+  readonly openDetail: (printerId: string) => Promise<void>;
+  readonly setCurrent: (printerId: string) => Promise<SetCurrentCloudPrinterResult>;
+  readonly clearCurrent: () => Promise<ClearCurrentCloudPrinterResult>;
   readonly bind: () => Promise<BindCloudPrinterResult>;
   readonly confirm: (printerId: string) => Promise<ConfirmCloudPrinterResult>;
   readonly resend: (
@@ -164,11 +190,21 @@ export type UsePrintingDevicesResult = {
     operation: PrintingDeviceOperation,
     resourceId?: string,
   ) => Promise<OperationResult>;
+  readonly discardPendingOperation: (
+    operation: PrintingDeviceOperation,
+    resourceId?: string,
+  ) => void;
   readonly updateCountdown: (nowMs?: number) => void;
   readonly openBind: () => void;
   readonly openVerify: (printer: CloudPrinterView) => void;
   readonly openRecovery: (
-    action: 'resend' | 'requery' | 'delete-confirm' | 'unbind',
+    action:
+      | 'resend'
+      | 'requery'
+      | 'delete-confirm'
+      | 'unbind'
+      | 'set-current'
+      | 'clear-current',
     printer: CloudPrinterView,
   ) => void;
   readonly openRename: (printer: CloudPrinterView) => void;
@@ -186,7 +222,7 @@ function hasExactKeys(
   const keys = Object.keys(value);
   return (
     keys.length === expected.length &&
-    expected.every((key) => Object.hasOwn(value, key))
+    expected.every((key) => hasOwn(value, key))
   );
 }
 
@@ -195,14 +231,16 @@ function isPersistedOperation(
 ): value is PersistedPendingDeviceOperation {
   if (!isRecord(value)) return false;
   const operation = value.operation;
-  const hasResourceId = Object.hasOwn(value, 'resourceId');
+  const hasResourceId = hasOwn(value, 'resourceId');
+  const hasExpectedRevision = hasOwn(value, 'expectedRevision');
+  const expectedKeys = [
+    'operation',
+    ...(hasResourceId ? ['resourceId'] : []),
+    'idempotencyKey',
+    ...(hasExpectedRevision ? ['expectedRevision'] : []),
+  ];
   if (
-    !hasExactKeys(
-      value,
-      hasResourceId
-        ? ['operation', 'resourceId', 'idempotencyKey']
-        : ['operation', 'idempotencyKey'],
-    ) ||
+    !hasExactKeys(value, expectedKeys) ||
     typeof operation !== 'string' ||
     !OPERATIONS.has(operation as PrintingDeviceOperation) ||
     typeof value.idempotencyKey !== 'string' ||
@@ -210,7 +248,20 @@ function isPersistedOperation(
   ) {
     return false;
   }
-  if (operation === 'bind') return !hasResourceId;
+  if (
+    hasExpectedRevision &&
+    (!Number.isSafeInteger(value.expectedRevision) ||
+      (value.expectedRevision as number) < 0)
+  ) {
+    return false;
+  }
+  if (operation === 'bind') return !hasResourceId && !hasExpectedRevision;
+  if (
+    (operation === 'set-current' || operation === 'clear-current') === false &&
+    hasExpectedRevision
+  ) {
+    return false;
+  }
   return (
     hasResourceId &&
     typeof value.resourceId === 'string' &&
@@ -300,7 +351,7 @@ function classifiedError(error: unknown): PrintingDeviceError {
   return {
     kind: 'stable',
     message:
-      error instanceof ApiClientError
+      error instanceof ApiClientError || error instanceof Error
         ? error.message
         : '操作失败，请检查设备状态后重试',
   };
@@ -340,11 +391,49 @@ function challengeCountdownSeconds(
     : 0;
 }
 
+function listQuery(
+  scope: PrintingDeviceListScope,
+  page: number,
+  pageSize: number,
+): CloudPrinterListQuery {
+  const pagination = { page, pageSize };
+  return scope === 'removed'
+    ? {
+        ...pagination,
+        includeUnbound: true,
+        status: CloudPrinterStatus.UNBOUND,
+      }
+    : { ...pagination, includeUnbound: false };
+}
+
+function currentPrinterView(
+  current: CurrentCloudPrinterView,
+): CurrentCloudPrinterView {
+  return {
+    ...current,
+    printer: current.printer ? { ...current.printer, isCurrent: true } : null,
+  };
+}
+
+function markCurrentDevice(
+  device: CloudPrinterView,
+  currentPrinterId: string | undefined,
+): CloudPrinterView {
+  return { ...device, isCurrent: currentPrinterId === device.id };
+}
+
 export function usePrintingDevices(
   options: UsePrintingDevicesOptions,
 ): UsePrintingDevicesResult {
   const now = options.now ?? Date.now;
   const devices = ref<readonly CloudPrinterView[]>([]);
+  const current = ref<CurrentCloudPrinterView>({
+    printer: null,
+    revision: 0,
+    updatedAt: '',
+  });
+  const detail = ref<CloudPrinterView | null>(null);
+  const listScope = ref<PrintingDeviceListScope>('existing');
   const total = ref(0);
   const page = ref(PRINTER_PAGINATION.defaultPage);
   const pageSize = ref(PRINTER_PAGINATION.defaultPageSize);
@@ -400,10 +489,11 @@ export function usePrintingDevices(
     const persisted: PersistedOperations = {
       adminId,
       pendingDeviceOperations: pendingOperations.value.map(
-        ({ operation, resourceId, idempotencyKey }) => ({
+        ({ operation, resourceId, idempotencyKey, expectedRevision }) => ({
           operation,
           ...(resourceId ? { resourceId } : {}),
           idempotencyKey,
+          ...(expectedRevision !== undefined ? { expectedRevision } : {}),
         }),
       ),
     };
@@ -434,6 +524,12 @@ export function usePrintingDevices(
       return;
     }
     pendingOperations.value = parsed;
+    if (parsed.length > 0) {
+      error.value = {
+        kind: 'unknown',
+        message: '检测到未确认的打印机操作，请继续原操作或刷新权威状态',
+      };
+    }
   }
 
   hydrateOperations(options.adminId.value);
@@ -562,16 +658,23 @@ export function usePrintingDevices(
     const generation = mutationGeneration;
     listSequence = sequence;
     loading.value = true;
-    if (!options.preserveError) error.value = null;
+    if (!options.preserveError && pendingOperations.value.length === 0) {
+      error.value = null;
+    }
     try {
-      const result = await printingDevicesApi.list({
-        page: page.value,
-        pageSize: pageSize.value,
-      });
+      const [result, authoritativeCurrent] = await Promise.all([
+        printingDevicesApi.list(
+          listQuery(listScope.value, page.value, pageSize.value),
+        ),
+        printingDevicesApi.current(),
+      ]);
       if (sequence !== listSequence || generation !== mutationGeneration)
         return;
-      devices.value = result.items.map((device) => ({ ...device }));
-      updateChallengeMetadata(result.items);
+      current.value = currentPrinterView(authoritativeCurrent);
+      devices.value = result.items.map((device) =>
+        markCurrentDevice(device, authoritativeCurrent.printer?.id),
+      );
+      updateChallengeMetadata(devices.value);
       total.value = result.total;
       page.value = result.page;
       pageSize.value = result.pageSize;
@@ -596,18 +699,37 @@ export function usePrintingDevices(
     await load();
   }
 
+  async function setListScope(scope: PrintingDeviceListScope): Promise<void> {
+    listScope.value = scope;
+    page.value = PRINTER_PAGINATION.defaultPage;
+    await load();
+  }
+
+  async function openDetail(printerId: string): Promise<void> {
+    detail.value = { ...(await printingDevicesApi.detail(printerId)) };
+    dialog.value = { kind: 'detail', resourceId: printerId };
+  }
+
   function applyResult(
     operation: PrintingDeviceOperation,
     result: OperationResult,
     idempotencyKey: string,
     resourceId?: string,
   ): void {
-    const current = pendingOperations.value.find(
+    const pending = pendingOperations.value.find(
       (candidate) =>
         operationIdentity(candidate.operation, candidate.resourceId) ===
         operationIdentity(operation, resourceId),
     );
-    if (current?.idempotencyKey !== idempotencyKey) return;
+    if (pending?.idempotencyKey !== idempotencyKey) return;
+    if ('current' in result) {
+      current.value = currentPrinterView(result.current);
+      devices.value = devices.value.map((device) =>
+        markCurrentDevice(device, result.current.printer?.id),
+      );
+      dialog.value = { kind: null };
+      return;
+    }
     upsertDevice(result.printer);
     if ('challenge' in result) {
       challenge.value = { ...result.challenge };
@@ -678,6 +800,13 @@ export function usePrintingDevices(
           request.body,
           idempotencyKey,
         );
+      case 'set-current':
+        return printingDevicesApi.setCurrent(
+          { printerId: request.resourceId, ...request.body },
+          idempotencyKey,
+        );
+      case 'clear-current':
+        return printingDevicesApi.clearCurrent(request.body, idempotencyKey);
     }
   }
 
@@ -715,7 +844,6 @@ export function usePrintingDevices(
           candidate.idempotencyKey === idempotencyKey,
       );
       if (!current) throw caught;
-      const classification = classifyOperationError(caught);
       const status = operationStatus(caught);
       if (status) {
         setPendingStatus(request.operation, resourceId, idempotencyKey, status);
@@ -723,15 +851,7 @@ export function usePrintingDevices(
         releasePending(request.operation, resourceId, idempotencyKey);
       }
       error.value = classifiedError(caught);
-      if (
-        request.operation === 'confirm' &&
-        apiErrorCode(caught) !== undefined &&
-        STABLE_CONFIRM_CODES.has(apiErrorCode(caught)!)
-      ) {
-        await reloadAfterMutation(true);
-      } else if (classification === 'FAILED') {
-        await reloadAfterMutation(true);
-      }
+      if (!status) await reloadAfterMutation(true);
       throw caught;
     } finally {
       submitting.value = pendingOperations.value.some(
@@ -741,13 +861,17 @@ export function usePrintingDevices(
   }
 
   function begin(request: OperationRequest): Promise<OperationResult> {
-    const idempotencyKey = crypto.randomUUID();
+    const idempotencyKey = createSecureUuidV4();
     const resourceId = 'resourceId' in request ? request.resourceId : undefined;
     updatePending(
       {
         operation: request.operation,
         ...(resourceId ? { resourceId } : {}),
         idempotencyKey,
+        ...((request.operation === 'set-current' ||
+          request.operation === 'clear-current') && {
+          expectedRevision: request.body.expectedRevision,
+        }),
         status: 'PENDING',
       },
       request,
@@ -757,7 +881,8 @@ export function usePrintingDevices(
 
   function requestForRetry(
     operation: PrintingDeviceOperation,
-    resourceId?: string,
+    resourceId: string | undefined,
+    pending: PendingDeviceOperation,
   ): OperationRequest {
     const remembered = operationRequests.get(
       operationIdentity(operation, resourceId),
@@ -781,6 +906,21 @@ export function usePrintingDevices(
     if (operation === 'rename') {
       return { operation, resourceId, body: { ...renameForm.value } };
     }
+    if (operation === 'set-current' || operation === 'clear-current') {
+      if (pending.expectedRevision === undefined) {
+        throw new Error(
+          '该待恢复操作缺少原始版本，无法安全重试；请刷新权威状态后清除记录',
+        );
+      }
+      return {
+        operation,
+        resourceId,
+        body: {
+          expectedRevision: pending.expectedRevision,
+          operationPassword: recoveryForm.value.operationPassword,
+        },
+      };
+    }
     return { operation: 'refresh', resourceId };
   }
 
@@ -796,7 +936,10 @@ export function usePrintingDevices(
     } else if (
       request.operation === 'resend' ||
       request.operation === 'requery' ||
-      request.operation === 'delete-confirm'
+      request.operation === 'delete-confirm' ||
+      request.operation === 'unbind' ||
+      request.operation === 'set-current' ||
+      request.operation === 'clear-current'
     ) {
       recoveryForm.value = createRecoveryPrinterDefaults();
     }
@@ -812,14 +955,42 @@ export function usePrintingDevices(
         operationIdentity(operation, resourceId),
     );
     if (!pending) throw new Error('没有可继续的打印机操作');
-    const request = requestForRetry(operation, resourceId);
+    let request: OperationRequest;
+    try {
+      request = requestForRetry(operation, resourceId, pending);
+    } catch (caught) {
+      error.value = classifiedError(caught);
+      throw caught;
+    }
     clearRetriedSensitiveForm(request);
     operationRequests.set(operationIdentity(operation, resourceId), request);
     return execute(request, pending.idempotencyKey);
   }
 
+  function discardPendingOperation(
+    operation: PrintingDeviceOperation,
+    resourceId?: string,
+  ): void {
+    const pending = pendingOperations.value.find(
+      (candidate) =>
+        operationIdentity(candidate.operation, candidate.resourceId) ===
+        operationIdentity(operation, resourceId),
+    );
+    if (!pending) return;
+    releasePending(operation, resourceId, pending.idempotencyKey);
+  }
+
   async function bind(): Promise<BindCloudPrinterResult> {
-    const request = { ...bindForm.value };
+    const serialNumber = normalizeCloudPrinterSerialNumber(
+      bindForm.value.serialNumber,
+    );
+    if (!serialNumber) throw new Error('设备序列号格式不正确');
+    const displayName = normalizeCloudPrinterDisplayName(
+      bindForm.value.displayName,
+    );
+    if (!displayName) throw new Error('打印机名称需为 1–64 个字符');
+    if (!bindForm.value.operationPassword) throw new Error('请输入操作密码');
+    const request = { ...bindForm.value, serialNumber, displayName };
     bindForm.value = {
       serialNumber: '',
       displayName: request.displayName,
@@ -835,6 +1006,10 @@ export function usePrintingDevices(
     printerId: string,
   ): Promise<ConfirmCloudPrinterResult> {
     const request = { ...verifyForm.value };
+    if (!/^\d{6}$/u.test(request.code)) {
+      throw new Error('验证码必须为 6 位数字');
+    }
+    if (!request.operationPassword) throw new Error('请输入操作密码');
     verifyForm.value = createVerifyPrinterDefaults(request.challengeId);
     return begin({
       operation: 'confirm',
@@ -900,6 +1075,37 @@ export function usePrintingDevices(
     }) as Promise<UnbindCloudPrinterResult>;
   }
 
+  function beginCurrentOperation(
+    operation: 'set-current' | 'clear-current',
+    printerId?: string,
+  ): Promise<SetCurrentCloudPrinterResult | ClearCurrentCloudPrinterResult> {
+    const operationPassword = recoveryForm.value.operationPassword;
+    if (!operationPassword) throw new Error('请输入操作密码');
+    recoveryForm.value = createRecoveryPrinterDefaults();
+    if (!printerId) throw new Error('当前没有可清除的打印机');
+    return begin({
+      operation,
+      resourceId: printerId,
+      body: { expectedRevision: current.value.revision, operationPassword },
+    }) as Promise<SetCurrentCloudPrinterResult | ClearCurrentCloudPrinterResult>;
+  }
+
+  async function setCurrent(
+    printerId: string,
+  ): Promise<SetCurrentCloudPrinterResult> {
+    return beginCurrentOperation(
+      'set-current',
+      printerId,
+    ) as Promise<SetCurrentCloudPrinterResult>;
+  }
+
+  async function clearCurrent(): Promise<ClearCurrentCloudPrinterResult> {
+    return beginCurrentOperation(
+      'clear-current',
+      current.value.printer?.id,
+    ) as Promise<ClearCurrentCloudPrinterResult>;
+  }
+
   async function rename(printerId: string): Promise<RenameCloudPrinterResult> {
     const normalized = normalizeCloudPrinterDisplayName(
       renameForm.value.displayName,
@@ -940,7 +1146,13 @@ export function usePrintingDevices(
   }
 
   function openRecovery(
-    action: 'resend' | 'requery' | 'delete-confirm' | 'unbind',
+    action:
+      | 'resend'
+      | 'requery'
+      | 'delete-confirm'
+      | 'unbind'
+      | 'set-current'
+      | 'clear-current',
     printer: CloudPrinterView,
   ): void {
     recoveryForm.value = createRecoveryPrinterDefaults();
@@ -970,6 +1182,9 @@ export function usePrintingDevices(
 
   return {
     devices,
+    current,
+    detail,
+    listScope,
     total,
     page,
     pageSize,
@@ -992,6 +1207,10 @@ export function usePrintingDevices(
     load,
     setPage,
     setPageSize,
+    setListScope,
+    openDetail,
+    setCurrent,
+    clearCurrent,
     bind,
     confirm,
     resend,
@@ -1001,6 +1220,7 @@ export function usePrintingDevices(
     unbind,
     rename,
     retryOperation,
+    discardPendingOperation,
     updateCountdown,
     openBind,
     openVerify,

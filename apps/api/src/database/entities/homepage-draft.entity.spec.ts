@@ -6,13 +6,14 @@ import { describe, expect, it } from 'vitest';
 import { AdminUser } from './admin-user.entity.js';
 import { HomepageDraft } from './homepage-draft.entity.js';
 import { HomepagePage } from './homepage-page.entity.js';
+import { User } from './user.entity.js';
 
 describe('HomepageDraft entity metadata', () => {
   it('maps per-page drafts with unique names and cascade-safe relations', async () => {
     const dataSource = new DataSource({
       type: 'mysql',
       database: 'metadata_test',
-      entities: [AdminUser, HomepagePage, HomepageDraft],
+      entities: [User, AdminUser, HomepagePage, HomepageDraft],
     });
 
     await (

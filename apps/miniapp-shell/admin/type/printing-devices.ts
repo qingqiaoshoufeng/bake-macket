@@ -4,6 +4,7 @@ import type {
   ConfirmCloudPrinterRequest,
   PrinterVerificationChallengeView,
   RenameCloudPrinterRequest,
+  CurrentCloudPrinterView,
 } from '@bake-mall/contracts';
 
 export type PrintingDeviceOperation =
@@ -14,16 +15,20 @@ export type PrintingDeviceOperation =
   | 'requery'
   | 'delete-confirm'
   | 'unbind'
-  | 'rename';
+  | 'rename'
+  | 'set-current'
+  | 'clear-current';
 
 export type PrintingDeviceAction =
-  Exclude<PrintingDeviceOperation, 'bind' | 'confirm'> | 'verify';
+  Exclude<PrintingDeviceOperation, 'bind' | 'confirm'> | 'verify' | 'detail';
+export type PrintingDeviceListScope = 'existing' | 'removed';
 export type PrintingDeviceOperationStatus = 'PENDING' | 'RETRYABLE' | 'UNKNOWN';
 
 export type PendingDeviceOperation = Readonly<{
   operation: PrintingDeviceOperation;
   resourceId?: string;
   idempotencyKey: string;
+  expectedRevision?: number;
   status: PrintingDeviceOperationStatus;
   wasUncertain?: true;
 }>;
@@ -32,12 +37,19 @@ export type PersistedPendingDeviceOperation = Readonly<{
   operation: PrintingDeviceOperation;
   resourceId?: string;
   idempotencyKey: string;
+  expectedRevision?: number;
 }>;
 
 export type PrintingDevicesDialog = Readonly<{
-  kind: 'bind' | 'verify' | 'recovery' | 'rename' | null;
+  kind: 'bind' | 'verify' | 'recovery' | 'rename' | 'detail' | null;
   resourceId?: string;
-  recoveryAction?: 'resend' | 'requery' | 'delete-confirm' | 'unbind';
+  recoveryAction?:
+    | 'resend'
+    | 'requery'
+    | 'delete-confirm'
+    | 'unbind'
+    | 'set-current'
+    | 'clear-current';
 }>;
 
 export type PrintingDevicesForms = Readonly<{
@@ -49,6 +61,9 @@ export type PrintingDevicesForms = Readonly<{
 
 export type PrintingDevicesState = Readonly<{
   devices: readonly CloudPrinterView[];
+  current: CurrentCloudPrinterView;
+  detail: CloudPrinterView | null;
+  listScope: PrintingDeviceListScope;
   total: number;
   page: number;
   pageSize: number;

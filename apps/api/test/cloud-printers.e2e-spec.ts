@@ -19,6 +19,7 @@ import { JwtAdminGuard } from '../src/auth/admin-jwt.guard.js';
 import { type AuthenticatedAdmin } from '../src/auth/auth.types.js';
 import { AdminVerificationService } from '../src/auth/admin-verification.service.js';
 import { CloudPrinter } from '../src/database/entities/cloud-printer.entity.js';
+import { CloudPrinterCurrentService } from '../src/printing/cloud-printer-current.service.js';
 import { AdminCloudPrintersController } from '../src/printing/admin-cloud-printers.controller.js';
 import { AdminOperationIdempotencyService } from '../src/printing/admin-operation-idempotency.service.js';
 import { CloudPrinterReconciliationService } from '../src/printing/cloud-printer-reconciliation.service.js';
@@ -88,6 +89,25 @@ describe.sequential('Admin cloud printers controller (e2e)', () => {
         ) ?? null,
     ),
     find: vi.fn(async () => printerRows),
+    findAndCount: vi.fn(
+      async ({ where, skip = 0, take = printerRows.length }) => {
+        const filtered = printerRows.filter((row) =>
+          Object.entries(where ?? {}).every(([key, expected]) => {
+            if (
+              expected &&
+              typeof expected === 'object' &&
+              '_type' in expected
+            ) {
+              const operator = expected as { _type: string; _value?: unknown };
+              if (operator._type === 'not') return row[key] !== operator._value;
+              if (operator._type === 'isNull') return row[key] === null;
+            }
+            return row[key] === expected;
+          }),
+        );
+        return [filtered.slice(skip, skip + take), filtered.length];
+      },
+    ),
     save: vi.fn(async (value: Record<string, unknown>) => {
       const id = value.id ?? String(printerRows.length + 1);
       const saved = { ...value, id };
@@ -181,12 +201,48 @@ describe.sequential('Admin cloud printers controller (e2e)', () => {
     {} as never,
   );
   const verificationService = verification as never;
+  const current = {
+    get: vi.fn(async () => ({
+      printer: null,
+      revision: 1,
+      updatedAt: '2026-08-16T00:00:00.000Z',
+    })),
+    set: vi.fn(async (_admin, body) => ({
+      current: {
+        printer: {
+          id: body.printerId,
+          displayName: '当前设备',
+          serialNumberMasked: 'SN****11',
+          status: 'ACTIVE',
+          onlineStatus: 'OFFLINE',
+          lastStatusCheckedAt: null,
+          isCurrent: true,
+          bindingStage: 'NONE',
+          vendorRelationState: 'CONFIRMED_BOUND',
+        },
+        revision: body.expectedRevision + 1,
+        updatedAt: '2026-08-16T00:00:00.000Z',
+      },
+    })),
+    clear: vi.fn(async (_admin, body) => ({
+      current: {
+        printer: null,
+        revision: body.expectedRevision + 1,
+        updatedAt: '2026-08-16T00:00:00.000Z',
+      },
+    })),
+    assertNotCurrentForUnbind: vi.fn(async () => undefined),
+    clearByReconciliation: vi.fn(async () => false),
+  };
   const cloudPrinters = new CloudPrinterService(
     dataSource,
     verificationService,
     auditLog as never,
     idempotencyService,
     vendorCalls,
+    undefined,
+    undefined,
+    current as never,
   );
   const reconciliation = new CloudPrinterReconciliationService(
     dataSource,
@@ -194,6 +250,8 @@ describe.sequential('Admin cloud printers controller (e2e)', () => {
     auditLog as never,
     idempotencyService,
     vendorCalls,
+    undefined,
+    current as never,
   );
 
   beforeAll(async () => {
@@ -207,6 +265,7 @@ describe.sequential('Admin cloud printers controller (e2e)', () => {
           useValue: idempotencyService,
         },
         { provide: CloudPrinterService, useValue: cloudPrinters },
+        { provide: CloudPrinterCurrentService, useValue: current },
         {
           provide: CloudPrinterReconciliationService,
           useValue: reconciliation,
@@ -245,6 +304,50 @@ describe.sequential('Admin cloud printers controller (e2e)', () => {
 
   afterAll(async () => {
     await app?.close();
+  });
+
+  it('注册静态 current 路由、详情路由和 status 查询，并使用对应权限', async () => {
+    const readCurrent = await request(app!.getHttpServer())
+      .get('/api/v1/admin/cloud-printers/current')
+      .set('x-test-role', AdminRole.OPERATOR);
+    const setCurrent = await request(app!.getHttpServer())
+      .put('/api/v1/admin/cloud-printers/current')
+      .set('idempotency-key', '00000000-0000-4000-8000-000000000901')
+      .set('x-test-role', AdminRole.OPERATOR)
+      .send({
+        printerId: '11',
+        expectedRevision: 1,
+        operationPassword: 'pw',
+      });
+    const clearCurrent = await request(app!.getHttpServer())
+      .post('/api/v1/admin/cloud-printers/current/clear')
+      .set('idempotency-key', '00000000-0000-4000-8000-000000000902')
+      .set('x-test-role', AdminRole.OPERATOR)
+      .send({ expectedRevision: 2, operationPassword: 'pw' });
+    const invalidStatus = await request(app!.getHttpServer())
+      .get('/api/v1/admin/cloud-printers?page=1&pageSize=20&status=INVALID')
+      .set('x-test-role', AdminRole.OPERATOR);
+    const includeUnbound = await request(app!.getHttpServer())
+      .get('/api/v1/admin/cloud-printers?page=1&pageSize=20&includeUnbound=false')
+      .set('x-test-role', AdminRole.OPERATOR);
+
+    expect(readCurrent.status).toBe(200);
+    expect(setCurrent.status).toBe(200);
+    expect(setCurrent.body.current.printer).toMatchObject({
+      id: '11',
+      isCurrent: true,
+      onlineStatus: 'OFFLINE',
+    });
+    expect(clearCurrent.status).toBe(201);
+    expect(clearCurrent.body.current.printer).toBeNull();
+    expect(invalidStatus.status).toBe(400);
+    expect(includeUnbound.status).toBe(200);
+    expect(includeUnbound.body).toMatchObject({ items: [], total: 0 });
+    expect(current.set).toHaveBeenCalledWith(
+      expect.objectContaining({ id: '42' }),
+      expect.objectContaining({ printerId: '11' }),
+      '00000000-0000-4000-8000-000000000901',
+    );
   });
 
   it('OPERATOR has PRINT_DEVICE_MANAGE and may bind; response excludes full serial', async () => {

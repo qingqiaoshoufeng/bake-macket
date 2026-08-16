@@ -25,6 +25,9 @@ type InputEvent = Readonly<{
 type ActionEvent = Readonly<{
   detail: Readonly<{ action?: unknown; printerId?: unknown }>;
 }>;
+type ScopeEvent = Readonly<{
+  currentTarget: Readonly<{ dataset: Readonly<{ scope?: unknown }> }>;
+}>;
 type ContinueEvent = Readonly<{
   currentTarget: Readonly<{
     dataset: Readonly<{ operation?: unknown; printerId?: unknown }>;
@@ -34,6 +37,7 @@ type PrinterRow = CloudPrinterView &
   Readonly<{
     actions: readonly Readonly<{
       disabled: boolean;
+      danger: boolean;
       label: string;
       value: PrintingDeviceAction;
     }>[];
@@ -44,6 +48,7 @@ type PageCustom = {
   onBindInput: (event: InputEvent) => void;
   onCloseDialog: () => void;
   onContinue: (event: ContinueEvent) => Promise<void>;
+  onDiscardPending: (event: ContinueEvent) => void;
   onHide: () => void;
   onNextPage: () => Promise<void>;
   onOpenBind: () => void;
@@ -57,6 +62,7 @@ type PageCustom = {
   onSubmitRecovery: () => Promise<void>;
   onSubmitRename: () => Promise<void>;
   onSubmitVerify: () => Promise<void>;
+  onSwitchScope: (event: ScopeEvent) => Promise<void>;
   onUnload: () => void;
   onVerifyInput: (event: InputEvent) => void;
 };
@@ -74,7 +80,10 @@ function pageData(): PageData {
     printerRows: state.devices.map((device) => ({
       ...device,
       actions: controller.actionsFor(device).map((action) => ({
-        disabled: pending(action === 'verify' ? 'confirm' : action, device.id),
+        disabled:
+          pending(action === 'verify' || action === 'detail' ? 'confirm' : action, device.id) ||
+          (action === 'unbind' && device.isCurrent),
+        danger: action === 'unbind',
         label: PRINTER_ACTION_LABELS[action],
         value: action,
       })),
@@ -87,10 +96,20 @@ function safeMessage(error: unknown): string {
 }
 
 function printerById(printerId: string): CloudPrinterView | null {
+  const state = controller.snapshot();
   return (
-    controller.snapshot().devices.find((device) => device.id === printerId) ??
-    null
+    state.devices.find((device) => device.id === printerId) ??
+    (state.detail?.id === printerId ? state.detail : null)
   );
+}
+
+async function printerForPendingOperation(
+  printerId: string,
+): Promise<CloudPrinterView | null> {
+  const listed = printerById(printerId);
+  if (listed) return listed;
+  await controller.openDetail(printerId);
+  return printerById(printerId);
 }
 
 function pending(
@@ -210,6 +229,18 @@ Page<PageData, PageCustom>({
     this.setData(pageData());
   },
 
+  async onSwitchScope(event): Promise<void> {
+    const scope = event.currentTarget.dataset.scope;
+    if (scope !== 'existing' && scope !== 'removed') return;
+    try {
+      await controller.setListScope(scope);
+    } catch (error) {
+      void wx.showToast({ title: safeMessage(error), icon: 'none' });
+    } finally {
+      this.setData(pageData());
+    }
+  },
+
   async onRetry(): Promise<void> {
     try {
       await controller.load();
@@ -262,10 +293,22 @@ Page<PageData, PageCustom>({
         await controller.requery(resourceId);
       } else if (recoveryAction === 'unbind') {
         await controller.unbind(resourceId);
+      } else if (recoveryAction === 'set-current') {
+        await controller.setCurrent(resourceId);
+      } else if (recoveryAction === 'clear-current') {
+        await controller.clearCurrent();
       } else {
         await controller.confirmDeletion(resourceId);
       }
-      void wx.showToast({ title: '恢复操作已提交', icon: 'success' });
+      void wx.showToast({
+        title:
+          recoveryAction === 'set-current'
+            ? '已设为当前打印机'
+            : recoveryAction === 'clear-current'
+              ? '已清除当前打印机'
+              : '设备状态操作已提交',
+        icon: 'success',
+      });
     } catch (error) {
       void wx.showToast({ title: safeMessage(error), icon: 'none' });
     } finally {
@@ -297,7 +340,10 @@ Page<PageData, PageCustom>({
     const printer = printerById(printerId);
     if (!printer) return;
     if (action === 'verify') controller.openVerify(printer);
-    else if (action === 'rename') controller.openRename(printer);
+    else if (action === 'detail') await controller.openDetail(printer.id);
+    else if (action === 'set-current' || action === 'clear-current') {
+      controller.openRecovery(action, printer);
+    } else if (action === 'rename') controller.openRename(printer);
     else if (action === 'unbind') {
       const confirmed = await new Promise<boolean>((resolve) => {
         wx.showModal({
@@ -328,6 +374,17 @@ Page<PageData, PageCustom>({
     this.setData(pageData());
   },
 
+  onDiscardPending(event): void {
+    const operation = event.currentTarget.dataset.operation;
+    const printerId = event.currentTarget.dataset.printerId;
+    if (typeof operation !== 'string') return;
+    controller.discardOperation(
+      operation as PrintingDeviceOperation,
+      typeof printerId === 'string' ? printerId : undefined,
+    );
+    this.setData(pageData());
+  },
+
   async onContinue(event): Promise<void> {
     const operation = event.currentTarget.dataset.operation;
     const printerId = event.currentTarget.dataset.printerId;
@@ -344,7 +401,13 @@ Page<PageData, PageCustom>({
       return;
     if (operation === 'bind') controller.openBind();
     else if (typeof printerId === 'string') {
-      const printer = printerById(printerId);
+      let printer: CloudPrinterView | null = null;
+      try {
+        printer = await printerForPendingOperation(printerId);
+      } catch (error) {
+        void wx.showToast({ title: safeMessage(error), icon: 'none' });
+        return;
+      }
       if (!printer) return;
       if (operation === 'confirm') controller.openVerify(printer);
       else if (operation === 'rename') controller.openRename(printer);
@@ -352,7 +415,9 @@ Page<PageData, PageCustom>({
         operation === 'resend' ||
         operation === 'requery' ||
         operation === 'delete-confirm' ||
-        operation === 'unbind'
+        operation === 'unbind' ||
+        operation === 'set-current' ||
+        operation === 'clear-current'
       )
         controller.openRecovery(operation, printer);
       else if (operation === 'refresh') {

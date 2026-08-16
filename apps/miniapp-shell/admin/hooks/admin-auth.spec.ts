@@ -125,6 +125,36 @@ describe('createAdminAuthController', () => {
     expect(harness.toast).not.toHaveBeenCalled();
   });
 
+  it('keeps automatic eligibility network failures silent during page startup', async () => {
+    const harness = authHarness();
+    harness.login.mockResolvedValue('fresh-login-code');
+    harness.api.loginWithWechat.mockRejectedValue({
+      status: 0,
+      message: 'network unavailable',
+    });
+
+    await expect(harness.controller.refreshEligibility()).resolves.toBe(false);
+
+    expect(harness.controller.snapshot()).toEqual({
+      eligible: false,
+      loading: false,
+    });
+    expect(harness.toast).not.toHaveBeenCalled();
+  });
+
+  it('still reports a safe error after an explicit management entry attempt', async () => {
+    const harness = authHarness();
+    harness.login.mockResolvedValue('fresh-login-code');
+    harness.api.loginWithWechat.mockRejectedValue({
+      status: 0,
+      message: 'network unavailable',
+    });
+
+    await expect(harness.controller.enterAdmin()).resolves.toBe(false);
+
+    expect(harness.toast).toHaveBeenCalledWith('管理入口暂不可用，请稍后重试');
+  });
+
   it('removes a previously eligible entry while checking a fresh ineligible identity', async () => {
     const harness = authHarness();
     harness.login.mockResolvedValue('eligible-code');

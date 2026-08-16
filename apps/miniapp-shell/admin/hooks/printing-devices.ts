@@ -5,6 +5,9 @@ import type {
   CloudPrinterListQuery,
   CloudPrinterListResult,
   CloudPrinterView,
+  CurrentCloudPrinterView,
+  SetCurrentCloudPrinterResult,
+  ClearCurrentCloudPrinterResult,
   ConfirmCloudPrinterCompensationDeletionResult,
   ConfirmCloudPrinterResult,
   PrinterVerificationChallengeView,
@@ -20,6 +23,7 @@ import {
   ApiErrorCode,
   CloudPrinterStatus,
   normalizeCloudPrinterDisplayName,
+  normalizeCloudPrinterSerialNumber,
 } from '../../config/contracts.generated.js';
 import { ApiClientError } from '../../utils/api-client.js';
 import type { MemorySessionStore } from '../../utils/admin-session.js';
@@ -39,6 +43,7 @@ import type {
   PrintingDeviceOperation,
   PrintingDeviceOperationStatus,
   PrintingDevicesState,
+  PrintingDeviceListScope,
 } from '../type/printing-devices.js';
 
 export const PRINTING_DEVICES_STORAGE_KEY = 'bake-mall:admin-printing-devices';
@@ -52,6 +57,8 @@ const OPERATIONS = new Set<PrintingDeviceOperation>([
   'delete-confirm',
   'unbind',
   'rename',
+  'set-current',
+  'clear-current',
 ]);
 const UNCERTAIN_CODES = new Set<ApiErrorCode>([
   ApiErrorCode.IDEMPOTENCY_IN_PROGRESS,
@@ -110,6 +117,16 @@ export type PrintingDevicesApi = Readonly<{
     body: import('@bake-mall/contracts').RenameCloudPrinterRequest,
     idempotencyKey: string,
   ) => Promise<RenameCloudPrinterResult>;
+  detail: (printerId: string) => Promise<CloudPrinterView>;
+  current: () => Promise<CurrentCloudPrinterView>;
+  setCurrent: (
+    body: import('@bake-mall/contracts').SetCurrentCloudPrinterRequest,
+    idempotencyKey: string,
+  ) => Promise<SetCurrentCloudPrinterResult>;
+  clearCurrent: (
+    body: import('@bake-mall/contracts').ClearCurrentCloudPrinterRequest,
+    idempotencyKey: string,
+  ) => Promise<ClearCurrentCloudPrinterResult>;
 }>;
 
 type OperationRequest =
@@ -129,6 +146,16 @@ type OperationRequest =
     }
   | { readonly operation: 'refresh'; readonly resourceId: string }
   | {
+      readonly operation: 'set-current';
+      readonly resourceId: string;
+      readonly body: { expectedRevision: number; operationPassword: string };
+    }
+  | {
+      readonly operation: 'clear-current';
+      readonly resourceId: string;
+      readonly body: { expectedRevision: number; operationPassword: string };
+    }
+  | {
       readonly operation: 'rename';
       readonly resourceId: string;
       readonly body: import('@bake-mall/contracts').RenameCloudPrinterRequest;
@@ -142,11 +169,12 @@ type OperationResult =
   | RequeryCloudPrinterVendorRelationResult
   | ConfirmCloudPrinterCompensationDeletionResult
   | UnbindCloudPrinterResult
-  | RenameCloudPrinterResult;
+  | RenameCloudPrinterResult
+  | SetCurrentCloudPrinterResult
+  | ClearCurrentCloudPrinterResult;
 
 type PersistedState = Readonly<{
   adminId: string;
-  lastPrinterId?: string;
   pendingDeviceOperations: readonly PersistedPendingDeviceOperation[];
 }>;
 
@@ -169,6 +197,9 @@ function defaultStorage(): PrintingDevicesStorage {
 function emptyState(): PrintingDevicesState {
   return {
     devices: [],
+    current: { printer: null, revision: 0, updatedAt: '' },
+    detail: null,
+    listScope: 'existing',
     total: 0,
     page: 1,
     pageSize: PRINTING_DEVICE_PAGE_SIZE,
@@ -194,6 +225,11 @@ function emptyState(): PrintingDevicesState {
 function cloneState(state: PrintingDevicesState): PrintingDevicesState {
   return {
     ...state,
+    current: {
+      ...state.current,
+      printer: state.current.printer ? { ...state.current.printer } : null,
+    },
+    detail: state.detail ? { ...state.detail } : null,
     devices: state.devices.map((device) => ({
       ...device,
       ...(device.challenge ? { challenge: { ...device.challenge } } : {}),
@@ -246,14 +282,19 @@ function isPersistedOperation(
     value,
     'resourceId',
   );
+  const hasExpectedRevision = Object.prototype.hasOwnProperty.call(
+    value,
+    'expectedRevision',
+  );
   const operation = value.operation;
+  const expectedKeys = [
+    'operation',
+    ...(hasResourceId ? ['resourceId'] : []),
+    'idempotencyKey',
+    ...(hasExpectedRevision ? ['expectedRevision'] : []),
+  ];
   if (
-    !exactKeys(
-      value,
-      hasResourceId
-        ? ['operation', 'resourceId', 'idempotencyKey']
-        : ['operation', 'idempotencyKey'],
-    ) ||
+    !exactKeys(value, expectedKeys) ||
     typeof operation !== 'string' ||
     !OPERATIONS.has(operation as PrintingDeviceOperation) ||
     typeof value.idempotencyKey !== 'string' ||
@@ -261,36 +302,56 @@ function isPersistedOperation(
   ) {
     return false;
   }
-  return operation === 'bind'
-    ? !hasResourceId
-    : hasResourceId &&
-        typeof value.resourceId === 'string' &&
-        value.resourceId.length > 0;
+  if (
+    hasExpectedRevision &&
+    (!Number.isSafeInteger(value.expectedRevision) ||
+      (value.expectedRevision as number) < 0)
+  ) {
+    return false;
+  }
+  if (operation === 'bind') return !hasResourceId && !hasExpectedRevision;
+  if (
+    operation !== 'set-current' &&
+    operation !== 'clear-current' &&
+    hasExpectedRevision
+  ) {
+    return false;
+  }
+  return (
+    hasResourceId &&
+    typeof value.resourceId === 'string' &&
+    value.resourceId.length > 0
+  );
 }
 
-function isPersistedState(
+function parsePersistedState(
   value: unknown,
   adminId: string,
-): value is PersistedState {
-  if (!isRecord(value)) return false;
-  const hasLastPrinterId = Object.prototype.hasOwnProperty.call(
+): { readonly state: PersistedState; readonly migrated: boolean } | null {
+  if (!isRecord(value)) return null;
+  const hasLegacyLastPrinterId = Object.prototype.hasOwnProperty.call(
     value,
     'lastPrinterId',
   );
-  return (
-    exactKeys(
-      value,
-      hasLastPrinterId
-        ? ['adminId', 'lastPrinterId', 'pendingDeviceOperations']
-        : ['adminId', 'pendingDeviceOperations'],
-    ) &&
-    value.adminId === adminId &&
-    (!hasLastPrinterId ||
-      (typeof value.lastPrinterId === 'string' &&
-        value.lastPrinterId.length > 0)) &&
-    Array.isArray(value.pendingDeviceOperations) &&
-    value.pendingDeviceOperations.every(isPersistedOperation)
-  );
+  const expectedKeys = hasLegacyLastPrinterId
+    ? ['adminId', 'lastPrinterId', 'pendingDeviceOperations']
+    : ['adminId', 'pendingDeviceOperations'];
+  if (
+    !exactKeys(value, expectedKeys) ||
+    value.adminId !== adminId ||
+    (hasLegacyLastPrinterId && typeof value.lastPrinterId !== 'string') ||
+    !Array.isArray(value.pendingDeviceOperations) ||
+    !value.pendingDeviceOperations.every(isPersistedOperation)
+  ) {
+    return null;
+  }
+  return {
+    state: {
+      adminId,
+      pendingDeviceOperations: value.pendingDeviceOperations,
+    },
+    migrated: hasLegacyLastPrinterId,
+  };
 }
 
 function decodeBase64Url(value: string): string | null {
@@ -360,6 +421,7 @@ function safeMessage(error: unknown): string {
     return '管理员会话已失效，请重新进入';
   }
   if (error instanceof ApiClientError && error.message) return error.message;
+  if (error instanceof Error && error.message) return error.message;
   return '打印机操作失败，请稍后重试';
 }
 
@@ -388,6 +450,37 @@ function countdown(
     : 0;
 }
 
+function listQuery(
+  scope: PrintingDeviceListScope,
+  page: number,
+  pageSize: number,
+): CloudPrinterListQuery {
+  const pagination = { page, pageSize };
+  return scope === 'removed'
+    ? {
+        ...pagination,
+        includeUnbound: true,
+        status: CloudPrinterStatus.UNBOUND,
+      }
+    : { ...pagination, includeUnbound: false };
+}
+
+function currentPrinterView(
+  current: CurrentCloudPrinterView,
+): CurrentCloudPrinterView {
+  return {
+    ...current,
+    printer: current.printer ? { ...current.printer, isCurrent: true } : null,
+  };
+}
+
+function markCurrentDevice(
+  device: CloudPrinterView,
+  currentPrinterId: string | undefined,
+): CloudPrinterView {
+  return { ...device, isCurrent: currentPrinterId === device.id };
+}
+
 export function createPrintingDevicesController(dependencies: Dependencies) {
   const storage = dependencies.storage ?? defaultStorage();
   const randomUUID = dependencies.randomUUID ?? createSecureUuidV4;
@@ -396,7 +489,6 @@ export function createPrintingDevicesController(dependencies: Dependencies) {
   const preparingOperations = new Set<string>();
   let state = emptyState();
   let ownerAdminId: string | null = null;
-  let lastPrinterId: string | undefined;
   let listGeneration = 0;
 
   function currentAdminId(): string | null {
@@ -415,12 +507,12 @@ export function createPrintingDevicesController(dependencies: Dependencies) {
     }
     storage.set(PRINTING_DEVICES_STORAGE_KEY, {
       adminId,
-      ...(lastPrinterId ? { lastPrinterId } : {}),
       pendingDeviceOperations: state.operations.map(
-        ({ operation, resourceId, idempotencyKey }) => ({
+        ({ operation, resourceId, idempotencyKey, expectedRevision }) => ({
           operation,
           ...(resourceId ? { resourceId } : {}),
           idempotencyKey,
+          ...(expectedRevision !== undefined ? { expectedRevision } : {}),
         }),
       ),
     } satisfies PersistedState);
@@ -434,7 +526,6 @@ export function createPrintingDevicesController(dependencies: Dependencies) {
       operationMap: {},
       manualContinueRequired: false,
     };
-    lastPrinterId = undefined;
     removeStorage();
   }
 
@@ -442,13 +533,13 @@ export function createPrintingDevicesController(dependencies: Dependencies) {
     const adminId = currentAdminId();
     const raw = storage.get(PRINTING_DEVICES_STORAGE_KEY);
     if (!adminId || raw === undefined || raw === null || raw === '') return;
-    if (!isPersistedState(raw, adminId)) {
+    const parsed = parsePersistedState(raw, adminId);
+    if (!parsed) {
       clearOperations();
       return;
     }
     ownerAdminId = adminId;
-    lastPrinterId = raw.lastPrinterId;
-    const operations = raw.pendingDeviceOperations.map((operation) => ({
+    const operations = parsed.state.pendingDeviceOperations.map((operation) => ({
       ...operation,
       status: 'UNKNOWN' as const,
       wasUncertain: true as const,
@@ -464,6 +555,7 @@ export function createPrintingDevicesController(dependencies: Dependencies) {
       ),
       manualContinueRequired: operations.length > 0,
     };
+    if (parsed.migrated) persistLifecycleState();
   }
 
   hydrate();
@@ -614,22 +706,27 @@ export function createPrintingDevicesController(dependencies: Dependencies) {
     listGeneration = requestGeneration;
     state = { ...state, loading: true, error: null };
     try {
-      const result = await dependencies.api.list({
-        page: state.page,
-        pageSize: state.pageSize,
-      });
+      const [result, current] = await Promise.all([
+        dependencies.api.list(
+          listQuery(state.listScope, state.page, state.pageSize),
+        ),
+        dependencies.api.current(),
+      ]);
       if (
         requestGeneration !== listGeneration ||
         mutationGeneration !== state.mutationGeneration
       ) {
         return;
       }
-      const devices = result.items.map((device) => ({ ...device }));
+      const devices = result.items.map((device) =>
+        markCurrentDevice(device, current.printer?.id),
+      );
       const challenges = challengeMap(devices);
       const selectedId = state.dialog.resourceId;
       state = {
         ...state,
         devices,
+        current: currentPrinterView(current),
         total: result.total,
         page: result.page,
         pageSize: result.pageSize,
@@ -641,16 +738,6 @@ export function createPrintingDevicesController(dependencies: Dependencies) {
             }
           : {}),
       };
-      if (
-        lastPrinterId &&
-        !devices.some(
-          (device) =>
-            device.id === lastPrinterId &&
-            device.status === CloudPrinterStatus.ACTIVE,
-        )
-      ) {
-        lastPrinterId = undefined;
-      }
     } catch (error) {
       if (requestGeneration === listGeneration) {
         state = { ...state, error: safeMessage(error) };
@@ -707,6 +794,13 @@ export function createPrintingDevicesController(dependencies: Dependencies) {
           request.body,
           idempotencyKey,
         );
+      case 'set-current':
+        return dependencies.api.setCurrent(
+          { printerId: request.resourceId, ...request.body },
+          idempotencyKey,
+        );
+      case 'clear-current':
+        return dependencies.api.clearCurrent(request.body, idempotencyKey);
     }
   }
 
@@ -714,6 +808,17 @@ export function createPrintingDevicesController(dependencies: Dependencies) {
     request: OperationRequest,
     result: OperationResult,
   ): void {
+    if ('current' in result) {
+      state = {
+        ...state,
+        current: currentPrinterView(result.current),
+        devices: state.devices.map((device) =>
+          markCurrentDevice(device, result.current.printer?.id),
+        ),
+        dialog: { kind: null },
+      };
+      return;
+    }
     upsertDevice(result.printer);
     if ('challenge' in result) {
       const challenge = { ...result.challenge };
@@ -740,12 +845,17 @@ export function createPrintingDevicesController(dependencies: Dependencies) {
     }
   }
 
-  async function authoritativeReload(primaryError: string): Promise<void> {
+  async function authoritativeReload(
+    fallbackError: string,
+    preserveError = false,
+  ): Promise<void> {
     try {
       await load();
     } catch {
-      state = { ...state, error: primaryError };
+      state = { ...state, error: fallbackError };
+      return;
     }
+    if (preserveError) state = { ...state, error: fallbackError };
   }
 
   async function execute(
@@ -788,7 +898,7 @@ export function createPrintingDevicesController(dependencies: Dependencies) {
         code !== undefined &&
         AUTHORITATIVE_CONFIRM_CODES.has(code)
       ) {
-        await authoritativeReload(message);
+        await authoritativeReload(message, true);
         if (
           code === ApiErrorCode.CLOUD_PRINTER_VERIFICATION_ATTEMPTS_EXHAUSTED
         ) {
@@ -802,10 +912,8 @@ export function createPrintingDevicesController(dependencies: Dependencies) {
             remainingAttempts: 0,
           };
         }
-        state = { ...state, error: message };
       } else if (classification === 'FAILED') {
-        await authoritativeReload(message);
-        state = { ...state, error: message };
+        await authoritativeReload(message, true);
       }
       throw error;
     }
@@ -832,6 +940,10 @@ export function createPrintingDevicesController(dependencies: Dependencies) {
         operation: request.operation,
         ...(resourceId ? { resourceId } : {}),
         idempotencyKey,
+        ...((request.operation === 'set-current' ||
+          request.operation === 'clear-current') && {
+          expectedRevision: request.body.expectedRevision,
+        }),
         status: 'PENDING',
       });
       return execute(request, idempotencyKey);
@@ -842,7 +954,8 @@ export function createPrintingDevicesController(dependencies: Dependencies) {
 
   function requestForContinue(
     operation: PrintingDeviceOperation,
-    resourceId?: string,
+    resourceId: string | undefined,
+    pending: PendingDeviceOperation,
   ): OperationRequest {
     const remembered = operationRequests.get(identity(operation, resourceId));
     if (remembered) return remembered;
@@ -855,6 +968,21 @@ export function createPrintingDevicesController(dependencies: Dependencies) {
     if (operation === 'refresh') return { operation, resourceId };
     if (operation === 'rename') {
       return { operation, resourceId, body: { ...state.forms.rename } };
+    }
+    if (operation === 'set-current' || operation === 'clear-current') {
+      if (pending.expectedRevision === undefined) {
+        throw new Error(
+          '该待恢复操作缺少原始版本，无法安全重试；请刷新权威状态后清除记录',
+        );
+      }
+      return {
+        operation,
+        resourceId,
+        body: {
+          expectedRevision: pending.expectedRevision,
+          operationPassword: state.forms.recoveryPassword,
+        },
+      };
     }
     return {
       operation,
@@ -892,7 +1020,9 @@ export function createPrintingDevicesController(dependencies: Dependencies) {
       request.operation === 'resend' ||
       request.operation === 'requery' ||
       request.operation === 'delete-confirm' ||
-      request.operation === 'unbind'
+      request.operation === 'unbind' ||
+      request.operation === 'set-current' ||
+      request.operation === 'clear-current'
     ) {
       state = {
         ...state,
@@ -911,10 +1041,30 @@ export function createPrintingDevicesController(dependencies: Dependencies) {
         identity(operation, resourceId),
     );
     if (!pending) throw new Error('没有可继续的打印机操作');
-    const request = requestForContinue(operation, resourceId);
+    let request: OperationRequest;
+    try {
+      request = requestForContinue(operation, resourceId, pending);
+    } catch (error) {
+      state = { ...state, error: safeMessage(error) };
+      throw error;
+    }
     clearContinuedSensitiveForm(request);
     operationRequests.set(identity(operation, resourceId), request);
     return execute(request, pending.idempotencyKey);
+  }
+
+  function discardOperation(
+    operation: PrintingDeviceOperation,
+    resourceId?: string,
+  ): void {
+    const pending = state.operations.find(
+      (candidate) =>
+        identity(candidate.operation, candidate.resourceId) ===
+        identity(operation, resourceId),
+    );
+    if (!pending) return;
+    releaseOperation(operation, resourceId, pending.idempotencyKey);
+    if (state.operations.length === 0) removeStorage();
   }
 
   function setBindForm(form: PrintingDevicesState['forms']['bind']): void {
@@ -981,7 +1131,13 @@ export function createPrintingDevicesController(dependencies: Dependencies) {
   }
 
   function openRecovery(
-    action: 'resend' | 'requery' | 'delete-confirm' | 'unbind',
+    action:
+      | 'resend'
+      | 'requery'
+      | 'delete-confirm'
+      | 'unbind'
+      | 'set-current'
+      | 'clear-current',
     device: CloudPrinterView,
   ): void {
     state = {
@@ -1023,7 +1179,18 @@ export function createPrintingDevicesController(dependencies: Dependencies) {
   }
 
   function bind(): Promise<BindCloudPrinterResult> {
-    const body = { ...state.forms.bind };
+    const serialNumber = normalizeCloudPrinterSerialNumber(
+      state.forms.bind.serialNumber,
+    );
+    if (!serialNumber) return Promise.reject(new Error('设备序列号格式不正确'));
+    const displayName = normalizeCloudPrinterDisplayName(
+      state.forms.bind.displayName,
+    );
+    if (!displayName)
+      return Promise.reject(new Error('打印机名称需为 1–64 个字符'));
+    if (!state.forms.bind.operationPassword)
+      return Promise.reject(new Error('请输入操作密码'));
+    const body = { ...state.forms.bind, serialNumber, displayName };
     state = {
       ...state,
       forms: {
@@ -1044,6 +1211,8 @@ export function createPrintingDevicesController(dependencies: Dependencies) {
   function confirm(printerId: string): Promise<ConfirmCloudPrinterResult> {
     const body = { ...state.forms.verify };
     if (!body.challengeId) throw new Error('验证码信息缺失，请先刷新列表');
+    if (!/^\d{6}$/u.test(body.code)) throw new Error('验证码必须为 6 位数字');
+    if (!body.operationPassword) throw new Error('请输入操作密码');
     if (state.remainingAttempts <= 0) {
       throw new Error('验证码尝试次数已耗尽，请重发验证码');
     }
@@ -1128,6 +1297,37 @@ export function createPrintingDevicesController(dependencies: Dependencies) {
     ) as Promise<UnbindCloudPrinterResult>;
   }
 
+  function beginCurrentOperation(
+    operation: 'set-current' | 'clear-current',
+    printerId?: string,
+  ): Promise<SetCurrentCloudPrinterResult | ClearCurrentCloudPrinterResult> {
+    const operationPassword = state.forms.recoveryPassword;
+    if (!operationPassword) throw new Error('请输入操作密码');
+    state = { ...state, forms: { ...state.forms, recoveryPassword: '' } };
+    if (!printerId) throw new Error('当前没有可清除的打印机');
+    return begin({
+      operation,
+      resourceId: printerId,
+      body: { expectedRevision: state.current.revision, operationPassword },
+    }) as Promise<SetCurrentCloudPrinterResult | ClearCurrentCloudPrinterResult>;
+  }
+
+  async function setCurrent(
+    printerId: string,
+  ): Promise<SetCurrentCloudPrinterResult> {
+    return beginCurrentOperation(
+      'set-current',
+      printerId,
+    ) as Promise<SetCurrentCloudPrinterResult>;
+  }
+
+  async function clearCurrent(): Promise<ClearCurrentCloudPrinterResult> {
+    return beginCurrentOperation(
+      'clear-current',
+      state.current.printer?.id,
+    ) as Promise<ClearCurrentCloudPrinterResult>;
+  }
+
   async function rename(printerId: string): Promise<RenameCloudPrinterResult> {
     const normalized = normalizeCloudPrinterDisplayName(
       state.forms.rename.displayName,
@@ -1154,6 +1354,20 @@ export function createPrintingDevicesController(dependencies: Dependencies) {
     await load();
   }
 
+  async function setListScope(scope: PrintingDeviceListScope): Promise<void> {
+    state = { ...state, listScope: scope, page: 1 };
+    await load();
+  }
+
+  async function openDetail(printerId: string): Promise<void> {
+    const detail = await dependencies.api.detail(printerId);
+    state = {
+      ...state,
+      detail: { ...detail },
+      dialog: { kind: 'detail', resourceId: printerId },
+    };
+  }
+
   function updateCountdown(nowMs = now()): void {
     const printerId = state.dialog.resourceId;
     const selected = printerId
@@ -1174,6 +1388,7 @@ export function createPrintingDevicesController(dependencies: Dependencies) {
     confirm,
     confirmDeletion,
     continueOperation,
+    discardOperation,
     load,
     openBind,
     openRecovery,
@@ -1187,6 +1402,10 @@ export function createPrintingDevicesController(dependencies: Dependencies) {
     resend,
     setBindForm,
     setPage,
+    setListScope,
+    openDetail,
+    setCurrent,
+    clearCurrent,
     setRecoveryPassword,
     setRenameName,
     setVerifyForm,

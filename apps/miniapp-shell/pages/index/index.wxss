@@ -31,16 +31,3 @@
 .web-view-diagnostic--error {
   background: rgba(196, 69, 54, 0.92);
 }
-
-.admin-entry {
-  position: fixed;
-  z-index: 2;
-  right: 24rpx;
-  bottom: 40rpx;
-  width: auto;
-  border-radius: 999rpx;
-  background: #b77966;
-  color: #ffffff;
-  font-size: 26rpx;
-  box-shadow: 0 12rpx 28rpx rgba(83, 63, 56, 0.2);
-}

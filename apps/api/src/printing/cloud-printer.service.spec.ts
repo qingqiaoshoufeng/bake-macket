@@ -19,6 +19,7 @@ import { AdminOperationIdempotencyService } from './admin-operation-idempotency.
 import { createAdminOperationIdempotencyTestService } from '../../test/helpers/admin-operation-idempotency.js';
 import {
   CloudPrinterService,
+  normalizeCloudPrinterSnapshot,
   toView,
   type XpyunVendorPort,
 } from './cloud-printer.service.js';
@@ -50,6 +51,10 @@ const matchesWhere = (
       if (operator._type === 'in') {
         return (operator._value as unknown[]).includes(actual);
       }
+      if (operator._type === 'not') {
+        return actual !== operator._value;
+      }
+      if (operator._type === 'isNull') return actual === null;
     }
     return actual === expected;
   });
@@ -99,6 +104,38 @@ const buildPrinterRepository = (
       },
     ),
     find: vi.fn(async () => rows.map((row) => ({ ...row }))),
+    findAndCount: vi.fn(
+      async (
+        options: {
+          where?: Readonly<Record<string, unknown>>;
+          order?: Readonly<Record<string, 'ASC' | 'DESC'>>;
+          skip?: number;
+          take?: number;
+        } = {},
+      ) => {
+        const filtered = rows.filter((row) =>
+          options.where ? matchesWhere(row, options.where) : true,
+        );
+        const ordered = [...filtered].sort((left, right) =>
+          options.order?.id === 'DESC'
+            ? BigInt(right.id)
+                .toString()
+                .localeCompare(BigInt(left.id).toString(), undefined, {
+                  numeric: true,
+                })
+            : 0,
+        );
+        return [
+          ordered
+            .slice(
+              options.skip ?? 0,
+              (options.skip ?? 0) + (options.take ?? ordered.length),
+            )
+            .map((row) => ({ ...row })),
+          filtered.length,
+        ] as const;
+      },
+    ),
     create: vi.fn(
       (value: Partial<CloudPrinter>) => ({ ...value }) as CloudPrinter,
     ),
@@ -280,6 +317,7 @@ const buildService = (options: {
     typeof buildIdempotencyRepository
   >['repository'];
   now?: () => Date;
+  currentPrinterId?: string | null;
 }) => {
   const transactionState: TransactionState = {
     context: new AsyncLocalStorage<Readonly<{ active: true }>>(),
@@ -323,6 +361,29 @@ const buildService = (options: {
       onlineStatusCacheMs: 30 * 1000,
       verificationCodeBcryptCost: 4,
     },
+    {
+      get: vi.fn(async () => ({
+        printer: options.currentPrinterId
+          ? toView(
+              options.repository.rows.find(
+                ({ id }) => id === options.currentPrinterId,
+              )!,
+              true,
+            )
+          : null,
+        revision: 1,
+        updatedAt: '2026-08-04T00:00:00.000Z',
+      })),
+      assertNotCurrentForUnbind: vi.fn(async (_manager, printerId: string) => {
+        if (printerId === options.currentPrinterId) {
+          throw Object.assign(new Error('current unbind forbidden'), {
+            response: {
+              code: ApiErrorCode.CLOUD_PRINTER_CURRENT_UNBIND_FORBIDDEN,
+            },
+          });
+        }
+      }),
+    } as never,
   );
 };
 
@@ -333,6 +394,7 @@ const buildServiceWithManager = (options: {
     typeof buildIdempotencyRepository
   >['repository'];
   now?: () => Date;
+  currentPrinterId?: string | null;
 }) => {
   return {
     service: buildService(options),
@@ -3900,6 +3962,58 @@ describe('CloudPrinterService.rename', () => {
     expect(result.printer.displayName).toBe('新名称');
   });
 
+  it('动态投影 current 设备 rename 首次结果与旧快照 replay 的 isCurrent', async () => {
+    const repository = buildPrinterRepository();
+    const idempotency = buildIdempotencyRepository();
+    repository.rows.push({
+      id: 'printer-current-rename',
+      serialNumber: SERIAL,
+      displayName: '旧名',
+      status: CloudPrinterStatus.ACTIVE,
+      bindingStage: PrinterBindingStage.NONE,
+      vendorRelationState: VendorRelationState.CONFIRMED_BOUND,
+      bindingIdempotencyKey: null,
+      bindingOperationId: null,
+      verificationCodeHash: null,
+      verificationExpiresAt: null,
+      verificationFailedAttempts: 0,
+      verifiedAt: new Date(),
+      lastOnlineStatus: CloudPrinterOnlineStatus.ONLINE,
+      lastStatusCheckedAt: null,
+      boundByAdminId: ADMIN_ID,
+      lastVendorErrorCode: null,
+      unboundAt: null,
+      version: 1,
+    } as CloudPrinter);
+    const service = buildService({
+      repository,
+      idempotencyRepository: idempotency.repository,
+      currentPrinterId: 'printer-current-rename',
+    });
+    const key = newIdempotencyKey();
+    const request = { displayName: '当前设备' };
+
+    const first = await service.rename(
+      { id: ADMIN_ID } as never,
+      'printer-current-rename',
+      request,
+      key,
+    );
+    const snapshot = idempotency.records[0]?.responseSnapshot as {
+      printer?: { isCurrent?: boolean };
+    };
+    delete snapshot.printer?.isCurrent;
+    const replay = await service.rename(
+      { id: ADMIN_ID } as never,
+      'printer-current-rename',
+      request,
+      key,
+    );
+
+    expect(first.printer.isCurrent).toBe(true);
+    expect(replay.printer.isCurrent).toBe(true);
+  });
+
   it('rename 在 snapshot 校验前以稳定错误码拒绝完整 SN displayName', async () => {
     const repository = buildPrinterRepository();
     const idempotencyRepository = buildIdempotencyRepository().repository;
@@ -4127,6 +4241,39 @@ describe('CloudPrinterService.list and query', () => {
     expect(result.printer.onlineStatus).toBe(CloudPrinterOnlineStatus.ONLINE);
     expect(queryOnline).not.toHaveBeenCalled();
     expect(idempotency.records[0]).toMatchObject({ status: 'COMPLETED' });
+  });
+
+  it('动态投影 current 设备 refresh 首次结果与旧快照 replay 的 isCurrent', async () => {
+    const repository = buildPrinterRepository([
+      onlinePrinter(new Date(NOW.getTime() - 29_999)),
+    ]);
+    const idempotency = buildIdempotencyRepository();
+    const service = buildService({
+      repository,
+      idempotencyRepository: idempotency.repository,
+      vendor: buildVendor({ queryOnline: vi.fn() }),
+      now: () => NOW,
+      currentPrinterId: 'online-printer',
+    });
+    const key = newIdempotencyKey();
+
+    const first = await service.refreshStatus(
+      { id: ADMIN_ID } as never,
+      'online-printer',
+      key,
+    );
+    const snapshot = idempotency.records[0]?.responseSnapshot as {
+      printer?: { isCurrent?: boolean };
+    };
+    delete snapshot.printer?.isCurrent;
+    const replay = await service.refreshStatus(
+      { id: ADMIN_ID } as never,
+      'online-printer',
+      key,
+    );
+
+    expect(first.printer.isCurrent).toBe(true);
+    expect(replay.printer.isCurrent).toBe(true);
   });
 
   it('refreshStatus treats exactly 30 seconds as stale and queries outside transactions', async () => {
@@ -4392,6 +4539,11 @@ describe('CloudPrinterService.list and query', () => {
     });
 
     const serialized = JSON.stringify(result);
+    expect(repository.repo.findAndCount).toHaveBeenCalledWith(
+      expect.objectContaining({ skip: 0, take: 10, order: { id: 'DESC' } }),
+    );
+    expect(repository.repo.find).not.toHaveBeenCalled();
+    expect(result.items[0]?.isCurrent).toBe(false);
     expect(result.items[0]?.challenge).toEqual({
       challengeId: '10',
       expiresAt: '2026-08-04T00:05:00.000Z',
@@ -4404,6 +4556,63 @@ describe('CloudPrinterService.list and query', () => {
     expect(result.items[0]?.challenge).not.toHaveProperty(
       'verificationCodeHash',
     );
+  });
+
+  it('按 status 在 SQL 分页前过滤，并组装 current 与详情', async () => {
+    const active = onlinePrinter(null);
+    const unbound = {
+      ...onlinePrinter(null),
+      id: '20',
+      serialNumber: 'SN-List-20',
+      status: CloudPrinterStatus.UNBOUND,
+      vendorRelationState: VendorRelationState.CONFIRMED_UNBOUND,
+      unboundAt: NOW,
+    };
+    const repository = buildPrinterRepository([active, unbound]);
+    const service = buildService({
+      repository,
+      idempotencyRepository: buildIdempotencyRepository().repository,
+      currentPrinterId: active.id,
+    });
+
+    const history = await service.list({
+      page: 1,
+      pageSize: 10,
+      status: CloudPrinterStatus.UNBOUND,
+    });
+    const detail = await service.detail(active.id);
+
+    expect(history.items).toHaveLength(1);
+    expect(history.items[0]).toMatchObject({ id: '20', isCurrent: false });
+    expect(repository.repo.findAndCount).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { status: CloudPrinterStatus.UNBOUND },
+      }),
+    );
+    expect(detail).toMatchObject({ id: active.id, isCurrent: true });
+    expect(JSON.stringify(detail)).not.toContain(active.serialNumber);
+  });
+
+  it('详情缺失时返回 CLOUD_PRINTER_NOT_FOUND', async () => {
+    const service = buildService({
+      repository: buildPrinterRepository(),
+      idempotencyRepository: buildIdempotencyRepository().repository,
+    });
+
+    await expect(service.detail('404')).rejects.toMatchObject(
+      expectApiCode(ApiErrorCode.CLOUD_PRINTER_NOT_FOUND),
+    );
+  });
+
+  it('旧幂等快照缺少 isCurrent 时安全补 false', () => {
+    expect(
+      normalizeCloudPrinterSnapshot({
+        printer: {
+          ...toView(onlinePrinter(null)),
+          isCurrent: undefined,
+        },
+      }),
+    ).toMatchObject({ printer: { isCurrent: false } });
   });
 
   it('omits challenge metadata when any required field is missing or the status is not verifiable', () => {

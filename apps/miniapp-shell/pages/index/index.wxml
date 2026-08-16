@@ -10,10 +10,5 @@
     <cover-view class="web-view-diagnostic web-view-diagnostic--{{webViewState}}">
       {{webViewMessage}}
     </cover-view>
-    <cover-view
-      wx:if="{{adminEligible}}"
-      class="admin-entry"
-      bindtap="onEnterAdmin"
-    >门店管理</cover-view>
   </web-view>
 </view>

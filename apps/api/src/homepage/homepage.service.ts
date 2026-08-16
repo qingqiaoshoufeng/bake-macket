@@ -591,6 +591,65 @@ export class HomepageService {
     }
   }
 
+  async createDraftWithConfig(
+    name: string,
+    config: HomepageDraftConfig,
+    adminUserId: string,
+  ): Promise<AdminHomepageView> {
+    assertDraftStructure(config);
+    collectAssets(config).forEach((asset) =>
+      this.mediaPolicy.assertHomepageAsset(asset),
+    );
+    try {
+      return await this.dataSource.transaction(async (manager) => {
+        const pages = manager.getRepository(HomepagePage);
+        const drafts = manager.getRepository(HomepageDraft);
+        const page = await this.requirePage(pages);
+        const existing = await drafts.findOneBy({
+          homepagePageId: page.id,
+          name,
+        });
+        if (existing) {
+          throw new ConflictException({
+            code: ApiErrorCode.HOMEPAGE_DRAFT_NAME_CONFLICT,
+            message: '首页草稿名称已存在',
+            details: { name },
+          });
+        }
+        const draft = await drafts.save(
+          drafts.create({
+            homepagePageId: page.id,
+            name,
+            draftConfig: structuredClone(config),
+            version: 1,
+            updatedByAdminId: adminUserId,
+          }),
+        );
+        await this.audit.record(
+          {
+            actor: { type: 'ADMIN', adminUserId },
+            targetEntity: 'homepage_drafts',
+            targetId: draft.id,
+            action: 'HOMEPAGE_DRAFT_CREATED',
+            changeSummary: {
+              mode: 'CONFIGURED',
+              version: draft.version,
+              ...this.configSummary(config),
+            },
+          },
+          manager,
+        );
+        return this.toAdminDraftView(
+          page,
+          draft,
+          await this.collectPublishIssues(config, manager),
+        );
+      });
+    } catch (error) {
+      throw this.translateDraftNameConflict(error, name);
+    }
+  }
+
   async getDraft(id: string): Promise<AdminHomepageView> {
     const page = await this.requirePage(this.pages);
     const draft = await this.requireDraft(id, page.id, this.drafts);

@@ -5,7 +5,13 @@ import type { RecoveryPrinterForm } from '../type/index.js';
 
 const props = defineProps<{
   readonly visible: boolean;
-  readonly action: 'resend' | 'requery' | 'delete-confirm' | 'unbind';
+  readonly action:
+    | 'resend'
+    | 'requery'
+    | 'delete-confirm'
+    | 'unbind'
+    | 'set-current'
+    | 'clear-current';
   readonly printerName: string;
   readonly form: RecoveryPrinterForm;
   readonly submitting: boolean;
@@ -17,10 +23,12 @@ const emit = defineEmits<{
 }>();
 
 const labels = {
-  resend: '重发纸面验证码',
-  requery: '重新查询厂商关系',
-  'delete-confirm': '确认补偿删除',
-  unbind: '确认解绑打印机',
+  resend: '重新打印验证码',
+  requery: '检查设备绑定状态',
+  'delete-confirm': '确认厂商已移除设备',
+  unbind: '确认移除打印机',
+  'set-current': '设为当前打印机',
+  'clear-current': '清除当前打印机',
 } as const;
 
 function updatePassword(operationPassword: string): void {
@@ -39,7 +47,7 @@ function updatePassword(operationPassword: string): void {
   >
     <p class="printer-recovery__notice">
       设备：<strong>{{ printerName }}</strong
-      >。该操作会向厂商确认现状，请输入当前账号操作密码。
+      >。系统将与打印服务确认设备状态，请输入当前账号操作密码。
     </p>
     <ElForm label-position="top" @submit.prevent="emit('submit')">
       <ElFormItem label="当前账号操作密码">
