@@ -24,10 +24,20 @@ assert.match(h5ViteConfig, /strictPort:\s*true/);
 assert.match(h5ViteConfig, /H5_PORT/);
 assert.match(h5ViteConfig, /\.\.\.process\.env/);
 assert.match(h5ViteConfig, /12fg2re344234\.vicp\.fun/);
+assert.match(h5ViteConfig, /MINIO_API_PORT/);
+assert.match(
+  h5ViteConfig,
+  /'\/bake-mall\/':\s*\{[\s\S]*?target: `http:\/\/127\.0\.0\.1:\$\{minioPort\}`/u,
+);
 assert.match(adminViteConfig, /strictPort:\s*true/);
 assert.match(adminViteConfig, /ADMIN_PORT/);
 assert.match(adminViteConfig, /\.\.\.process\.env/);
 assert.match(adminViteConfig, /12fg2re344234\.vicp\.fun/);
+assert.match(adminViteConfig, /MINIO_API_PORT/);
+assert.match(
+  adminViteConfig,
+  /'\/bake-mall\/':\s*\{[\s\S]*?target: `http:\/\/127\.0\.0\.1:\$\{minioPort\}`/u,
+);
 assert.match(composeScript, /--env-file/);
 assert.match(
   developmentEnvTemplate,

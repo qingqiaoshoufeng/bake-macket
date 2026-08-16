@@ -38,6 +38,7 @@ import {
 
 import { AuditService } from '../audit/audit.service.js';
 import { MediaAssetPolicyService } from '../catalog/media-asset-policy.service.js';
+import type { AppEnv } from '../config/env.schema.js';
 import { Category } from '../database/entities/category.entity.js';
 import { HomepageDraft } from '../database/entities/homepage-draft.entity.js';
 import { HomepagePage } from '../database/entities/homepage-page.entity.js';
@@ -445,6 +446,7 @@ const toPublicConfig = (
   config: HomepagePublishedConfig,
   validProductIds: ReadonlySet<string>,
   validCategoryIds: ReadonlySet<string>,
+  env: AppEnv,
 ): PublicHomepageConfig => {
   const publicLink = (link: HomepageLink): HomepageLink => {
     if (
@@ -461,7 +463,14 @@ const toPublicConfig = (
     }
     return link;
   };
-  const image = (asset: MediaAsset) => ({ imageUrl: asset.publicUrl });
+  // 开发模式下返回相对路径，让本机浏览器与真机在同一 Vite/Nginx 反代入口下
+  // 都能命中 MinIO；生产继续使用绝对 HTTPS 地址。
+  const image = (asset: MediaAsset) => ({
+    imageUrl:
+      env.NODE_ENV === 'production'
+        ? asset.publicUrl
+        : `/bake-mall/${asset.objectKey}`,
+  });
   return {
     schemaVersion: 1,
     hero: {
@@ -956,7 +965,7 @@ export class HomepageService {
     });
   }
 
-  async getPublicView(): Promise<PublicHomepageView | null> {
+  async getPublicView(env: AppEnv): Promise<PublicHomepageView | null> {
     const page = await this.requirePage(this.pages);
     if (!page.publishedConfig || !page.publishedVersion || !page.publishedAt) {
       return null;
@@ -991,6 +1000,7 @@ export class HomepageService {
         page.publishedConfig,
         new Set(products.map(({ id }) => id)),
         new Set(categories.map(({ id }) => id)),
+        env,
       ),
       publishedVersion: page.publishedVersion,
       publishedAt: page.publishedAt.toISOString(),

@@ -13,6 +13,7 @@ const allowedHosts = ['12297oy2ga916.vicp.fun', '12fg2re344234.vicp.fun'];
 export default defineConfig(({ mode }) => {
   const env = { ...loadEnv(mode, repositoryRoot, ''), ...process.env };
   const apiPort = Number(env.PORT || 43015);
+  const minioPort = Number(env.MINIO_API_PORT || 43900);
 
   return {
     plugins: [vue()],
@@ -37,6 +38,12 @@ export default defineConfig(({ mode }) => {
         '/api': {
           target: `http://127.0.0.1:${apiPort}`,
           changeOrigin: true,
+        },
+        // 公开对象存储代理：本地浏览器与花生壳指向 43173 时可直接拉到 MinIO 文件。
+        '/bake-mall/': {
+          target: `http://127.0.0.1:${minioPort}`,
+          changeOrigin: true,
+          ws: false,
         },
       },
     },

@@ -64,25 +64,31 @@ const toExpectedPublicConfig = (config: HomepageDraftConfig) => ({
     ...config.hero,
     slides: config.hero.slides.map((slide) => ({
       ...slide,
-      image: { imageUrl: slide.image!.publicUrl },
+      image: {
+        imageUrl: `/bake-mall/${slide.image!.objectKey}`,
+      },
     })),
   },
   customerService: {
     ...config.customerService,
     wechatQrCode: {
-      imageUrl: config.customerService.wechatQrCode!.publicUrl,
+      imageUrl: `/bake-mall/${config.customerService.wechatQrCode!.objectKey}`,
     },
   },
   shortcutGrid: {
     ...config.shortcutGrid,
     items: config.shortcutGrid.items.map((item) => ({
       ...item,
-      image: { imageUrl: item.image!.publicUrl },
+      image: {
+        imageUrl: `/bake-mall/${item.image!.objectKey}`,
+      },
     })),
   },
   imageBlocks: config.imageBlocks.map((block) => ({
     ...block,
-    image: { imageUrl: block.image!.publicUrl },
+    image: {
+      imageUrl: `/bake-mall/${block.image!.objectKey}`,
+    },
   })),
 });
 
@@ -289,7 +295,38 @@ describe.sequential('homepage draft publication concurrency (MySQL)', () => {
     );
     if (!finalDraft)
       throw new Error('Published source is not a concurrent draft');
-    const publicView = await service.getPublicView();
+    const publicView = await service.getPublicView({
+      NODE_ENV: 'development',
+      HOST: '127.0.0.1',
+      PORT: 43015,
+      DATABASE_URL: undefined,
+      MYSQL_HOST: process.env.TEST_MYSQL_HOST ?? '127.0.0.1',
+      MYSQL_PORT: Number(process.env.TEST_MYSQL_PORT ?? 43306),
+      MYSQL_DATABASE: DATABASE_NAME,
+      MYSQL_USER: APP_USER,
+      MYSQL_PASSWORD: undefined,
+      JWT_USER_SECRET: 'x'.repeat(32),
+      JWT_ADMIN_SECRET: 'y'.repeat(32),
+      ADMIN_OPERATION_IDEMPOTENCY_SECRET: 'z'.repeat(32),
+      JWT_EXPIRES_IN_SECONDS: 86400,
+      SIMULATED_PAYMENT_ENABLED: true,
+      ORDER_QUOTE_TOKEN_SECRET: 'a'.repeat(32),
+      ORDER_QUOTE_TTL_SECONDS: 300,
+      WECHAT_APP_ID: '',
+      WECHAT_APP_SECRET: '',
+      XPYUN_USER: '',
+      XPYUN_USER_KEY: '',
+      XPYUN_BASE_URL: 'https://open.xpyun.net',
+      XPYUN_TIMEOUT_MS: 10_000,
+      OBJECT_STORAGE_ENDPOINT: 'http://127.0.0.1:43900',
+      OBJECT_STORAGE_REGION: 'us-east-1',
+      OBJECT_STORAGE_BUCKET: 'bake-mall',
+      OBJECT_STORAGE_PUBLIC_BASE_URL: 'http://127.0.0.1:43900/bake-mall',
+      PRODUCT_MEDIA_ALLOWED_ORIGINS: ['http://127.0.0.1:43900'],
+      OBJECT_STORAGE_ACCESS_KEY: 'minioadmin',
+      OBJECT_STORAGE_SECRET_KEY: 'minioadmin',
+      OBJECT_STORAGE_FORCE_PATH_STYLE: true,
+    });
 
     expect(page.publishedVersion).toBe((before.publishedVersion ?? 0) + 2);
     expect(page.publishedDraftVersion).toBe(finalDraft.version);
