@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import type { AppEnv } from '../config/env.schema.js';
 import type { Category } from '../database/entities/category.entity.js';
 import type { ProductImage } from '../database/entities/product-image.entity.js';
 import type { Product } from '../database/entities/product.entity.js';
@@ -53,6 +54,12 @@ const earlierImage = {
   sortOrder: 0,
 } as unknown as ProductImage;
 
+const mapperEnv = {
+  NODE_ENV: 'production',
+  OBJECT_STORAGE_PUBLIC_BASE_URL: 'https://cdn.example.com/bake-mall',
+  PRODUCT_MEDIA_ALLOWED_ORIGINS: ['https://cdn.example.com'],
+} as AppEnv;
+
 describe('product mappers', () => {
   it('maps Admin summary/detail including MediaAsset and stockVersion', () => {
     expect(toAdminProductSummaryView(product, category, [sku])).toMatchObject({
@@ -73,8 +80,8 @@ describe('product mappers', () => {
   });
 
   it('returns only Public fields and computes availability from all three states', () => {
-    const summary = toPublicProductSummaryView(product, category, [sku]);
-    const detail = toPublicProductDetailView(product, category, [image], [sku]);
+    const summary = toPublicProductSummaryView(product, category, [sku], mapperEnv);
+    const detail = toPublicProductDetailView(product, category, [image], [sku], mapperEnv);
     expect(summary.skus[0].isAvailable).toBe(true);
     expect(detail.images).toEqual([
       { id: 'image-1', url: image.url, sortOrder: 1 },
@@ -83,9 +90,12 @@ describe('product mappers', () => {
       /coverImageObjectKey|imageObjectKey|"isActive"|"category"/,
     );
     expect(
-      toPublicProductSummaryView(product, { ...category, isActive: false }, [
-        sku,
-      ]).skus[0].isAvailable,
+      toPublicProductSummaryView(
+        product,
+        { ...category, isActive: false },
+        [sku],
+        mapperEnv,
+      ).skus[0].isAvailable,
     ).toBe(false);
   });
 });

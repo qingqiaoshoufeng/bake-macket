@@ -5,6 +5,7 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { validateOrReject } from 'class-validator';
 import { DataSource, Repository } from 'typeorm';
@@ -29,6 +30,7 @@ import {
   toPaginatedView,
 } from '../common/query/admin-query.helpers.js';
 import { HtmlSanitizerService } from '../content/html-sanitizer.service.js';
+import type { AppConfig } from '../config/env.schema.js';
 import {
   AuditActorType,
   AuditLog,
@@ -82,6 +84,7 @@ export class CatalogService {
     private readonly images: Repository<ProductImage>,
     private readonly sanitizer: HtmlSanitizerService,
     private readonly mediaAssetPolicy: MediaAssetPolicyService,
+    private readonly config: ConfigService<AppConfig, true>,
     private readonly dataSource?: DataSource,
   ) {}
 
@@ -619,6 +622,7 @@ export class CatalogService {
             where: { productId: product.id, isActive: true },
             order: { createdAt: 'DESC' },
           }),
+          this.config.get('appEnv', { infer: true }),
         ),
       ),
     );
@@ -647,6 +651,7 @@ export class CatalogService {
       product.category,
       images,
       skus,
+      this.config.get('appEnv', { infer: true }),
     );
   }
   private toAdminCategoryView(category: Category): AdminCategoryView {

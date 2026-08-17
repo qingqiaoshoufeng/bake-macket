@@ -7,10 +7,23 @@ import type {
   SkuView,
 } from '@bake-mall/contracts';
 
+import type { AppEnv } from '../config/env.schema.js';
 import type { Category } from '../database/entities/category.entity.js';
 import type { ProductImage } from '../database/entities/product-image.entity.js';
 import type { Product } from '../database/entities/product.entity.js';
 import type { Sku } from '../database/entities/sku.entity.js';
+
+const rewritePublicImageUrl = (
+  publicUrl: string,
+  objectKey: string | null,
+  env: AppEnv,
+): string => {
+  if (env.NODE_ENV === 'production' || !objectKey) return publicUrl;
+  if (publicUrl.startsWith('http://127.0.0.1:43900/')) {
+    return `/bake-mall/${objectKey}`;
+  }
+  return publicUrl;
+};
 
 const toAdminSkuView = (sku: Sku): AdminSkuView => ({
   id: sku.id,
@@ -87,6 +100,7 @@ export function toPublicSkuView(
   sku: Sku,
   productIsActive: boolean,
   categoryIsActive: boolean,
+  env: AppEnv,
 ): SkuView {
   return {
     id: sku.id,
@@ -94,7 +108,15 @@ export function toPublicSkuView(
     attributes: { ...sku.attributes },
     priceCents: sku.priceCents,
     stock: sku.stock,
-    ...(sku.imageUrl ? { imageUrl: sku.imageUrl } : {}),
+    ...(sku.imageUrl
+      ? {
+          imageUrl: rewritePublicImageUrl(
+            sku.imageUrl,
+            sku.imageObjectKey,
+            env,
+          ),
+        }
+      : {}),
     isAvailable:
       productIsActive && categoryIsActive && sku.isActive && sku.stock > 0,
   };
@@ -104,15 +126,24 @@ export function toPublicProductSummaryView(
   product: Product,
   category: Category,
   skus: Sku[],
+  env: AppEnv,
 ): PublicProductSummaryView {
   return {
     id: product.id,
     categoryId: product.categoryId,
     name: product.name,
     ...(product.summary !== null ? { summary: product.summary } : {}),
-    ...(product.coverImageUrl ? { coverImageUrl: product.coverImageUrl } : {}),
+    ...(product.coverImageUrl
+      ? {
+          coverImageUrl: rewritePublicImageUrl(
+            product.coverImageUrl,
+            product.coverImageObjectKey,
+            env,
+          ),
+        }
+      : {}),
     skus: skus.map((sku) =>
-      toPublicSkuView(sku, product.isActive, category.isActive),
+      toPublicSkuView(sku, product.isActive, category.isActive, env),
     ),
   };
 }
@@ -122,12 +153,17 @@ export function toPublicProductDetailView(
   category: Category,
   images: ProductImage[],
   skus: Sku[],
+  env: AppEnv,
 ): PublicProductDetailView {
   return {
-    ...toPublicProductSummaryView(product, category, skus),
+    ...toPublicProductSummaryView(product, category, skus, env),
     detailHtml: product.detailHtml,
     images: [...images]
       .sort((left, right) => left.sortOrder - right.sortOrder)
-      .map(({ id, url, sortOrder }) => ({ id, url, sortOrder })),
+      .map(({ id, url, objectKey, sortOrder }) => ({
+        id,
+        url: rewritePublicImageUrl(url, objectKey ?? null, env),
+        sortOrder,
+      })),
   };
 }

@@ -130,6 +130,7 @@ const buildAggregateService = ({
     {} as never,
     { sanitize: vi.fn((html: string) => html) } as never,
     { assertProductAsset } as never,
+    { get: vi.fn(() => sanitizerEnv) } as never,
     { transaction } as never,
   );
 
@@ -150,6 +151,10 @@ const sanitizerEnv = {
   OBJECT_STORAGE_PUBLIC_BASE_URL: 'https://cdn.example.com/bake-mall',
   PRODUCT_MEDIA_ALLOWED_ORIGINS: ['https://cdn.example.com'],
 } as AppEnv;
+
+const envConfigStub = {
+  get: vi.fn(() => sanitizerEnv),
+} as never;
 
 const buildListQueryBuilder = <T>(rows: T[], total = rows.length) => ({
   andWhere: vi.fn().mockReturnThis(),
@@ -179,6 +184,7 @@ describe('catalog admin lists', () => {
       {} as never,
       {} as never,
       {} as never,
+      envConfigStub,
       {} as never,
     );
 
@@ -273,6 +279,7 @@ describe('catalog admin lists', () => {
       skus as never,
       {} as never,
       {} as never,
+      envConfigStub,
       {} as never,
     );
 
@@ -328,6 +335,7 @@ describe('catalog admin lists', () => {
       { createQueryBuilder: vi.fn() } as never,
       {} as never,
       {} as never,
+      envConfigStub,
       {} as never,
     );
 
@@ -373,6 +381,7 @@ describe('catalog safety', () => {
       } as never,
       {} as never,
       { sanitize: vi.fn() } as never,
+      envConfigStub,
       { assertProductAsset: vi.fn() } as never,
     );
 
@@ -397,6 +406,7 @@ describe('catalog safety', () => {
       {} as never,
       {} as never,
       { sanitize: vi.fn() } as never,
+      envConfigStub,
       { assertProductAsset: vi.fn() } as never,
     );
     const request: SaveProductRequest = {
@@ -673,6 +683,7 @@ describe('catalog safety', () => {
       { find: vi.fn().mockResolvedValue([]) } as never,
       { find: vi.fn().mockResolvedValue([]) } as never,
       sanitizer as never,
+      envConfigStub,
       {} as never,
     );
 
@@ -705,6 +716,7 @@ describe('catalog safety', () => {
       } as never,
       {} as never,
       { sanitize: vi.fn() } as never,
+      envConfigStub,
       { assertProductAsset: vi.fn() } as never,
     );
 
@@ -753,6 +765,7 @@ describe('catalog safety', () => {
       {} as never,
       { sanitize: vi.fn().mockReturnValue('<p>clean</p>') } as never,
       { assertProductAsset: vi.fn() } as never,
+      envConfigStub,
       { transaction } as never,
     );
     const request: SaveProductRequest = {
