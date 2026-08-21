@@ -3,23 +3,30 @@ import { onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { showToast } from 'vant';
 
-import type { BannerView } from '@bake-mall/contracts';
+import type { BannerView, HomepageLink } from '@bake-mall/contracts';
 
+import StoreStatePanel from '../../components/feedback/StoreStatePanel.vue';
 import StorePage from '../../components/layout/StorePage.vue';
 import StoreSection from '../../components/layout/StoreSection.vue';
-import StoreStatePanel from '../../components/feedback/StoreStatePanel.vue';
+import HomepageCarousel from '../homepage/components/HomepageCarousel.vue';
+import { homepageLinkPath } from '../homepage/config/navigation.js';
+import { useHomepage } from '../homepage/hooks/useHomepage.js';
 import BannerReel from './components/BannerReel.vue';
-import ProductCard from './components/ProductCard.vue';
+import CatalogCategoryWorkspace from './components/CatalogCategoryWorkspace.vue';
 import { CATALOG_COPY } from './config/copy.js';
 import { bannerTargetPath } from './config/navigation.js';
 import { useCatalog } from './hooks/useCatalog.js';
+
 const router = useRouter();
 const catalog = useCatalog();
+const homepage = useHomepage();
 
 onMounted(async () => {
-  try {
-    await catalog.loadCatalogLanding();
-  } catch {
+  const [catalogResult] = await Promise.allSettled([
+    catalog.loadCatalogLanding(),
+    homepage.load(),
+  ]);
+  if (catalogResult.status === 'rejected') {
     showToast(catalog.lastError.value ?? '商品页加载失败');
   }
 });
@@ -28,12 +35,25 @@ function openBanner(banner: BannerView): void {
   const path = bannerTargetPath(banner);
   if (path) void router.push(path);
 }
+
+function openHomepageLink(link: HomepageLink): void {
+  const path = homepageLinkPath(link);
+  if (path) void router.push(path);
+}
 </script>
 
 <template>
-  <StorePage with-tabbar class="home-shell">
+  <StorePage with-tabbar class="catalog-page">
+    <HomepageCarousel
+      v-if="homepage.data.value?.config.hero"
+      compact
+      class="catalog-page__carousel"
+      :section="homepage.data.value.config.hero"
+      @navigate="openHomepageLink"
+    />
     <BannerReel
-      class="home-shell__banners"
+      v-else
+      class="catalog-page__banners"
       :banners="catalog.banners.value"
       @open="openBanner"
     />
@@ -44,23 +64,11 @@ function openBanner(banner: BannerView): void {
       <p>{{ CATALOG_COPY.heroDescription }}</p>
     </section>
 
-    <StoreSection title="单层分类" eyebrow="按心情挑选">
-      <div class="category-strip">
-        <button
-          v-for="category in catalog.categories.value"
-          :key="category.id"
-          type="button"
-          @click="router.push(`/category/${category.id}`)"
-        >
-          <span class="category-strip__mark">{{
-            category.name.slice(0, 1)
-          }}</span>
-          {{ category.name }}
-        </button>
-      </div>
-    </StoreSection>
-
-    <StoreSection :title="CATALOG_COPY.popularTitle" eyebrow="店内常被带走">
+    <StoreSection
+      :title="CATALOG_COPY.popularTitle"
+      eyebrow="按分类挑选"
+      class="catalog-page__products"
+    >
       <StoreStatePanel
         v-if="catalog.loading.value && !catalog.products.value.length"
         state="loading"
@@ -73,14 +81,12 @@ function openBanner(banner: BannerView): void {
         title="今天的烘焙还在准备中"
         description="晚一点再来看看吧。"
       />
-      <div v-else class="product-grid">
-        <ProductCard
-          v-for="product in catalog.products.value"
-          :key="product.id"
-          :product="product"
-          @open="router.push(`/products/${$event}`)"
-        />
-      </div>
+      <CatalogCategoryWorkspace
+        v-else
+        :categories="catalog.categories.value"
+        :products="catalog.products.value"
+        @open-product="router.push(`/products/${$event}`)"
+      />
     </StoreSection>
 
     <StoreSection :title="CATALOG_COPY.futureTitle" eyebrow="COMING SOON">
@@ -92,16 +98,31 @@ function openBanner(banner: BannerView): void {
 </template>
 
 <style scoped>
-.home-shell {
+.catalog-page {
   overflow-x: hidden;
 }
 
-.home-shell__banners {
-  margin: 0 calc(var(--mall-page-gutter) * -1) var(--mall-space-4);
+.catalog-page__carousel,
+.catalog-page__banners {
+  width: 100%;
+  margin: 0 0 var(--mall-space-4);
 }
 
-.category-strip::-webkit-scrollbar {
-  display: none;
+.catalog-page__carousel {
+  overflow: hidden;
+  border-radius: var(--mall-radius-feature);
+}
+
+.catalog-page__carousel :deep(.homepage-carousel__copy) {
+  bottom: var(--mall-space-5);
+}
+
+.catalog-page__carousel :deep(.homepage-carousel__copy strong) {
+  font-size: clamp(22px, 7vw, 32px);
+}
+
+.catalog-page__carousel :deep(.van-swipe__indicators) {
+  bottom: var(--mall-space-3);
 }
 
 .hero {
@@ -150,52 +171,21 @@ function openBanner(banner: BannerView): void {
   line-height: 1.6;
 }
 
-.category-strip {
-  display: flex;
-  gap: 10px;
+.catalog-page__products {
   margin-right: calc(var(--mall-page-gutter) * -1);
-  padding: 0 var(--mall-page-gutter) var(--mall-space-1) 0;
-  overflow-x: auto;
-  scrollbar-width: none;
+  margin-left: calc(var(--mall-page-gutter) * -1);
 }
 
-.category-strip button {
-  display: flex;
-  padding: 7px 13px 7px 7px;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 7px;
-  border: 1px solid var(--mall-border);
-  border-radius: 999px;
-  background: var(--mall-surface);
-  color: var(--mall-text);
-  cursor: pointer;
-}
-
-.category-strip__mark {
-  display: grid;
-  width: 28px;
-  height: 28px;
-  place-items: center;
-  border-radius: 50%;
-  background: var(--mall-surface-soft);
-  color: var(--mall-primary-strong);
-  font-weight: 700;
-}
-
-.product-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  min-width: 0;
+.catalog-page__products :deep(.store-section__header) {
+  padding-right: var(--mall-page-gutter);
+  padding-left: var(--mall-page-gutter);
 }
 
 .future-card {
   padding: var(--mall-space-5);
-  border: 1px dashed
-    color-mix(in srgb, var(--mall-accent) 55%, var(--mall-border));
+  border: 1px dashed var(--mall-accent);
   border-radius: var(--mall-radius-feature);
-  background: color-mix(in srgb, var(--mall-accent) 9%, var(--mall-surface));
+  background: var(--mall-surface-soft);
 }
 
 .future-card p {
@@ -203,11 +193,5 @@ function openBanner(banner: BannerView): void {
   color: var(--mall-text-muted);
   font-size: 13px;
   line-height: 1.6;
-}
-
-@media (max-width: 380px) {
-  .product-grid {
-    gap: 10px;
-  }
 }
 </style>

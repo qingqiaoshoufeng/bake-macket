@@ -7,9 +7,13 @@ import {
 import { Swipe, SwipeItem } from 'vant';
 import { computed, ref } from 'vue';
 
-const props = defineProps<{
-  readonly section: HomepageHeroSection<{ imageUrl: string }>;
-}>();
+const props = withDefaults(
+  defineProps<{
+    readonly section: HomepageHeroSection<{ imageUrl: string }>;
+    readonly compact?: boolean;
+  }>(),
+  { compact: false },
+);
 
 const emit = defineEmits<{
   navigate: [link: HomepageLink];
@@ -37,6 +41,7 @@ function markImageFailed(slideId: string): void {
       section.slides.some(({ image }) => image.imageUrl.trim().length > 0)
     "
     class="homepage-carousel"
+    :class="{ 'homepage-carousel--compact': compact }"
     aria-label="首页轮播"
   >
     <Swipe
@@ -76,7 +81,11 @@ function markImageFailed(slideId: string): void {
 </template>
 
 <style scoped>
-.homepage-carousel,
+.homepage-carousel {
+  width: 100%;
+  margin: 0 auto;
+}
+
 .homepage-carousel :deep(.van-swipe),
 .homepage-carousel :deep(.van-swipe-item),
 .homepage-carousel__slide {
@@ -86,12 +95,27 @@ function markImageFailed(slideId: string): void {
   min-height: 520px;
 }
 
+.homepage-carousel--compact,
+.homepage-carousel--compact :deep(.van-swipe),
+.homepage-carousel--compact :deep(.van-swipe-item),
+.homepage-carousel--compact .homepage-carousel__slide {
+  height: 190px;
+  min-height: 0;
+}
+
 @supports (height: 100dvh) {
   .homepage-carousel,
   .homepage-carousel :deep(.van-swipe),
   .homepage-carousel :deep(.van-swipe-item),
   .homepage-carousel__slide {
     height: 100dvh;
+  }
+
+  .homepage-carousel--compact,
+  .homepage-carousel--compact :deep(.van-swipe),
+  .homepage-carousel--compact :deep(.van-swipe-item),
+  .homepage-carousel--compact .homepage-carousel__slide {
+    height: 190px;
   }
 }
 
@@ -111,9 +135,11 @@ button.homepage-carousel__slide {
 }
 
 .homepage-carousel__slide img {
+  display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: center;
 }
 
 .homepage-carousel__fallback {
