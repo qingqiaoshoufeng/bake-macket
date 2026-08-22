@@ -13,7 +13,6 @@ import { DataSource, EntityManager, IsNull } from 'typeorm';
 import {
   ApiErrorCode,
   type CustomerAuthSessionView,
-  type UserProfileView,
 } from '@bake-mall/contracts';
 
 import {
@@ -28,6 +27,7 @@ import {
 } from '../users/user-identity-merge.service.js';
 import { UserIdentityService } from '../users/user-identity.service.js';
 import { type AuthenticatedUser } from './auth.types.js';
+import { toUserProfileView } from '../customer/customer-profile.mapper.js';
 import {
   WechatAuthAdapter,
   WechatAuthAdapterError,
@@ -246,33 +246,6 @@ function replayConflict(): ConflictException {
     code: ApiErrorCode.WECHAT_CREDENTIAL_REPLAYED,
     message: 'WeChat credential has already been used.',
   });
-}
-
-function mapProfile(user: User): UserProfileView {
-  return {
-    id: user.id,
-    nickname: user.nickname ?? undefined,
-    avatarUrl: user.avatarUrl ?? undefined,
-    phone: maskPhone(user.phone) ?? undefined,
-    phoneVerified: user.phoneVerified,
-    orderContactPhone: user.orderContactPhone
-      ? {
-          configured: true,
-          maskedPhone: maskPhone(user.orderContactPhone) as string,
-          version: user.orderContactPhoneVersion,
-        }
-      : {
-          configured: false,
-          maskedPhone: null,
-          version: user.orderContactPhoneVersion,
-        },
-  };
-}
-
-function maskPhone(phone: string | null): string | null {
-  if (!phone) return null;
-  if (phone.length < 7) return '***';
-  return `${phone.slice(0, 3)}****${phone.slice(-4)}`;
 }
 
 @Injectable()
@@ -571,7 +544,7 @@ export class WechatAuthService {
   private buildCustomerSession(user: User): CustomerAuthSessionView {
     return {
       ...this.userAuth.issueSession(user),
-      profile: mapProfile(user),
+      profile: toUserProfileView(user),
     };
   }
 

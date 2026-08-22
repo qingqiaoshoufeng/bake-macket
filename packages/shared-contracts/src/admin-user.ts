@@ -14,6 +14,8 @@ export type AdminUserView = {
   identityPhoneMasked: string | null;
   identityPhoneVerified: boolean;
   wechatBound: boolean;
+  wechatOpenid: string | null;
+  wechatUnionid: string | null;
   loginPhoneMasked: string | null;
   createdAt: string;
   isOperator: boolean;
@@ -22,6 +24,35 @@ export type AdminUserView = {
 };
 
 export type AdminUserListItem = AdminUserView;
+
+export type AdminUserDetailView = {
+  id: string;
+  nickname: string | null;
+  avatarUrl: string | null;
+  wechat: {
+    bound: boolean;
+    openidBound: boolean;
+    unionidBound: boolean;
+    openid: string | null;
+    unionid: string | null;
+  };
+  identityPhone: {
+    masked: string | null;
+    verified: boolean;
+  };
+  account: {
+    isActive: boolean;
+    mergedIntoUserId: string | null;
+  };
+  operator: {
+    isOperator: boolean;
+    active: boolean;
+    mustChangePassword: boolean;
+    loginPhoneMasked: string | null;
+  };
+  createdAt: string;
+  updatedAt: string;
+};
 
 export type AdminUserListQuery = AdminPageQuery & {
   /** Matches normalized phone, nickname, or exact user ID. */

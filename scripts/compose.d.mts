@@ -1,1 +1,1 @@
-export function composeProjectName(branch: string): string;
+export function composeProjectName(): string;

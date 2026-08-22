@@ -2,8 +2,10 @@ import type {
   AddressView,
   CartItemView,
   CreateAddressRequest,
+  CustomerAvatarPresignRequest,
   CustomerProfileView,
   UpdateAddressRequest,
+  UpdateCustomerProfileRequest,
   UpsertCartItemRequest,
 } from './index.js';
 
@@ -13,6 +15,7 @@ const profile: CustomerProfileView = {
   avatarUrl: null,
   phone: '138****0000',
   phoneVerified: true,
+  profileCompleted: false,
   orderContactPhone: {
     configured: true,
     maskedPhone: '138****0000',
@@ -85,6 +88,38 @@ const createAddress: CreateAddressRequest = {
   isDefault: address.isDefault,
 };
 const updateAddress: UpdateAddressRequest = { detail: '文一西路 2 号' };
+const avatarPresign: CustomerAvatarPresignRequest = {
+  fileName: 'avatar.png',
+  contentType: 'image/png',
+  sizeBytes: 1024,
+};
+const nicknameProfileUpdate: UpdateCustomerProfileRequest = {
+  nickname: '蛋糕爱好者',
+};
+const avatarProfileUpdate: UpdateCustomerProfileRequest = {
+  avatarObjectKey: 'users/1/avatars/generated.png',
+};
+
+// @ts-expect-error 资料 patch 不能为空。
+const emptyProfileUpdate: UpdateCustomerProfileRequest = {};
+const externalAvatarProfileUpdate: UpdateCustomerProfileRequest = {
+  // @ts-expect-error 头像 URL 只能由服务端从 object key 派生。
+  avatarUrl: 'https://attacker.example/avatar.png',
+};
+const scopedAvatarPresign: CustomerAvatarPresignRequest = {
+  // @ts-expect-error 顾客头像预签名不能接受管理端 scope。
+  scope: 'products',
+  fileName: 'avatar.png',
+  contentType: 'image/png',
+  sizeBytes: 1024,
+};
+const userScopedAvatarPresign: CustomerAvatarPresignRequest = {
+  // @ts-expect-error 顾客头像预签名不能接受客户端 userId。
+  userId: 'another-user',
+  fileName: 'avatar.png',
+  contentType: 'image/png',
+  sizeBytes: 1024,
+};
 
 const invalidCartItem: CartItemView = {
   ...cartItem,
@@ -111,6 +146,13 @@ void [
   address,
   createAddress,
   updateAddress,
+  avatarPresign,
+  nicknameProfileUpdate,
+  avatarProfileUpdate,
+  emptyProfileUpdate,
+  externalAvatarProfileUpdate,
+  scopedAvatarPresign,
+  userScopedAvatarPresign,
   invalidCartItem,
   invalidAddress,
 ];

@@ -11,12 +11,17 @@ export type MiniappMessage =
       source: 'bake-miniapp';
       type: 'PHONE_CREDENTIAL';
       credential: string;
+    }>
+  | Readonly<{
+      source: 'bake-miniapp';
+      type: 'PROFILE_UPDATED' | 'PROFILE_SKIPPED';
     }>;
 
 export const MAX_MINIAPP_PHONE_ROUTE_LENGTH = 1024;
 export const MAX_MINIAPP_WECHAT_LOGIN_ROUTE_LENGTH = 1024;
 
 const PHONE_AUTH_ROUTE = '/pages/phone-auth/index?returnUrl=';
+const PROFILE_COMPLETION_ROUTE = '/pages/profile-completion/index?returnUrl=';
 const WECHAT_LOGIN_ROUTE = '/pages/wechat-login/index?returnUrl=';
 const WECHAT_LOGIN_STATE_STORAGE_KEY = 'bake_wechat_login_state';
 const WECHAT_LOGIN_STATE_CREATED_AT_STORAGE_KEY =
@@ -76,6 +81,12 @@ function parseMiniappMessage(value: unknown): MiniappMessage | null {
     return credential && !Object.prototype.hasOwnProperty.call(record, 'code')
       ? { source: 'bake-miniapp', type: 'PHONE_CREDENTIAL', credential }
       : null;
+  }
+  if (record.type === 'PROFILE_UPDATED' || record.type === 'PROFILE_SKIPPED') {
+    const hasPayload = ['code', 'credential', 'profile', 'token'].some((key) =>
+      Object.prototype.hasOwnProperty.call(record, key),
+    );
+    return hasPayload ? null : { source: 'bake-miniapp', type: record.type };
   }
   return null;
 }
@@ -169,8 +180,30 @@ function parsePhoneCredentialHandoff(url: URL): MiniappMessage | null {
   });
 }
 
+function parseProfileHandoff(url: URL): MiniappMessage | null {
+  if (containsMalformedPercent(url.search)) return null;
+  const parameters = url.searchParams;
+  const type = parameters.get('miniappType');
+  if (
+    parameters.getAll('miniappSource').length !== 1 ||
+    parameters.getAll('miniappType').length !== 1 ||
+    parameters.get('miniappSource') !== 'bake-miniapp' ||
+    (type !== 'PROFILE_UPDATED' && type !== 'PROFILE_SKIPPED') ||
+    !hasExactParameterCount(parameters, 'wechatCode', 0) ||
+    !hasExactParameterCount(parameters, WECHAT_STATE_PARAMETER, 0) ||
+    !hasExactParameterCount(parameters, 'phoneCredential', 0)
+  ) {
+    return null;
+  }
+  return parseMiniappMessage({ source: 'bake-miniapp', type });
+}
+
 function parseUrlHandoff(url: URL): MiniappMessage | null {
-  return parseWechatCodeHandoff(url) ?? parsePhoneCredentialHandoff(url);
+  return (
+    parseWechatCodeHandoff(url) ??
+    parsePhoneCredentialHandoff(url) ??
+    parseProfileHandoff(url)
+  );
 }
 
 function scrubUrlHandoff(url: URL): string {
@@ -283,6 +316,16 @@ async function requestMiniappRoute(
       resolve(false);
     }
   });
+}
+
+export function requestMiniappProfileCompletion(
+  ensureJssdk: () => Promise<boolean> = ensureMiniProgramJssdk,
+): Promise<boolean> {
+  return requestMiniappRoute(
+    PROFILE_COMPLETION_ROUTE,
+    MAX_MINIAPP_PHONE_ROUTE_LENGTH,
+    ensureJssdk,
+  );
 }
 
 export function requestMiniappPhoneCredential(

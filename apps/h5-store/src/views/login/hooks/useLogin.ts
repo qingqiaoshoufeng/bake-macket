@@ -6,7 +6,7 @@ import {
   miniappMessageHub,
 } from '../../../bridge/miniapp.js';
 import { useAuthStore } from '../../../stores/auth.js';
-import { mapProfile } from '../../profile/hooks/useProfile.js';
+import { mapProfile } from '../../profile/type/mapper.js';
 import { loginFeatureApi } from '../api/index.js';
 import { getDefaultDevelopmentLogin } from '../config/default-development-login.js';
 

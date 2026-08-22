@@ -12,9 +12,11 @@ import {
 import {
   buildLoginHandoffUrl,
   buildPhoneCredentialHandoffUrl,
+  buildProfileHandoffUrl,
   createIndexPageController,
   createPhoneAuthController,
   createPhoneCredentialHandoffStore,
+  createProfileHandoffStore,
   createWechatLoginController,
   createWechatLoginHandoffStore,
   decodeRouteParameter,
@@ -329,6 +331,63 @@ describe('miniapp in-memory phone handoff', () => {
       }),
     ).toBe(false);
     expect(store.peek()).toBeNull();
+  });
+});
+
+describe('miniapp profile outcome handoff', () => {
+  it.each(['PROFILE_UPDATED', 'PROFILE_SKIPPED'] as const)(
+    'builds and consumes a one-time %s handoff without profile data',
+    (outcome) => {
+      const store = createProfileHandoffStore();
+      const handoff = {
+        outcome,
+        returnUrl: 'https://mall.example.com/profile?keep=1',
+      };
+
+      expect(store.write(handoff)).toBe(true);
+      expect(store.peek()).toEqual(handoff);
+      expect(
+        buildProfileHandoffUrl(handoff.returnUrl, rootOrigin, outcome),
+      ).toBe(
+        `https://mall.example.com/profile?keep=1&miniappSource=bake-miniapp&miniappType=${outcome}`,
+      );
+      expect(store.consume(handoff)).toBe(true);
+      expect(store.peek()).toBeNull();
+    },
+  );
+
+  it('delivers profile outcome before phone and consumes only the matching load', () => {
+    const profileHandoff = {
+      outcome: 'PROFILE_UPDATED' as const,
+      returnUrl: 'https://mall.example.com/profile',
+    };
+    const consumeProfileHandoff = vi.fn(() => true);
+    const consumePhoneHandoff = vi.fn(() => true);
+    const rebuildWebView = createSuccessfulRebuild();
+    const controller = createIndexPageController({
+      baseOrigin: rootOrigin,
+      baseUrl: rootBaseUrl,
+      consumePhoneHandoff,
+      consumeProfileHandoff,
+      consumeWechatLoginHandoff: () => false,
+      peekPhoneHandoff: () => ({
+        credential: 'phone-code',
+        returnUrl: 'https://mall.example.com/profile',
+      }),
+      peekProfileHandoff: () => profileHandoff,
+      peekWechatLoginHandoff: () => null,
+      rebuildWebView,
+      toast: vi.fn(),
+    });
+
+    expect(controller.handleShow()).toBe(true);
+    const [url, deliveryId] = rebuildWebView.mock.calls[0] ?? [];
+    expect(url).toContain('miniappType=PROFILE_UPDATED');
+    expect(url).not.toContain('phoneCredential');
+    expect(controller.handleWebViewLoad('stale')).toBe(false);
+    expect(consumeProfileHandoff).not.toHaveBeenCalled();
+    expect(controller.handleWebViewLoad(deliveryId)).toBe(true);
+    expect(consumeProfileHandoff).toHaveBeenCalledWith(profileHandoff);
   });
 });
 

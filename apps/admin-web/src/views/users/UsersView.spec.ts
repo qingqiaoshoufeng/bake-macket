@@ -15,6 +15,7 @@ import UsersView from './UsersView.vue';
 vi.mock('./api/index.js', () => ({
   usersApi: {
     list: vi.fn(),
+    getOne: vi.fn(),
     create: vi.fn(),
     grantOperator: vi.fn(),
     revokeOperator: vi.fn(),
@@ -60,6 +61,65 @@ beforeEach(() => {
 });
 
 describe('UsersView', () => {
+  it('opens complete WeChat identity detail without unrelated secrets', async () => {
+    api.list.mockResolvedValue({
+      items: [
+        {
+          id: 'user-1',
+          nickname: '小莓',
+          identityPhoneMasked: '138****0000',
+          identityPhoneVerified: true,
+          wechatBound: true,
+          wechatOpenid: 'openid-user',
+          wechatUnionid: 'unionid-user',
+          loginPhoneMasked: null,
+          createdAt: '2026-08-06T08:00:00.000Z',
+          isOperator: false,
+          operatorActive: false,
+          mustChangePassword: false,
+        },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    });
+    api.getOne.mockResolvedValue({
+      id: 'user-1',
+      nickname: '小莓',
+      avatarUrl: 'https://cdn.example.com/avatar.webp',
+      wechat: {
+        bound: true,
+        openidBound: true,
+        unionidBound: false,
+        openid: 'openid-user',
+        unionid: null,
+      },
+      identityPhone: { masked: '138****0000', verified: true },
+      account: { isActive: true, mergedIntoUserId: null },
+      operator: {
+        isOperator: false,
+        active: false,
+        mustChangePassword: false,
+        loginPhoneMasked: null,
+      },
+      createdAt: '2026-08-06T08:00:00.000Z',
+      updatedAt: '2026-08-07T08:00:00.000Z',
+    });
+
+    const wrapper = mountView(superSession);
+    await flushPromises();
+    await wrapper.find('[data-testid="view-user-detail"]').trigger('click');
+    await flushPromises();
+
+    expect(api.getOne).toHaveBeenCalledWith('user-1');
+    expect(wrapper.text()).toContain('用户详情');
+    expect(wrapper.text()).toContain('openid-user');
+    expect(wrapper.text()).toContain('UnionID');
+    expect(wrapper.text()).toContain('未获取');
+    expect(wrapper.text()).toContain('138****0000');
+    expect(wrapper.text()).not.toContain('openid-secret');
+  });
+
   it('shows create and role controls to SUPER_ADMIN', async () => {
     api.list.mockResolvedValue({
       items: [
@@ -69,6 +129,8 @@ describe('UsersView', () => {
           identityPhoneMasked: '138****0000',
           identityPhoneVerified: true,
           wechatBound: true,
+          wechatOpenid: 'openid-user',
+          wechatUnionid: 'unionid-user',
           loginPhoneMasked: null,
           createdAt: '2026-08-06T08:00:00.000Z',
           isOperator: false,
@@ -99,6 +161,8 @@ describe('UsersView', () => {
           identityPhoneMasked: '138****0000',
           identityPhoneVerified: true,
           wechatBound: true,
+          wechatOpenid: 'openid-user',
+          wechatUnionid: 'unionid-user',
           loginPhoneMasked: '137****0000',
           createdAt: '2026-08-06T08:00:00.000Z',
           isOperator: true,
@@ -111,6 +175,8 @@ describe('UsersView', () => {
           identityPhoneMasked: null,
           identityPhoneVerified: false,
           wechatBound: false,
+          wechatOpenid: null,
+          wechatUnionid: null,
           loginPhoneMasked: null,
           createdAt: '2026-08-06T08:00:00.000Z',
           isOperator: false,
@@ -130,6 +196,9 @@ describe('UsersView', () => {
     expect(wrapper.text()).toContain('管理员登录手机号');
     expect(wrapper.text()).toContain('微信已绑定');
     expect(wrapper.text()).toContain('微信未绑定');
+    expect(wrapper.text()).toContain('openid-user');
+    expect(wrapper.text()).toContain('unionid-user');
+    expect(wrapper.text()).toContain('未获取');
     expect(wrapper.text()).toContain('137****0000');
     const grantButtons = wrapper.findAll('[data-testid="grant-operator"]');
     expect(grantButtons).toHaveLength(2);
@@ -153,6 +222,8 @@ describe('UsersView', () => {
           identityPhoneMasked: '138****0000',
           identityPhoneVerified: true,
           wechatBound: true,
+          wechatOpenid: 'openid-user',
+          wechatUnionid: 'unionid-user',
           loginPhoneMasked: null,
           createdAt: '2026-08-06T08:00:00.000Z',
           isOperator: false,
@@ -191,6 +262,8 @@ describe('UsersView', () => {
             identityPhoneMasked: '138****0000',
             identityPhoneVerified: true,
             wechatBound: true,
+            wechatOpenid: 'openid-user',
+            wechatUnionid: 'unionid-user',
             loginPhoneMasked: null,
             createdAt: '2026-08-06T08:00:00.000Z',
             isOperator: false,
@@ -226,6 +299,8 @@ describe('UsersView', () => {
           identityPhoneMasked: '138****0000',
           identityPhoneVerified: true,
           wechatBound: true,
+          wechatOpenid: 'openid-user',
+          wechatUnionid: 'unionid-user',
           loginPhoneMasked: null,
           createdAt: '2026-08-06T08:00:00.000Z',
           isOperator: true,

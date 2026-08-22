@@ -1,27 +1,11 @@
-import { execFileSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { constants, copyFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-export function composeProjectName(branch) {
-  const sanitized =
-    branch
-      .toLowerCase()
-      .replace(/[^a-z0-9_-]+/g, '-')
-      .replace(/^[-_]+|[-_]+$/g, '') || 'detached';
+const COMPOSE_PROJECT_NAME = 'bake-mall-main';
 
-  return `bake-mall-${sanitized}`;
-}
-
-function currentBranch() {
-  try {
-    return (
-      execFileSync('git', ['branch', '--show-current'], {
-        encoding: 'utf8',
-      }).trim() || 'detached'
-    );
-  } catch {
-    return 'detached';
-  }
+export function composeProjectName() {
+  return COMPOSE_PROJECT_NAME;
 }
 
 function ensureDevelopmentEnv() {
@@ -39,7 +23,7 @@ function ensureDevelopmentEnv() {
 function main() {
   ensureDevelopmentEnv();
   const args = process.argv.slice(2);
-  const projectName = composeProjectName(currentBranch());
+  const projectName = composeProjectName();
   const result = spawnSync(
     'docker',
     [

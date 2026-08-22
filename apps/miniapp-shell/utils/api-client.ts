@@ -24,11 +24,18 @@ type MiniappApiClientDependencies = SessionStores &
   Readonly<{
     baseUrl?: string;
     request?: typeof wx.request;
+    uploadFile?: typeof wx.uploadFile;
   }>;
 export type MiniappApiRequestOptions = Readonly<{
   audience?: ApiAudience;
   header?: Readonly<Record<string, string>>;
   query?: Readonly<Record<string, number | string | undefined>>;
+}>;
+
+export type PresignedPostUpload = Readonly<{
+  fields: Readonly<Record<string, string>>;
+  filePath: string;
+  uploadUrl: string;
 }>;
 
 type ErrorPayload = Readonly<{
@@ -243,6 +250,27 @@ function defaultRequest(
   return wx.request(options);
 }
 
+function defaultUploadFile(
+  options: WechatMiniprogram.UploadFileOption,
+): WechatMiniprogram.UploadTask {
+  return wx.uploadFile(options);
+}
+
+function requireSecureUploadUrl(value: string): string {
+  const normalized = value.trim();
+  const match = normalized.match(/^https:\/\/([^/?#]+)(\/[^?#]*)?(\?[^#]*)?$/i);
+  const authority = normalizeAuthority(match?.[1] ?? '');
+  if (
+    !authority ||
+    normalized !== value ||
+    containsControlCharacter(normalized) ||
+    normalized.includes('\\')
+  ) {
+    throw new ApiClientError(0, '头像上传地址无效');
+  }
+  return `https://${authority}${match?.[2] ?? ''}${match?.[3] ?? ''}`;
+}
+
 export function createMiniappApiClient(
   dependencies: MiniappApiClientDependencies,
 ): Readonly<{
@@ -263,11 +291,13 @@ export function createMiniappApiClient(
     body?: unknown,
     options?: MiniappApiRequestOptions,
   ) => Promise<T>;
+  uploadPresignedPost: (upload: PresignedPostUpload) => Promise<void>;
 }> {
   const baseUrl = normalizeBaseUrl(
     dependencies.baseUrl ?? MINIAPP_API_BASE_URL,
   );
   const request = dependencies.request ?? defaultRequest;
+  const uploadFile = dependencies.uploadFile ?? defaultUploadFile;
 
   function sessionForAudience(audience?: ApiAudience) {
     if (audience === 'admin') return dependencies.adminSession.get();
@@ -337,6 +367,42 @@ export function createMiniappApiClient(
     });
   }
 
+  async function uploadPresignedPost(
+    upload: PresignedPostUpload,
+  ): Promise<void> {
+    const uploadUrl = requireSecureUploadUrl(upload.uploadUrl);
+    const filePath = parseNonEmptyString(upload.filePath);
+    if (!filePath) {
+      return Promise.reject(new ApiClientError(0, '头像文件路径无效'));
+    }
+    await new Promise<void>((resolve, reject) => {
+      uploadFile({
+        url: uploadUrl,
+        filePath,
+        name: 'file',
+        formData: { ...upload.fields },
+        timeout: MINIAPP_API_REQUEST_TIMEOUT_MS,
+        success(response) {
+          if (response.statusCode >= 200 && response.statusCode < 300) {
+            resolve();
+            return;
+          }
+          reject(
+            new ApiClientError(
+              response.statusCode,
+              `头像上传失败（${response.statusCode}）`,
+            ),
+          );
+        },
+        fail(error) {
+          reject(
+            new ApiClientError(0, failureMessage(error), { cause: error }),
+          );
+        },
+      });
+    });
+  }
+
   return {
     delete: <T>(path: string, options?: MiniappApiRequestOptions) =>
       execute<T>('DELETE', path, undefined, options),
@@ -357,5 +423,6 @@ export function createMiniappApiClient(
       body?: unknown,
       options?: MiniappApiRequestOptions,
     ) => execute<T>('PUT', path, body, options),
+    uploadPresignedPost,
   };
 }

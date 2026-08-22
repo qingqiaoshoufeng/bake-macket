@@ -23,6 +23,7 @@ const adminSession: AdminSessionView = {
     AdminPermission.ORDER_READ,
     AdminPermission.ORDER_STATUS_UPDATE,
     AdminPermission.USER_READ,
+    AdminPermission.USER_WECHAT_IDENTITY_READ,
     AdminPermission.USER_CREATE,
     AdminPermission.PRINT_DEVICE_MANAGE,
     AdminPermission.PRINT_EXECUTE,
@@ -47,6 +48,7 @@ const customerSession = {
 } as const;
 
 type RequestOptions = WechatMiniprogram.RequestOption;
+type UploadOptions = WechatMiniprogram.UploadFileOption;
 
 function createRequestMock() {
   return vi.fn((options: RequestOptions) => {
@@ -312,6 +314,77 @@ describe('miniapp API client', () => {
       expect(customer.get()).toEqual(
         audience === 'customer' ? newerCustomer : customerSession,
       );
+    },
+  );
+
+  it('uploads a presigned POST without API Authorization and accepts only 2xx', async () => {
+    const uploadFile = vi.fn((options: UploadOptions) => {
+      options.success?.({
+        data: '',
+        statusCode: 204,
+        profile: {} as WechatMiniprogram.RequestProfile,
+        errMsg: 'uploadFile:ok',
+      });
+      return {} as WechatMiniprogram.UploadTask;
+    });
+    const customer = createCustomerSessionStore();
+    const admin = createAdminSessionStore();
+    customer.set(customerSession);
+    admin.set(adminSession);
+    const client = createMiniappApiClient({
+      adminSession: admin,
+      baseUrl: 'https://mall.example.com/api/v1',
+      customerSession: customer,
+      uploadFile,
+    });
+
+    await expect(
+      client.uploadPresignedPost({
+        filePath: 'wxfile://avatar.png',
+        fields: { key: 'users/42/avatars/server.png', policy: 'secret' },
+        uploadUrl: 'https://objects.example.com/bake-mall',
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(uploadFile).toHaveBeenCalledWith({
+      url: 'https://objects.example.com/bake-mall',
+      filePath: 'wxfile://avatar.png',
+      name: 'file',
+      formData: { key: 'users/42/avatars/server.png', policy: 'secret' },
+      timeout: MINIAPP_API_REQUEST_TIMEOUT_MS,
+      success: expect.any(Function),
+      fail: expect.any(Function),
+    });
+    expect(JSON.stringify(uploadFile.mock.calls[0]?.[0])).not.toContain(
+      'Authorization',
+    );
+  });
+
+  it.each([
+    'http://objects.example.com/upload',
+    'https://user@objects.example.com/upload',
+    'https://objects.example.com/upload#fragment',
+  ])(
+    'rejects an unsafe presigned upload URL before wx.uploadFile: %s',
+    async (uploadUrl) => {
+      const uploadFile = vi.fn();
+      const customer = createCustomerSessionStore();
+      const admin = createAdminSessionStore();
+      const client = createMiniappApiClient({
+        adminSession: admin,
+        baseUrl: 'https://mall.example.com/api/v1',
+        customerSession: customer,
+        uploadFile,
+      });
+
+      await expect(
+        client.uploadPresignedPost({
+          filePath: 'wxfile://avatar.png',
+          fields: { key: 'avatar.png' },
+          uploadUrl,
+        }),
+      ).rejects.toMatchObject({ status: 0 });
+      expect(uploadFile).not.toHaveBeenCalled();
     },
   );
 

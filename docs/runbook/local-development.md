@@ -24,7 +24,7 @@ cp .env.development.example .env.development
 pnpm dev
 ```
 
-`pnpm dev` 会启动或复用本分支 Compose 项目、构建共享契约、执行开发库 migration，再启动 API/H5/Admin。
+`pnpm dev` 会启动或复用全项目唯一的 `bake-mall-main` Compose 项目、构建共享契约、执行开发库 migration，再启动 API/H5/Admin。所有分支与工作树共享这一套资源和服务环境，不得另起 MySQL、MinIO 或分支专属端口。
 
 | 服务          | 地址                            | 说明                          |
 | ------------- | ------------------------------- | ----------------------------- |
@@ -35,6 +35,8 @@ pnpm dev
 | MinIO S3 API  | `http://127.0.0.1:43900`        | 已自动创建 `bake-mall` bucket |
 | MinIO Console | `http://127.0.0.1:43901`        | 本地对象存储控制台            |
 
+API 内部通过 `OBJECT_STORAGE_ENDPOINT=http://127.0.0.1:43900` 读取唯一 MinIO；面向浏览器/真机的预签名上传使用 `OBJECT_STORAGE_CLIENT_ENDPOINT`。开发 tunnel 必须把 `/bake-mall`（bucket 根 POST）和 `/bake-mall/`（对象 GET）都反代到同一 MinIO。
+
 默认开发登录：顾客 `13800000000 / 123456`；管理员 `admin-local@example.com / admin-password`。真实本地凭据只留在被忽略的 `.env.development`。
 
 ## 服务管理
@@ -44,7 +46,7 @@ pnpm services:ps
 pnpm services:down
 ```
 
-Compose 项目名由当前分支派生。若其他工作树占用端口，不要停止对方容器；修改本工作树 `.env.development` 的 MySQL/MinIO 端口及对应对象存储 URL。
+Compose 项目名固定为 `bake-mall-main`。任何分支或工作树都必须复用 `43306/43900/43901` 这一套 MySQL/MinIO，不得修改为分支专属端口，也不得启动第二套容器。若端口已占用，应先确认并复用现有 `bake-mall-main`，而不是绕开冲突。
 
 ## 小程序开发者工具 URL
 
@@ -74,11 +76,11 @@ pnpm test:e2e
 
 默认 runner 会：
 
-1. 启动或复用**本分支**的 MySQL/MinIO Compose 项目并保留基础设施；
+1. 启动或复用全项目唯一的 `bake-mall-main` MySQL/MinIO Compose 项目并保留基础设施；
 2. 创建随机临时 MySQL schema 和临时最小权限用户；
 3. 选择空闲 API/H5/Admin 端口，构建 contracts，并只对临时 schema 执行 migration；
 4. 启动三个 Playwright webServer 并运行真实 Chromium 流程；
-5. 无论成功或失败，都删除临时 schema 和用户；不会执行 `services:down`，也不会触碰其他工作树容器。
+5. 无论成功或失败，都删除临时 schema 和用户；不会执行 `services:down`，也不会创建或清理第二套工作树容器。
 
 复用外部服务仅在明确设置 `E2E_USE_EXISTING_SERVERS=1` 时启用。`DATABASE_URL` 必须指向可丢弃数据库，并同时给出三个根 URL（不支持子路径）或三个端口。
 

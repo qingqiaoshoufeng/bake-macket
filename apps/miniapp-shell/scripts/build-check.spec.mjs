@@ -86,6 +86,31 @@ test('registers both native credential pages and gates their official controls',
   assert.doesNotMatch(loginTemplate, /open-type="getPhoneNumber"/);
 });
 
+test('registers profile completion and locks official avatar nickname controls', async () => {
+  const [appSource, formTemplate, pageTemplate] = await Promise.all([
+    readFile(new URL('app.json', packageRootUrl), 'utf8'),
+    readFile(
+      new URL(
+        'profile-completion/components/profile-form/index.wxml',
+        packageRootUrl,
+      ),
+      'utf8',
+    ),
+    readFile(
+      new URL('pages/profile-completion/index.wxml', packageRootUrl),
+      'utf8',
+    ),
+  ]);
+  const app = JSON.parse(appSource);
+
+  assert.ok(app.pages.includes('pages/profile-completion/index'));
+  assert.match(formTemplate, /open-type="chooseAvatar"/u);
+  assert.match(formTemplate, /bindchooseavatar="onChooseAvatar"/u);
+  assert.match(formTemplate, /type="nickname"/u);
+  assert.match(formTemplate, /maxlength="64"/u);
+  assert.match(pageTemplate, /bindskip="onSkip"/u);
+});
+
 test('keeps the committed project config on the placeholder AppID', async () => {
   const project = JSON.parse(
     await readFile(new URL('project.config.json', packageRootUrl), 'utf8'),
@@ -112,7 +137,10 @@ test('package build-check validates without overwriting runtime URL config', asy
   );
   await execFileAsync(process.execPath, [checkScript], { env });
 
-  assert.doesNotMatch(packageJson.scripts['build:check'], /prepare-build-check/);
+  assert.doesNotMatch(
+    packageJson.scripts['build:check'],
+    /prepare-build-check/,
+  );
   assert.equal(await readFile(h5RuntimeUrl, 'utf8'), sentinelSources.h5);
   assert.equal(await readFile(apiRuntimeUrl, 'utf8'), sentinelSources.api);
 });

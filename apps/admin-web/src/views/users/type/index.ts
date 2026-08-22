@@ -1,4 +1,5 @@
 import type {
+  AdminUserDetailView,
   AdminUserListQuery,
   AdminUserListResult,
   AdminUserStatusView,
@@ -9,6 +10,7 @@ import type {
 } from '@bake-mall/contracts';
 
 export type {
+  AdminUserDetailView,
   AdminUserListQuery,
   AdminUserListResult,
   AdminUserStatusView,

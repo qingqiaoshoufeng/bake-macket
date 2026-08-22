@@ -371,6 +371,7 @@ describe('Customer domain (e2e)', () => {
       avatarUrl: null,
       phone: '138****0000',
       phoneVerified: true,
+      profileCompleted: false,
       orderContactPhone: {
         configured: false,
         maskedPhone: null,

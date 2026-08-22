@@ -69,6 +69,28 @@ describe('useProfile', () => {
     });
   });
 
+  it('observes auth profile updates delivered after the view has mounted', async () => {
+    const auth = useAuthStore();
+    const { profile } = mountProfile();
+    await profile.methods.load();
+
+    auth.setProfile({
+      id: 'user-1',
+      nickname: '原生页新昵称',
+      avatarUrl: 'https://objects.example.com/avatar.png',
+      phoneVerified: true,
+      profileCompleted: true,
+      orderContactPhone: canonicalProfile.orderContactPhone,
+    });
+    await Promise.resolve();
+
+    expect(profile.data.profile.value).toMatchObject({
+      nickname: '原生页新昵称',
+      avatarUrl: 'https://objects.example.com/avatar.png',
+      profileCompleted: true,
+    });
+  });
+
   it('保存时发送 expectedVersion，成功后仅保留脱敏状态并清空输入', async () => {
     vi.mocked(profileFeatureApi.updateOrderContactPhone).mockResolvedValue({
       configured: true,

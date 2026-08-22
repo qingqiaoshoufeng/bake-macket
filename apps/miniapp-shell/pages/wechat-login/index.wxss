@@ -5,12 +5,30 @@
   box-sizing: border-box;
 }
 
-.wechat-login-card {
-  margin-top: 18vh;
+.wechat-login-card,
+.wechat-login-profile {
   padding: 40rpx 32rpx 24rpx;
   border: 1rpx solid #eadfd2;
   border-radius: 28rpx;
   background: #ffffff;
+}
+
+.wechat-login-card {
+  margin-top: 18vh;
+}
+
+.wechat-login-profile {
+  margin-top: 5vh;
+}
+
+.wechat-login-profile__header {
+  margin-bottom: 28rpx;
+}
+
+.wechat-login-error {
+  margin-bottom: 20rpx;
+  color: #c24b3a;
+  font-size: 24rpx;
 }
 
 .wechat-login-title,

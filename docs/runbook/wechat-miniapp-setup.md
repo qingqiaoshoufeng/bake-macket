@@ -83,7 +83,17 @@ WECHAT_APP_SECRET=<正式 AppSecret>
 
 `wx.login` code 是一次性的，只存在原生 App 内存与一次性同源 URL handoff，不进入 localStorage、sessionStorage、小程序 storage、日志、审计或响应。H5 localStorage 仅暂存不含身份信息的随机 state 与创建时间，匹配/过期/导航失败后清理；无匹配 state 的 code 不得兑换。兑换失败后必须通过新的 `wx.login` 获取新 code。
 
-### 4.2 三类手机号与订单快照
+### 4.2 头像昵称资料完善
+
+1. 微信登录成功且昵称或受管理头像缺失时，H5 每个登录会话最多打开一次 `/pages/profile-completion/index`；用户可选择“稍后设置”，不影响已建立的商城会话，下次新登录仍可提示。
+2. 原生页使用 `button open-type="chooseAvatar"` 与 `input type="nickname"`。头像临时路径只保留在页面内存；昵称 trim 后必须为 1–64 字符。
+3. 原生页使用新的 `wx.login` 建立仅在 App 内存中的独立 customer session，然后请求 `POST /me/profile/avatar/presign`。头像支持 JPEG/PNG/WebP，最大 5 MiB。
+4. `wx.uploadFile` 的目标来自 `OBJECT_STORAGE_CLIENT_ENDPOINT` 签名；该域名必须稳定、HTTPS，并登记为微信 `uploadFile` 合法域名。API 内部读取仍使用 `OBJECT_STORAGE_ENDPOINT`，两者可以不同但必须指向同一 bucket。
+5. 上传后仅向 `PATCH /me/profile` 提交当前用户命名空间的 object key；服务端验证对象存在、大小、MIME 与图片魔数，并派生公开 URL。
+6. 完成或跳过只通过 App 内存 handoff 返回 `PROFILE_UPDATED` / `PROFILE_SKIPPED`，不携带 JWT、昵称、头像 URL、object key 或上传签名。完成后 H5 使用自己的 JWT 重新请求 `GET /me`。
+7. “我的”页可再次打开同一原生页面修改头像昵称；头像下载域名必须登记为 `downloadFile` 合法域名。
+
+### 4.3 三类手机号与订单快照
 
 1. `User.phone` 是唯一的历史身份手机号，可参与身份归一和保留的会员验证；不得由履约资料修改。
 2. `User.orderContactPhone` 是非唯一的订单履约手机号，另有 `orderContactPhoneVersion`。顾客在 H5“我的”页设置或修改；Profile 只持久化脱敏值和 version，完整号码只存在 PUT 请求生命周期，不进入 auth profile/localStorage。

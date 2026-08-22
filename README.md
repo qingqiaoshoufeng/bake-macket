@@ -55,7 +55,7 @@ Start MySQL and MinIO for local development. This command also initializes the `
 pnpm services:up
 ```
 
-These service commands derive an isolated Docker Compose project name from the current Git branch, preventing local service state collisions between worktrees. All published service ports bind to `127.0.0.1` and are local-only.
+These service commands always reuse the single Docker Compose project `bake-mall-main`. Every branch and worktree shares this one MySQL/MinIO resource environment; do not start a second stack or assign branch-specific service ports. All published service ports bind to `127.0.0.1` and are local-only.
 
 | Service       | Address                  | Notes                                                     |
 | ------------- | ------------------------ | --------------------------------------------------------- |

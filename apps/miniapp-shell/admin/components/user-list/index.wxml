@@ -3,10 +3,21 @@
   <view wx:for="{{users}}" wx:key="id" class="user-card">
     <view class="user-card__primary">
       <text class="user-card__name">{{item.nickname || '未设置昵称'}}</text>
-      <text class="user-card__phone">{{item.phoneMasked || '未绑定手机号'}}</text>
+      <text class="user-card__phone">{{item.identityPhoneMasked || '未绑定手机号'}}</text>
+    </view>
+    <view class="user-card__wechat">
+      <text class="user-card__wechat-status">{{item.wechatBound ? '微信已绑定' : '微信未绑定'}}</text>
+      <view class="user-card__identifier">
+        <text class="user-card__identifier-label">OpenID</text>
+        <text class="user-card__identifier-value" selectable>{{item.wechatOpenid || '未获取'}}</text>
+      </view>
+      <view class="user-card__identifier">
+        <text class="user-card__identifier-label">UnionID</text>
+        <text class="user-card__identifier-value" selectable>{{item.wechatUnionid || '未获取'}}</text>
+      </view>
     </view>
     <view class="user-card__meta">
-      <text>{{item.phoneVerified ? '手机号已验证' : '待完成手机号验证'}}</text>
+      <text>{{item.identityPhoneVerified ? '手机号已验证' : '待完成手机号验证'}}</text>
       <text wx:if="{{item.isOperator}}">{{item.operatorActive ? '操作员' : '操作员已停用'}}</text>
       <text wx:if="{{item.mustChangePassword}}">待首次改密</text>
       <text>创建于 {{item.createdAt}}</text>

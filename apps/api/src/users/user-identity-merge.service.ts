@@ -69,6 +69,40 @@ const scalarIsOne = (rows: unknown, key: string): boolean =>
   Number((rows[0] as Record<string, unknown>)[key]) === 1;
 
 type WechatIdentity = Pick<User, 'wechatOpenid' | 'wechatUnionid'>;
+type CustomerProfile = Pick<User, 'nickname' | 'avatarObjectKey' | 'avatarUrl'>;
+
+const managedAvatar = (
+  profile: Pick<CustomerProfile, 'avatarObjectKey' | 'avatarUrl'>,
+): Pick<CustomerProfile, 'avatarObjectKey' | 'avatarUrl'> | null => {
+  const avatarObjectKey = profile.avatarObjectKey ?? null;
+  const avatarUrl = profile.avatarUrl ?? null;
+  const hasKey = avatarObjectKey !== null;
+  const hasUrl = avatarUrl !== null;
+  if (hasKey && !hasUrl) throw new Error('Managed avatar pair is incomplete');
+  return hasKey && hasUrl ? { avatarObjectKey, avatarUrl } : null;
+};
+
+const normalizedProfileNickname = (nickname: string | null): string | null =>
+  nickname?.trim() || null;
+
+export const mergeCustomerProfile = (
+  canonical: CustomerProfile,
+  source: CustomerProfile,
+): CustomerProfile => {
+  const canonicalAvatar = managedAvatar(canonical);
+  const sourceAvatar = managedAvatar(source);
+  const avatar = canonicalAvatar ??
+    sourceAvatar ?? {
+      avatarObjectKey: null,
+      avatarUrl: null,
+    };
+  return {
+    nickname:
+      normalizedProfileNickname(canonical.nickname) ??
+      normalizedProfileNickname(source.nickname),
+    ...avatar,
+  };
+};
 
 export const assertWechatIdentityCompatible = (
   canonical: WechatIdentity,
@@ -530,6 +564,13 @@ export class UserIdentityMergeService {
       openid: source.wechatOpenid,
       unionid: source.wechatUnionid,
     };
+    const mergedProfile = mergeCustomerProfile(canonical, source);
+    canonical.nickname = mergedProfile.nickname;
+    canonical.avatarObjectKey = mergedProfile.avatarObjectKey;
+    canonical.avatarUrl = mergedProfile.avatarUrl;
+    source.nickname = null;
+    source.avatarObjectKey = null;
+    source.avatarUrl = null;
     source.isActive = false;
     source.mergedIntoUserId = canonical.id;
     source.wechatOpenid = null;

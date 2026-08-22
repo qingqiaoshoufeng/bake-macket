@@ -38,12 +38,8 @@ export function resolveMysqlContainer(
   startDirectory = process.cwd(),
 ): string {
   if (environment.TEST_MYSQL_CONTAINER) return environment.TEST_MYSQL_CONTAINER;
-  const repositoryRoot = resolveRepositoryRoot(startDirectory);
-  const branch =
-    execFileSync('git', ['-C', repositoryRoot, 'branch', '--show-current'], {
-      encoding: 'utf8',
-    }).trim() || 'detached';
-  return `${composeProjectName(branch)}-mysql-1`;
+  resolveRepositoryRoot(startDirectory);
+  return `${composeProjectName()}-mysql-1`;
 }
 
 type DockerPortResolver = (container: string) => string;

@@ -1,0 +1,25 @@
+<view class="profile-form">
+  <button
+    class="profile-form__avatar-button"
+    open-type="chooseAvatar"
+    bindchooseavatar="onChooseAvatar"
+    disabled="{{loading}}"
+  >
+    <image wx:if="{{avatarPreviewUrl}}" class="profile-form__avatar" src="{{avatarPreviewUrl}}" mode="aspectFill" />
+    <view wx:else class="profile-form__avatar profile-form__avatar--placeholder">选择头像</view>
+  </button>
+  <label class="profile-form__field">
+    <text>昵称</text>
+    <input
+      type="nickname"
+      maxlength="64"
+      value="{{nickname}}"
+      placeholder="请输入昵称"
+      bindinput="onNicknameInput"
+      disabled="{{loading}}"
+    />
+  </label>
+  <view wx:if="{{error}}" class="profile-form__error">{{error}}</view>
+  <button class="profile-form__save" type="primary" bindtap="onSave" loading="{{loading}}" disabled="{{loading}}">保存资料</button>
+  <button class="profile-form__skip" bindtap="onSkip" disabled="{{loading}}">稍后设置</button>
+</view>

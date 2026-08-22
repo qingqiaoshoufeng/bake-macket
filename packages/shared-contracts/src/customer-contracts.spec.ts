@@ -4,8 +4,11 @@ import type {
   AddressView,
   CartItemView,
   CreateAddressRequest,
+  CustomerAvatarPresignRequest,
+  CustomerAvatarPresignResponse,
   CustomerProfileView,
   UpdateAddressRequest,
+  UpdateCustomerProfileRequest,
   UpsertCartItemRequest,
 } from './index.js';
 
@@ -17,6 +20,7 @@ describe('customer boundary contracts', () => {
       avatarUrl: null,
       phone: '138****0000',
       phoneVerified: true,
+      profileCompleted: false,
       orderContactPhone: {
         configured: true,
         maskedPhone: '138****0000',
@@ -27,6 +31,32 @@ describe('customer boundary contracts', () => {
     expect(profile.phone).toBe('138****0000');
     expect(profile.orderContactPhone.configured).toBe(true);
     expect(profile.nickname).toBeNull();
+    expect(profile.profileCompleted).toBe(false);
+  });
+
+  it('keeps avatar presign and non-empty profile update requests customer-scoped', () => {
+    const presign = {
+      fileName: 'avatar.webp',
+      contentType: 'image/webp',
+      sizeBytes: 1024,
+    } satisfies CustomerAvatarPresignRequest;
+    const response = {
+      objectKey: 'users/1/avatars/server-generated.webp',
+      uploadUrl: 'https://storage.example.test/upload',
+      fields: { key: 'users/1/avatars/server-generated.webp' },
+      expiresAt: '2026-08-18T08:05:00.000Z',
+    } satisfies CustomerAvatarPresignResponse;
+    const nickname = {
+      nickname: ' 蛋糕爱好者 ',
+    } satisfies UpdateCustomerProfileRequest;
+    const avatar = {
+      avatarObjectKey: response.objectKey,
+    } satisfies UpdateCustomerProfileRequest;
+
+    expect(presign).not.toHaveProperty('scope');
+    expect(response).not.toHaveProperty('publicUrl');
+    expect(nickname.nickname).toContain('蛋糕');
+    expect(avatar.avatarObjectKey).toBe(response.objectKey);
   });
 
   it('keeps cart target quantities and prices as integer wire values', () => {

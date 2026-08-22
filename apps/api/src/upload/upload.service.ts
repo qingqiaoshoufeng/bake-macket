@@ -1,6 +1,5 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
 import { randomUUID } from 'node:crypto';
 import { extname } from 'node:path';
 
@@ -8,12 +7,15 @@ import type { PresignUploadResponse } from '@bake-mall/contracts';
 
 import { type AppConfig } from '../config/env.schema.js';
 import { joinMediaUrl } from '../media-url.js';
-import { createObjectStorageClient } from '../object-storage/object-storage-client.js';
+import { PresignedPostService } from '../object-storage/presigned-post.service.js';
 import { PresignUploadDto } from './dto.js';
 
 @Injectable()
 export class UploadService {
-  constructor(private readonly config: ConfigService<AppConfig, true>) {}
+  constructor(
+    private readonly config: ConfigService<AppConfig, true>,
+    @Optional() private readonly presignedPosts?: PresignedPostService,
+  ) {}
 
   async presign(
     dto: PresignUploadDto,
@@ -21,27 +23,21 @@ export class UploadService {
     const env = this.config.get('appEnv', { infer: true });
     const extension = extensionFor(dto.fileName, dto.contentType);
     const objectKey = `${dto.scope}/${randomUUID()}${extension}`;
-    const client = createObjectStorageClient(env);
-    const signed = await createPresignedPost(client, {
-      Bucket: env.OBJECT_STORAGE_BUCKET,
-      Key: objectKey,
-      Fields: { 'Content-Type': dto.contentType },
-      Conditions: [
-        ['content-length-range', 1, 5 * 1024 * 1024],
-        { 'Content-Type': dto.contentType },
-        ['starts-with', '$key', `${dto.scope}/`],
-      ],
-      Expires: 300,
+    const presignedPosts =
+      this.presignedPosts ?? new PresignedPostService(this.config);
+    const signed = await presignedPosts.create({
+      objectKey,
+      contentType: dto.contentType,
+      maxSizeBytes: 5 * 1024 * 1024,
     });
-    const expiresAt = new Date(Date.now() + 300 * 1000).toISOString();
     return {
       objectKey,
       publicUrl: joinMediaUrl(env.OBJECT_STORAGE_PUBLIC_BASE_URL, objectKey),
-      uploadUrl: signed.url,
+      uploadUrl: signed.uploadUrl,
       fields: signed.fields,
-      expiresAt,
+      expiresAt: signed.expiresAt,
       // Deprecated compatibility alias. New clients must use uploadUrl.
-      url: signed.url,
+      url: signed.uploadUrl,
     };
   }
 }

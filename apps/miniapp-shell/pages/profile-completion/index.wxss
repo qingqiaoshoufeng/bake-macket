@@ -1,0 +1,29 @@
+.profile-completion {
+  min-height: 100vh;
+  box-sizing: border-box;
+  padding: 56rpx 40rpx;
+  background: linear-gradient(180deg, #fffaf3, #f2f8ef);
+}
+.profile-completion__header {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 48rpx;
+}
+.profile-completion__eyebrow {
+  color: #76a56b;
+  font-size: 20rpx;
+  font-weight: 700;
+  letter-spacing: 6rpx;
+}
+.profile-completion__title {
+  margin-top: 14rpx;
+  color: #33412f;
+  font-size: 48rpx;
+  font-weight: 700;
+}
+.profile-completion__description {
+  margin-top: 18rpx;
+  color: #72816d;
+  font-size: 26rpx;
+  line-height: 1.7;
+}

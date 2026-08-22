@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { onMounted } from 'vue';
+import { onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { showToast } from 'vant';
 
 import StoreStatePanel from '../components/feedback/StoreStatePanel.vue';
 import StorePage from '../components/layout/StorePage.vue';
 import StorePageHeader from '../components/layout/StorePageHeader.vue';
+import { requestMiniappProfileCompletion } from '../bridge/miniapp.js';
+import { useProfileRefreshStore } from '../stores/profile-refresh.js';
 import { resolveSafeInternalRedirect } from '../utils/redirect.js';
 import MembershipCardCarousel from './membership/components/MembershipCardCarousel.vue';
 import { hasMembershipCardContent } from './membership/hooks/purchase-capability.js';
@@ -34,6 +36,8 @@ function notify(notification: ProfileNotification): void {
 
 const profile = useProfile(notify);
 const membership = useMembershipOverview();
+const profileRefresh = useProfileRefreshStore();
+const openingProfileEditor = ref(false);
 
 async function loadProfile(): Promise<void> {
   try {
@@ -62,6 +66,18 @@ function navigate(path: string): void {
   void router.push(path);
 }
 
+async function editProfile(): Promise<void> {
+  if (openingProfileEditor.value) return;
+  openingProfileEditor.value = true;
+  try {
+    if (!(await requestMiniappProfileCompletion())) {
+      showToast('请在微信小程序中修改头像昵称');
+    }
+  } finally {
+    openingProfileEditor.value = false;
+  }
+}
+
 async function saveOrderContactPhone(): Promise<void> {
   if (!(await profile.methods.saveOrderContactPhone())) return;
   const redirect = resolveSafeInternalRedirect(route.query.redirect, '');
@@ -83,6 +99,23 @@ async function logout(): Promise<void> {
       description="身份资料与订单履约联系方式相互独立。"
     />
     <ProfileIdentityCard :profile="profile.data.profile.value" />
+    <StoreStatePanel
+      v-if="profileRefresh.status === 'failed'"
+      state="error"
+      title="头像昵称刷新失败"
+      :description="profileRefresh.error ?? '请稍后重试'"
+    >
+      <template #action>
+        <button
+          type="button"
+          class="profile__retry"
+          data-testid="profile-refresh-retry"
+          @click="profileRefresh.retry"
+        >
+          重新刷新资料
+        </button>
+      </template>
+    </StoreStatePanel>
     <section class="profile__membership" aria-label="会员资产">
       <StoreStatePanel
         v-if="membership.error.value"
@@ -122,7 +155,11 @@ async function logout(): Promise<void> {
         description="新的烘焙护照正在制作。"
       />
     </section>
-    <ProfileAccountInfo :profile="profile.data.profile.value" />
+    <ProfileAccountInfo
+      :profile="profile.data.profile.value"
+      :opening-profile-editor="openingProfileEditor"
+      @edit-profile="editProfile"
+    />
     <ProfileOrderContactPhone
       :contact="profile.data.profile.value?.orderContactPhone ?? null"
       :editing="profile.data.editingOrderContactPhone.value"

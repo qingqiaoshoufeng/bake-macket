@@ -18,6 +18,7 @@ const adminSession: AdminSessionView = {
     AdminPermission.ORDER_READ,
     AdminPermission.ORDER_STATUS_UPDATE,
     AdminPermission.USER_READ,
+    AdminPermission.USER_WECHAT_IDENTITY_READ,
     AdminPermission.USER_CREATE,
     AdminPermission.PRINT_DEVICE_MANAGE,
     AdminPermission.PRINT_EXECUTE,

@@ -232,9 +232,10 @@ Admin Web 和小程序管理员区均提供：
 - 创建时间；
 - 手机号验证状态；
 - 当前是否为普通管理员；
-- 管理员是否激活、是否必须修改临时密码。
+- 管理员是否激活、是否必须修改临时密码；
+- 完整微信 OpenID 与可选 UnionID，默认在 Admin Web 和小程序管理员区列表直接展示。
 
-接口不得返回密码 hash、微信 OpenID/UnionID、JWT 或其他 secret。
+完整 OpenID/UnionID 是高敏感微信身份标识，仅 `USER_READ` 与 `USER_WECHAT_IDENTITY_READ` 同时满足的完整 SUPER_ADMIN/OPERATOR 会话可读取。不得把标识符加入搜索、导出、URL、日志、审计正文、本地存储、toast 或错误消息；列表与详情响应必须使用 `Cache-Control: private, no-store`。接口仍不得返回密码 hash、完整身份手机号、完整管理员登录手机号、JWT、微信 code、session key、token version 或其他 secret。
 
 ### 6.2 手动添加消费用户与 placeholder 合并
 

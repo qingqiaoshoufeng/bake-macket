@@ -52,7 +52,13 @@ function createSubject(
     hub,
     state,
   });
-  return { applySession, coordinator, exchange, hub, state };
+  return {
+    applySession,
+    coordinator,
+    exchange,
+    hub,
+    state,
+  };
 }
 
 describe('createWechatAuthCoordinator', () => {
@@ -69,6 +75,18 @@ describe('createWechatAuthCoordinator', () => {
 
     expect(exchange).toHaveBeenCalledOnce();
     expect(exchange).toHaveBeenCalledWith('wechat-code-1');
+    expect(applySession).toHaveBeenCalledWith(anonymousSession);
+  });
+
+  it('资料不完整时只应用登录 session，不自动二次打开原生资料页', async () => {
+    const { applySession, coordinator, hub } = createSubject();
+    coordinator.start();
+
+    hub.publish({ source: 'bake-miniapp', type: 'WECHAT_CODE', code: 'first' });
+    await coordinator.waitForCurrentAttempt();
+    hub.publish({ source: 'bake-miniapp', type: 'PROFILE_SKIPPED' });
+
+    expect(applySession).toHaveBeenCalledOnce();
     expect(applySession).toHaveBeenCalledWith(anonymousSession);
   });
 

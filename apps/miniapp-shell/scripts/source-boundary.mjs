@@ -88,6 +88,18 @@ function isShadowedAtCall(call, localName) {
   return false;
 }
 
+/** @param {ts.Node} node @param {string} expected */
+function isInsideNamedFunction(node, expected) {
+  let current = node.parent;
+  while (current && !ts.isSourceFile(current)) {
+    if (ts.isFunctionDeclaration(current) && current.name?.text === expected) {
+      return true;
+    }
+    current = current.parent;
+  }
+  return false;
+}
+
 /** @param {string} filePath */
 function scriptKind(filePath) {
   return extname(filePath) === '.ts' ? ts.ScriptKind.TS : ts.ScriptKind.JS;
@@ -200,14 +212,19 @@ export function analyzeMiniappSource({ filePath, packageRoot, source }) {
       owner &&
       isWxReference(owner, wxAliases) &&
       (method === null || networkMethods.has(method)) &&
-      (!isCanonicalClient || method !== 'request')
+      (!isCanonicalClient ||
+        !['request', 'uploadFile'].some((allowed) => allowed === method) ||
+        (method === 'request' &&
+          !isInsideNamedFunction(node, 'defaultRequest')) ||
+        (method === 'uploadFile' &&
+          !isInsideNamedFunction(node, 'defaultUploadFile')))
     ) {
       diagnostics.push(
         diagnostic(
           sourceFile,
           node,
           isCanonicalClient
-            ? 'utils/api-client.ts 只能调用 wx.request'
+            ? 'utils/api-client.ts 只能调用 wx.request / wx.uploadFile'
             : '微信网络 API 只能由 utils/api-client.ts 调用',
         ),
       );
@@ -228,14 +245,15 @@ export function analyzeMiniappSource({ filePath, packageRoot, source }) {
             : null;
         if (
           (name === null || networkMethods.has(name)) &&
-          (!isCanonicalClient || name !== 'request')
+          (!isCanonicalClient ||
+            !['request', 'uploadFile'].some((allowed) => allowed === name))
         ) {
           diagnostics.push(
             diagnostic(
               sourceFile,
               element,
               isCanonicalClient
-                ? 'utils/api-client.ts 只能调用 wx.request'
+                ? 'utils/api-client.ts 只能调用 wx.request / wx.uploadFile'
                 : '微信网络 API 只能由 utils/api-client.ts 调用',
             ),
           );
@@ -275,12 +293,13 @@ export function analyzeMiniappSource({ filePath, packageRoot, source }) {
   }
 
   const relativePath = portablePath(relative(packageRoot, filePath));
-  const isAdminFeatureApi =
-    relativePath.startsWith('admin/') &&
+  const isFeatureApi =
+    (relativePath.startsWith('admin/') ||
+      relativePath.startsWith('profile-completion/')) &&
     relativePath.includes('/api/') &&
     relativePath.endsWith('.ts') &&
     !relativePath.endsWith('.spec.ts');
-  if (isAdminFeatureApi) {
+  if (isFeatureApi) {
     const clientBindings = new Set();
     for (const node of sourceFile.statements) {
       if (
@@ -325,7 +344,7 @@ export function analyzeMiniappSource({ filePath, packageRoot, source }) {
         diagnostic(
           sourceFile,
           sourceFile,
-          '原生管理 API 必须实际调用从 utils/api-client 导入的 createMiniappApiClient',
+          '原生 feature API 必须实际调用从 utils/api-client 导入的 createMiniappApiClient',
         ),
       );
     }

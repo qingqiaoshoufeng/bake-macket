@@ -89,10 +89,10 @@ const timestampOf = (name: string): number => {
 };
 
 describe('DATABASE_MIGRATIONS 注册表完整性', () => {
-  it('统一注册十六项迁移，并以当前打印机设置迁移作为当前尾项', () => {
-    expect(DATABASE_MIGRATIONS).toHaveLength(16);
+  it('统一注册十七项迁移，并以顾客头像对象 key 迁移作为当前尾项', () => {
+    expect(DATABASE_MIGRATIONS).toHaveLength(17);
     expect(DATABASE_MIGRATIONS.at(-1)?.name).toBe(
-      'CloudPrinterCurrentSetting1718000000014',
+      'UserAvatarObjectKey1718000000015',
     );
   });
 

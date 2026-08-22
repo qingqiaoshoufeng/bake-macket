@@ -2,12 +2,17 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   Param,
   Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { AdminPermission } from '@bake-mall/contracts';
+import {
+  AdminPermission,
+  type AdminUserDetailView,
+  type AdminUserPage,
+} from '@bake-mall/contracts';
 
 import { RequireAdminPermissions } from '../auth/admin-permission.decorator.js';
 import { AdminPermissionGuard } from '../auth/admin-permission.guard.js';
@@ -26,9 +31,23 @@ export class AdminUsersController {
   constructor(private readonly adminUsers: AdminUsersService) {}
 
   @Get()
-  @RequireAdminPermissions(AdminPermission.USER_READ)
-  list(@Query() query: AdminUserListQueryDto) {
+  @Header('Cache-Control', 'private, no-store')
+  @RequireAdminPermissions(
+    AdminPermission.USER_READ,
+    AdminPermission.USER_WECHAT_IDENTITY_READ,
+  )
+  list(@Query() query: AdminUserListQueryDto): Promise<AdminUserPage> {
     return this.adminUsers.list(query);
+  }
+
+  @Get(':userId')
+  @Header('Cache-Control', 'private, no-store')
+  @RequireAdminPermissions(
+    AdminPermission.USER_READ,
+    AdminPermission.USER_WECHAT_IDENTITY_READ,
+  )
+  getOne(@Param('userId') userId: string): Promise<AdminUserDetailView> {
+    return this.adminUsers.getOne(userId);
   }
 
   @Post()

@@ -11,6 +11,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
+  detail: [user: AdminUserView];
   grant: [user: AdminUserView];
   revoke: [user: AdminUserView];
 }>();
@@ -77,14 +78,25 @@ function createdAt(value: string): string {
             <small>ID {{ row.id }}</small>
           </div>
         </div>
-        <ElTag
-          v-else-if="column.key === 'wechat'"
-          :type="row.wechatBound ? 'success' : 'info'"
-          effect="light"
-          round
-        >
-          {{ row.wechatBound ? '微信已绑定' : '微信未绑定' }}
-        </ElTag>
+        <div v-else-if="column.key === 'wechat'" class="user-table__wechat">
+          <ElTag
+            :type="row.wechatBound ? 'success' : 'info'"
+            effect="light"
+            round
+          >
+            {{ row.wechatBound ? '微信已绑定' : '微信未绑定' }}
+          </ElTag>
+          <dl class="user-table__wechat-identifiers">
+            <div>
+              <dt>OpenID</dt>
+              <dd>{{ row.wechatOpenid ?? '未获取' }}</dd>
+            </div>
+            <div>
+              <dt>UnionID</dt>
+              <dd>{{ row.wechatUnionid ?? '未获取' }}</dd>
+            </div>
+          </dl>
+        </div>
         <span v-else-if="column.key === 'identityPhone'">
           {{ row.identityPhoneMasked ?? '未绑定' }}
         </span>
@@ -111,6 +123,15 @@ function createdAt(value: string): string {
           {{ createdAt(row.createdAt) }}
         </span>
         <div v-else-if="column.key === 'actions'" class="user-table__actions">
+          <ElButton
+            type="primary"
+            link
+            data-testid="view-user-detail"
+            :aria-label="`查看用户 ${displayName(asAdminUser(row))} 详情`"
+            @click="emit('detail', asAdminUser(row))"
+          >
+            查看详情
+          </ElButton>
           <template v-if="props.canManageRoles">
             <ElButton
               v-if="!row.operatorActive"
@@ -186,9 +207,44 @@ function createdAt(value: string): string {
   font-size: 11px;
 }
 
+.user-table__wechat {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+}
+
+.user-table__wechat-identifiers {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  font-size: 11px;
+}
+
+.user-table__wechat-identifiers div {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  gap: 6px;
+}
+
+.user-table__wechat-identifiers dt {
+  color: var(--admin-muted);
+  font-weight: 650;
+}
+
+.user-table__wechat-identifiers dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--admin-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  overflow-wrap: anywhere;
+  user-select: text;
+  word-break: break-all;
+}
+
 .user-table__actions {
   display: flex;
   align-items: center;
+  gap: 4px;
 }
 
 .user-table__readonly {

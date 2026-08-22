@@ -16,8 +16,20 @@ export type CustomerProfileView = {
   avatarUrl: string | null;
   phone: string | null;
   phoneVerified: boolean;
+  /** Added in the profile-completion API; optional for legacy clients. */
+  profileCompleted?: boolean;
   orderContactPhone: OrderContactPhoneView;
 };
+
+export type UpdateCustomerProfileRequest =
+  | {
+      nickname: string;
+      avatarObjectKey?: string;
+    }
+  | {
+      nickname?: string;
+      avatarObjectKey: string;
+    };
 
 export type UpdateOrderContactPhoneRequest = {
   phone: string;

@@ -18,6 +18,7 @@ const [
   appSource,
   indexTemplate,
   phoneTemplate,
+  profileTemplate,
   wechatLoginTemplate,
   h5Runtime,
   apiRuntime,
@@ -29,6 +30,7 @@ const [
   read('app.json'),
   read('pages/index/index.wxml'),
   read('pages/phone-auth/index.wxml'),
+  read('pages/profile-completion/index.wxml'),
   read('pages/wechat-login/index.wxml'),
   read('config/h5.generated.js'),
   read('config/api.generated.js'),
@@ -73,6 +75,17 @@ if (!app.pages?.includes('pages/phone-auth/index')) {
 }
 if (!app.pages?.includes('pages/wechat-login/index')) {
   throw new Error('app.json must register pages/wechat-login/index');
+}
+if (!app.pages?.includes('pages/profile-completion/index')) {
+  throw new Error('app.json must register pages/profile-completion/index');
+}
+if (
+  !profileTemplate.includes('bindchooseavatar="onChooseAvatar"') ||
+  !profileTemplate.includes('bindnicknamechange="onNicknameChange"')
+) {
+  throw new Error(
+    'profile completion page must wire chooseAvatar and nickname controls',
+  );
 }
 if (indexTemplate.includes('bindmessage')) {
   throw new Error(

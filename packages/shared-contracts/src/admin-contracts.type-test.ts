@@ -21,6 +21,7 @@ import {
   type AdminProductListQuery,
   type AdminProductDetailView,
   type AdminSessionView,
+  type AdminUserDetailView,
   type AdminUserListItem,
   type AdminUserListQuery,
   type ChangeAdminPasswordRequest,
@@ -75,6 +76,8 @@ const listedUser: AdminUserListItem = {
   identityPhoneMasked: '138****0000',
   identityPhoneVerified: true,
   wechatBound: true,
+  wechatOpenid: 'openid-user-1',
+  wechatUnionid: null,
   loginPhoneMasked: null,
   createdAt: '2026-08-04T00:00:00.000Z',
   isOperator: false,
@@ -88,6 +91,8 @@ const listedUserWithRawPhone: AdminUserListItem = {
   identityPhoneMasked: '138****0000',
   identityPhoneVerified: true,
   wechatBound: true,
+  wechatOpenid: 'openid-user-1',
+  wechatUnionid: null,
   loginPhoneMasked: null,
   // @ts-expect-error 管理端用户列表响应不得暴露原始手机号。
   phone: '13800000000',
@@ -95,6 +100,41 @@ const listedUserWithRawPhone: AdminUserListItem = {
   isOperator: false,
   operatorActive: false,
   mustChangePassword: false,
+};
+
+const userDetail: AdminUserDetailView = {
+  id: 'user-1',
+  nickname: null,
+  avatarUrl: null,
+  wechat: {
+    bound: true,
+    openidBound: true,
+    unionidBound: false,
+    openid: 'openid-user-1',
+    unionid: null,
+  },
+  identityPhone: { masked: '138****0000', verified: true },
+  account: { isActive: true, mergedIntoUserId: null },
+  operator: {
+    isOperator: false,
+    active: false,
+    mustChangePassword: false,
+    loginPhoneMasked: null,
+  },
+  createdAt: '2026-08-04T00:00:00.000Z',
+  updatedAt: '2026-08-05T00:00:00.000Z',
+};
+
+const userDetailWithRawPhone: AdminUserDetailView = {
+  ...userDetail,
+  // @ts-expect-error 管理端用户详情不得暴露完整身份手机号。
+  phone: '13800000000',
+};
+
+const userDetailWithTokenVersion: AdminUserDetailView = {
+  ...userDetail,
+  // @ts-expect-error 管理端用户详情不得暴露 token version。
+  tokenVersion: 1,
 };
 
 const listSearch: AdminUserListQuery = {
@@ -471,6 +511,9 @@ void [
   exchangeWithExtraField,
   listedUser,
   listedUserWithRawPhone,
+  userDetail,
+  userDetailWithRawPhone,
+  userDetailWithTokenVersion,
   listSearch,
   loginWithoutKind,
   loginWithMixedIdentityFields,

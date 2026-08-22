@@ -93,8 +93,10 @@ Page<IndexPageData, IndexPageCustom>({
       baseOrigin: MINIAPP_H5_ORIGIN,
       baseUrl: MINIAPP_H5_URL,
       consumePhoneHandoff: app.phoneCredentialHandoff.consume,
+      consumeProfileHandoff: app.profileHandoff.consume,
       consumeWechatLoginHandoff: app.wechatLoginHandoff.consume,
       peekPhoneHandoff: app.phoneCredentialHandoff.peek,
+      peekProfileHandoff: app.profileHandoff.peek,
       peekWechatLoginHandoff: app.wechatLoginHandoff.peek,
       rebuildWebView: (h5Url, deliveryId): boolean => {
         try {

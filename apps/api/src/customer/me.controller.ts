@@ -12,7 +12,10 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import type { CustomerProfileView } from '@bake-mall/contracts';
+import type {
+  CustomerAvatarPresignResponse,
+  CustomerProfileView,
+} from '@bake-mall/contracts';
 import { Repository } from 'typeorm';
 
 import { CurrentUser } from '../auth/current-user.decorator.js';
@@ -20,13 +23,16 @@ import type { AuthenticatedUser } from '../auth/auth.types.js';
 import { JwtUserGuard } from '../auth/user-jwt.guard.js';
 import { User } from '../database/entities/user.entity.js';
 import { AddressService } from './address.service.js';
+import { CustomerProfileService } from './customer-profile.service.js';
+import {
+  PresignCustomerAvatarDto,
+  UpdateCustomerProfileDto,
+} from './dto/customer-profile.dto.js';
 import { CartService } from './cart.service.js';
 import { UpdateOrderContactPhoneDto } from './dto/order-contact-phone.dto.js';
 import { CreateAddressDto, UpdateAddressDto } from './dto/address.dto.js';
-import {
-  OrderContactPhoneService,
-  toOrderContactPhoneView,
-} from './order-contact-phone.service.js';
+import { OrderContactPhoneService } from './order-contact-phone.service.js';
+import { toCustomerProfileView } from './customer-profile.mapper.js';
 import { UpsertCartItemDto } from './dto/cart.dto.js';
 
 @Controller('me')
@@ -37,6 +43,7 @@ export class MeController {
     private readonly addresses: AddressService,
     private readonly carts: CartService,
     private readonly orderContactPhones: OrderContactPhoneService,
+    private readonly profiles: CustomerProfileService,
   ) {}
 
   @Get()
@@ -44,17 +51,23 @@ export class MeController {
     @CurrentUser() currentUser: AuthenticatedUser,
   ): Promise<CustomerProfileView> {
     const user = await this.users.findOneByOrFail({ id: currentUser.id });
-    return {
-      id: user.id,
-      avatarUrl: user.avatarUrl,
-      nickname: user.nickname,
-      phone: maskPhone(user.phone),
-      phoneVerified: user.phoneVerified,
-      orderContactPhone: toOrderContactPhoneView(
-        user.orderContactPhone,
-        user.orderContactPhoneVersion,
-      ),
-    };
+    return toCustomerProfileView(user);
+  }
+
+  @Post('profile/avatar/presign')
+  presignAvatar(
+    @CurrentUser() currentUser: AuthenticatedUser,
+    @Body() dto: PresignCustomerAvatarDto,
+  ): Promise<CustomerAvatarPresignResponse> {
+    return this.profiles.presignAvatar(currentUser.id, dto);
+  }
+
+  @Patch('profile')
+  updateProfile(
+    @CurrentUser() currentUser: AuthenticatedUser,
+    @Body() dto: UpdateCustomerProfileDto,
+  ): Promise<CustomerProfileView> {
+    return this.profiles.update(currentUser.id, dto);
   }
 
   @Put('order-contact-phone')
@@ -129,10 +142,4 @@ export class MeController {
   ) {
     await this.addresses.remove(user.id, id);
   }
-}
-
-function maskPhone(phone: string | null): string | null {
-  if (!phone) return null;
-  if (phone.length < 7) return '***';
-  return `${phone.slice(0, 3)}****${phone.slice(-4)}`;
 }

@@ -1,8 +1,6 @@
-import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-import { composeProjectName } from '../../../../scripts/compose.mjs';
 import {
   provisionMysqlTestDatabase,
   resolveMysqlContainer,
@@ -18,14 +16,9 @@ describe('MySQL test database helpers', () => {
     expect(resolveRepositoryRoot(apiDirectory)).toBe(repositoryRoot);
   });
 
-  it('derives the compose MySQL container from the repository branch', () => {
-    const branch =
-      execFileSync('git', ['-C', repositoryRoot, 'branch', '--show-current'], {
-        encoding: 'utf8',
-      }).trim() || 'detached';
-
+  it('uses the single shared compose MySQL container in every worktree', () => {
     expect(resolveMysqlContainer({}, apiDirectory)).toBe(
-      `${composeProjectName(branch)}-mysql-1`,
+      'bake-mall-main-mysql-1',
     );
   });
 

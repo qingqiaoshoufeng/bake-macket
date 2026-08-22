@@ -47,6 +47,14 @@ export class User {
   @Column({ name: 'avatar_url', type: 'varchar', length: 512, nullable: true })
   avatarUrl!: string | null;
 
+  @Column({
+    name: 'avatar_object_key',
+    type: 'varchar',
+    length: 512,
+    nullable: true,
+  })
+  avatarObjectKey!: string | null;
+
   @Column({ type: 'varchar', length: 32, nullable: true })
   phone!: string | null;
 

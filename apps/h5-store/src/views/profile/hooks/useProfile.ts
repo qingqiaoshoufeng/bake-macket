@@ -1,7 +1,6 @@
-import { computed, readonly, ref } from 'vue';
+import { computed, readonly, ref, watch } from 'vue';
 import {
   ApiErrorCode,
-  type CustomerProfileView,
   type OrderContactPhoneView,
   type UserProfileView,
 } from '@bake-mall/contracts';
@@ -11,22 +10,12 @@ import { useAuthStore } from '../../../stores/auth.js';
 import { captureSession, isCurrentSession } from '../../../stores/session.js';
 import { profileFeatureApi } from '../api/index.js';
 import { ORDER_CONTACT_PHONE_PATTERN } from '../config/order-contact-phone.js';
+import { mapProfile } from '../type/mapper.js';
 
 export type ProfileNotification = Readonly<{
   type: 'error' | 'success';
   message: string;
 }>;
-
-export function mapProfile(view: CustomerProfileView): UserProfileView {
-  return {
-    id: view.id,
-    nickname: view.nickname ?? undefined,
-    avatarUrl: view.avatarUrl ?? undefined,
-    phone: view.phone ?? undefined,
-    phoneVerified: view.phoneVerified,
-    orderContactPhone: view.orderContactPhone,
-  };
-}
 
 function applyOrderContactPhone(
   profile: UserProfileView,
@@ -45,6 +34,13 @@ export function useProfile(
   const orderContactPhoneInput = ref('');
   const savingOrderContactPhone = ref(false);
   const orderContactPhoneError = ref<string | null>(null);
+
+  watch(
+    () => auth.profile,
+    (next) => {
+      profile.value = next;
+    },
+  );
 
   function applyProfile(next: UserProfileView): void {
     profile.value = next;

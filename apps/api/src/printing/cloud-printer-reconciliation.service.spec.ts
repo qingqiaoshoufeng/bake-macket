@@ -1906,4 +1906,64 @@ describe('CloudPrinterReconciliationService scheduler batch', () => {
       vendorRelationState: VendorRelationState.UNKNOWN,
     });
   });
+
+  it('converges a RECONCILIATION+ERROR printer to ACTIVE when vendor reports BOUND', async () => {
+    const fixture = buildFixture({
+      printers: [
+        stalePrinter(1, {
+          status: CloudPrinterStatus.ERROR,
+          bindingStage: PrinterBindingStage.RECONCILIATION,
+          vendorRelationState: VendorRelationState.UNKNOWN,
+        }),
+      ],
+    });
+
+    const result = await runSchedulerBatch(fixture);
+
+    expect(result).toEqual({ processed: 1, skipped: 0, unknown: 0 });
+    expect(fixture.printers[0]).toMatchObject({
+      status: CloudPrinterStatus.ACTIVE,
+      bindingStage: PrinterBindingStage.NONE,
+      vendorRelationState: VendorRelationState.CONFIRMED_BOUND,
+      lastOnlineStatus: CloudPrinterOnlineStatus.ONLINE,
+    });
+    expect(fixture.audits).toContainEqual(
+      expect.objectContaining({
+        action: 'CLOUD_PRINTER_REQUERIED',
+        changeSummary: expect.objectContaining({
+          result: 'BOUND',
+          status: CloudPrinterStatus.ACTIVE,
+        }),
+      }),
+    );
+  });
+
+  it('does not write audit rows when consecutive scheduler runs see the same BOUND evidence', async () => {
+    const fixture = buildFixture({
+      printers: [stalePrinter(1)],
+    });
+
+    const first = await runSchedulerBatch(fixture);
+    expect(first).toEqual({ processed: 1, skipped: 0, unknown: 0 });
+    expect(fixture.audits).toHaveLength(1);
+    expect(fixture.printers[0]).toMatchObject({
+      status: CloudPrinterStatus.ACTIVE,
+      lastStatusCheckedAt: NOW,
+    });
+
+    // Once the printer is ACTIVE, the scheduler filter no longer selects it:
+    // the second cycle must be a no-op without writing another audit row.
+    fixture.printers[0]!.updatedAt = new Date(NOW.getTime() - 60_000);
+    fixture.printers[0]!.lastStatusCheckedAt = new Date(
+      NOW.getTime() - 60_000,
+    );
+
+    const second = await runSchedulerBatch(fixture);
+
+    expect(second).toEqual({ processed: 0, skipped: 0, unknown: 0 });
+    expect(fixture.audits).toHaveLength(1);
+    expect(fixture.printers[0]).toMatchObject({
+      status: CloudPrinterStatus.ACTIVE,
+    });
+  });
 });

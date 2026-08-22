@@ -28,7 +28,7 @@
 - `pnpm lint` — 对根 `*.mjs`、`scripts/` 以及各子包执行 ESLint。
 - `pnpm typecheck`、`pnpm test`、`pnpm build` — 递归的 workspace 检查。
 - `pnpm format:check` / `pnpm format` — Prettier 校验 / 格式化。
-- `pnpm services:up` / `services:ps` / `services:down` — 通过 `scripts/compose.mjs` 启动基于分支隔离的本地 MySQL + MinIO。
+- `pnpm services:up` / `services:ps` / `services:down` — 通过 `scripts/compose.mjs` 启动全项目唯一的本地 MySQL + MinIO；所有分支与工作树固定复用 `bake-mall-main`，不得创建第二套资源环境。
 - `pnpm --filter @bake-mall/contracts test|typecheck|build` — 对共享契约单独校验。
 - `pnpm --filter @bake-mall/api start:dev` — 以 watch 模式运行 Nest API,接入本地 MySQL / MinIO,最快的开发循环。
 - `pnpm --filter @bake-mall/api test:e2e -- <spec>.e2e-spec.ts` — 单独跑某个 NestJS e2e 测试(vitest;会自动追加 `--root . test/`)。
@@ -41,8 +41,8 @@
 - `packages/shared-contracts` — DTO、枚举、`ApiError`、订单 `canTransitionOrder` 辅助函数,以及 `CreateOrderRequest` 与 `BannerView` 的可辨识联合。包以 ESM 输出;消费者(NestJS)通过 `require` / `import` 读取。测试使用 vitest,并依赖 **`@ts-expect-error` 类型级断言**(见 `src/order.ts`、`src/catalog.ts`)证明可辨识联合的非法形态会被拒绝 —— `canTransitionOrder` 则由运行时测试直接覆盖。
 - `apps/h5-store`、`apps/admin-web` — Vue 3 + Vite 静态 SPA,从仓库根读取端口配置并代理到 `PORT`;`apps/miniapp-shell` 是小程序薄壳。
 - `.env.development.example` / `.env.production.example` — 分别是可复制的本地默认配置与不含真实 secret 的生产变量清单;实际 `.env.development` 被 Git 忽略。
-- `infra/docker-compose.dev.yml` + `scripts/compose.mjs` — 基于分支派生 Compose 项目名,读取根 `.env.development` 并参数化本地端口与凭据。
-- `scripts/compose-project-name.test.mjs` — 分支名到项目名净化的单元测试辅助;`services:up` / `services:ps` / `services:down` 需要与之保持一致。
+- `infra/docker-compose.dev.yml` + `scripts/compose.mjs` — 固定使用唯一 Compose 项目名 `bake-mall-main`,读取根 `.env.development` 并参数化本地端口与凭据；分支与工作树不得派生独立 MySQL/MinIO。
+- `scripts/compose-project-name.test.mjs` — 锁定所有分支输入都映射到唯一 `bake-mall-main`；`services:up` / `services:ps` / `services:down` 与 E2E 数据库辅助必须保持一致。
 - `docs/superpowers/specs/`、`docs/superpowers/plans/`、`.superpowers/sdd/` — 设计、计划与每个任务的简报 / 报告。`.superpowers` 目录被 `.gitignore` 忽略;重建上下文所需的全部信息也已落地于已提交的 specs / plans / commit 历史中。
 - 根 `eslint.config.mjs` 仅检查根目录下的 JS / 脚本以及 Vue SFC fixture;每个 workspace 的 ESLint 通过 `pnpm -r lint` 负责各自的源码。
 

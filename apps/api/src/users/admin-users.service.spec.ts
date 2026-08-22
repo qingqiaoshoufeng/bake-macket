@@ -30,8 +30,12 @@ const targetUser = (overrides: Record<string, unknown> = {}) => ({
   orderContactPhone: null,
   wechatOpenid: 'openid-7',
   wechatUnionid: null,
+  nickname: '微信用户',
+  avatarUrl: 'https://cdn.example.com/avatar.webp',
   isActive: true,
   mergedIntoUserId: null,
+  createdAt: new Date('2026-08-04T00:00:00.000Z'),
+  updatedAt: new Date('2026-08-05T00:00:00.000Z'),
   ...overrides,
 });
 
@@ -62,6 +66,7 @@ const build = (
     getRepository: vi.fn((entity) => (entity === User ? users : admins)),
   };
   const dataSource = {
+    getRepository: vi.fn((entity) => (entity === User ? users : admins)),
     transaction: vi.fn(async (operation) => operation(manager)),
   };
   const verification = {
@@ -132,6 +137,90 @@ describe('maskAdminUserPhone', () => {
 });
 
 describe('AdminUsersService', () => {
+  it('返回完整微信标识、绑定状态与脱敏手机号', async () => {
+    const harness = build({
+      user: targetUser({
+        phone: '13800000000',
+        phoneVerified: true,
+        wechatUnionid: 'unionid-7',
+      }),
+      existing: {
+        id: '9',
+        role: AdminRole.OPERATOR,
+        linkedUserId: '7',
+        loginPhone: '13700000000',
+        isActive: true,
+        mustChangePassword: false,
+      },
+    });
+
+    const detail = await harness.service.getOne('7');
+
+    expect(detail).toEqual({
+      id: '7',
+      nickname: '微信用户',
+      avatarUrl: 'https://cdn.example.com/avatar.webp',
+      wechat: {
+        bound: true,
+        openidBound: true,
+        unionidBound: true,
+        openid: 'openid-7',
+        unionid: 'unionid-7',
+      },
+      identityPhone: { masked: '138****0000', verified: true },
+      account: { isActive: true, mergedIntoUserId: null },
+      operator: {
+        isOperator: true,
+        active: true,
+        mustChangePassword: false,
+        loginPhoneMasked: '137****0000',
+      },
+      createdAt: '2026-08-04T00:00:00.000Z',
+      updatedAt: '2026-08-05T00:00:00.000Z',
+    });
+    expect(JSON.stringify(detail)).not.toMatch(
+      /13800000000|13700000000|passwordHash|tokenVersion|jwt|session_key/i,
+    );
+  });
+
+  it('详情保留缺失值并返回停用合并状态', async () => {
+    const harness = build({
+      user: targetUser({
+        nickname: null,
+        avatarUrl: null,
+        wechatOpenid: null,
+        isActive: false,
+        mergedIntoUserId: '8',
+      }),
+    });
+
+    await expect(harness.service.getOne('7')).resolves.toMatchObject({
+      nickname: null,
+      avatarUrl: null,
+      wechat: {
+        bound: false,
+        openidBound: false,
+        unionidBound: false,
+        openid: null,
+        unionid: null,
+      },
+      identityPhone: { masked: null, verified: false },
+      account: { isActive: false, mergedIntoUserId: '8' },
+      operator: {
+        isOperator: false,
+        active: false,
+        mustChangePassword: false,
+        loginPhoneMasked: null,
+      },
+    });
+  });
+
+  it('详情查询不存在用户时返回 404', async () => {
+    await expect(
+      build({ user: null }).service.getOne('404'),
+    ).rejects.toMatchObject({ status: 404 });
+  });
+
   it('授权 verified canonical user，保存 null username 与临时 hash', async () => {
     const harness = build();
     vi.spyOn(bcrypt, 'hash').mockResolvedValue('temporary-hash' as never);
@@ -394,6 +483,8 @@ describe('AdminUsersService 用户管理', () => {
       identityPhoneMasked: '138****0000',
       identityPhoneVerified: false,
       wechatBound: false,
+      wechatOpenid: null,
+      wechatUnionid: null,
       loginPhoneMasked: null,
       createdAt: '2026-08-05T01:02:03.000Z',
       isOperator: false,
@@ -401,8 +492,8 @@ describe('AdminUsersService 用户管理', () => {
       mustChangePassword: false,
     });
     expect(result).not.toHaveProperty('phone');
-    expect(result).not.toHaveProperty('wechatOpenid');
-    expect(result).not.toHaveProperty('wechatUnionid');
+    expect(result.wechatOpenid).toBeNull();
+    expect(result.wechatUnionid).toBeNull();
   });
 
   it('创建审计只包含内部 user ID 和 phonePresent，不记录手机号', async () => {
@@ -486,7 +577,8 @@ describe('AdminUsersService 用户管理', () => {
           nickname: '张三',
           phone: '13800000000',
           phoneVerified: 1,
-          wechatBound: 1,
+          wechatOpenid: 'openid-user-7',
+          wechatUnionid: 'unionid-user-7',
           createdAt: new Date('2026-08-04T00:00:00.000Z'),
           operatorId: '9',
           operatorLoginPhone: '13700000000',
@@ -530,6 +622,8 @@ describe('AdminUsersService 用户管理', () => {
           identityPhoneMasked: '138****0000',
           identityPhoneVerified: true,
           wechatBound: true,
+          wechatOpenid: 'openid-user-7',
+          wechatUnionid: 'unionid-user-7',
           loginPhoneMasked: '137****0000',
           createdAt: '2026-08-04T00:00:00.000Z',
           isOperator: true,
@@ -579,7 +673,8 @@ describe('AdminUsersService 用户管理', () => {
       harness.queryBuilder.select.mock.calls[0]?.[0],
     );
     expect(projection).toContain('user.phone');
-    expect(projection).toContain('wechatBound');
+    expect(projection).toContain('user.wechatOpenid');
+    expect(projection).toContain('user.wechatUnionid');
     expect(projection).toContain('operator.loginPhone');
     expect(projection).toContain('operator.isActive');
     expect(projection).toContain('operator.mustChangePassword');

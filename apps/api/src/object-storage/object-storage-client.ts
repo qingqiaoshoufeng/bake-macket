@@ -11,10 +11,13 @@ export type ObjectStorageEnv = Pick<
   | 'OBJECT_STORAGE_SECRET_KEY'
 >;
 
-export const createObjectStorageClient = (env: ObjectStorageEnv): S3Client =>
+export const createObjectStorageClient = (
+  env: ObjectStorageEnv,
+  endpoint = env.OBJECT_STORAGE_ENDPOINT,
+): S3Client =>
   new S3Client({
     region: env.OBJECT_STORAGE_REGION,
-    endpoint: env.OBJECT_STORAGE_ENDPOINT,
+    endpoint,
     forcePathStyle: env.OBJECT_STORAGE_FORCE_PATH_STYLE,
     credentials: {
       accessKeyId: env.OBJECT_STORAGE_ACCESS_KEY,

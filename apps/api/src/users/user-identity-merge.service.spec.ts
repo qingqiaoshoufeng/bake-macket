@@ -15,6 +15,7 @@ import {
   assertWechatIdentityCompatible,
   buildPhoneLockName,
   mergeCartRows,
+  mergeCustomerProfile,
   planMergedAddressDefaults,
   UserIdentityMergeService,
   userIdentityConflict,
@@ -671,6 +672,59 @@ describe('successful merge audit summary', () => {
     expect(JSON.stringify(audit.record.mock.calls[0]?.[0])).not.toMatch(
       /13800000000|secret-openid|secret-address/iu,
     );
+  });
+});
+
+describe('customer profile identity merge rules', () => {
+  it('保留 canonical 非空昵称和受管理头像二元组', () => {
+    expect(
+      mergeCustomerProfile(
+        {
+          nickname: 'canonical',
+          avatarObjectKey: 'users/10/avatars/canonical.webp',
+          avatarUrl: 'https://cdn.example/users/10/avatars/canonical.webp',
+        },
+        {
+          nickname: 'source',
+          avatarObjectKey: 'users/20/avatars/source.png',
+          avatarUrl: 'https://cdn.example/users/20/avatars/source.png',
+        },
+      ),
+    ).toEqual({
+      nickname: 'canonical',
+      avatarObjectKey: 'users/10/avatars/canonical.webp',
+      avatarUrl: 'https://cdn.example/users/10/avatars/canonical.webp',
+    });
+  });
+
+  it('仅在 canonical 缺失时从 source null-fill 昵称和完整头像二元组', () => {
+    expect(
+      mergeCustomerProfile(
+        { nickname: null, avatarObjectKey: null, avatarUrl: null },
+        {
+          nickname: 'source',
+          avatarObjectKey: 'users/20/avatars/source.png',
+          avatarUrl: 'https://cdn.example/users/20/avatars/source.png',
+        },
+      ),
+    ).toEqual({
+      nickname: 'source',
+      avatarObjectKey: 'users/20/avatars/source.png',
+      avatarUrl: 'https://cdn.example/users/20/avatars/source.png',
+    });
+  });
+
+  it('拒绝拆分或不完整的受管理头像二元组', () => {
+    expect(() =>
+      mergeCustomerProfile(
+        {
+          nickname: null,
+          avatarObjectKey: 'users/10/avatars/key.png',
+          avatarUrl: null,
+        },
+        { nickname: null, avatarObjectKey: null, avatarUrl: null },
+      ),
+    ).toThrow(/avatar/i);
   });
 });
 

@@ -21,6 +21,7 @@ import {
   type AdminOrderSupplyDetailResult,
   type AdminOrderSupplyResult,
   type AdminProductDetailView,
+  type AdminUserDetailView,
   type AdminUserListItem,
   type MediaAsset,
   type OrderStatusUpdateResult,
@@ -70,6 +71,7 @@ describe('admin identity contracts', () => {
       ORDER_READ: 'ORDER_READ',
       ORDER_STATUS_UPDATE: 'ORDER_STATUS_UPDATE',
       USER_READ: 'USER_READ',
+      USER_WECHAT_IDENTITY_READ: 'USER_WECHAT_IDENTITY_READ',
       USER_CREATE: 'USER_CREATE',
       PRINT_DEVICE_MANAGE: 'PRINT_DEVICE_MANAGE',
       PRINT_EXECUTE: 'PRINT_EXECUTE',
@@ -80,6 +82,7 @@ describe('admin identity contracts', () => {
       AdminPermission.ORDER_READ,
       AdminPermission.ORDER_STATUS_UPDATE,
       AdminPermission.USER_READ,
+      AdminPermission.USER_WECHAT_IDENTITY_READ,
       AdminPermission.USER_CREATE,
       AdminPermission.PRINT_DEVICE_MANAGE,
       AdminPermission.PRINT_EXECUTE,
@@ -126,6 +129,8 @@ describe('admin identity contracts', () => {
       identityPhoneMasked: '138****0000',
       identityPhoneVerified: true,
       wechatBound: true,
+      wechatOpenid: 'openid-user-1',
+      wechatUnionid: null,
       loginPhoneMasked: null,
       createdAt: '2026-08-04T00:00:00.000Z',
       isOperator: false,
@@ -137,6 +142,49 @@ describe('admin identity contracts', () => {
     expect(item.loginPhoneMasked).toBeNull();
     expect(item.wechatBound).toBe(true);
     expect(item).not.toHaveProperty('phone');
+  });
+
+  it('models complete WeChat identifiers without unrelated secrets', () => {
+    const detail: AdminUserDetailView = {
+      id: 'user-1',
+      nickname: '张三',
+      avatarUrl: 'https://cdn.example.com/avatar.webp',
+      wechat: {
+        bound: true,
+        openidBound: true,
+        unionidBound: false,
+        openid: 'openid-user-1',
+        unionid: null,
+      },
+      identityPhone: {
+        masked: '138****0000',
+        verified: true,
+      },
+      account: {
+        isActive: true,
+        mergedIntoUserId: null,
+      },
+      operator: {
+        isOperator: false,
+        active: false,
+        mustChangePassword: false,
+        loginPhoneMasked: null,
+      },
+      createdAt: '2026-08-04T00:00:00.000Z',
+      updatedAt: '2026-08-05T00:00:00.000Z',
+    };
+
+    expect(detail.wechat).toEqual({
+      bound: true,
+      openidBound: true,
+      unionidBound: false,
+      openid: 'openid-user-1',
+      unionid: null,
+    });
+    expect(detail.identityPhone.masked).toBe('138****0000');
+    expect(detail).not.toHaveProperty('wechatOpenid');
+    expect(detail).not.toHaveProperty('wechatUnionid');
+    expect(detail).not.toHaveProperty('phone');
   });
 
   it('defines unique identity and authorization error codes', () => {

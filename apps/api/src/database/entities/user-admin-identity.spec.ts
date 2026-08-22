@@ -34,6 +34,10 @@ describe('User 与 AdminUser 身份安全实体元数据', () => {
     expect(columns.mergedIntoUserId.type).toBe('bigint');
     expect(columns.mergedIntoUserId.unsigned).toBe(true);
     expect(columns.mergedIntoUserId.isNullable).toBe(true);
+    expect(columns.avatarObjectKey.databaseName).toBe('avatar_object_key');
+    expect(columns.avatarObjectKey.type).toBe('varchar');
+    expect(columns.avatarObjectKey.length).toBe('512');
+    expect(columns.avatarObjectKey.isNullable).toBe(true);
     expect(columns.orderContactPhone.databaseName).toBe('order_contact_phone');
     expect(columns.orderContactPhone.type).toBe('varchar');
     expect(columns.orderContactPhone.length).toBe('32');

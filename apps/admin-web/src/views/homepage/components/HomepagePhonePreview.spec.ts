@@ -1,4 +1,5 @@
 import {
+  HomepageLinkType,
   HomepageSectionType,
   type HomepageDraftConfig,
 } from '@bake-mall/contracts';
@@ -51,5 +52,37 @@ describe('HomepagePhonePreview', () => {
     expect(wrapper.get('[data-preview-canvas]').attributes('data-height')).toBe(
       '844',
     );
+  });
+
+  it('renders persisted homepage assets through the current same-origin proxy', () => {
+    const objectKey = 'homepage/demo/v1/hero.webp';
+    const stalePublicUrl =
+      'https://retired.example.test/bake-mall/homepage/demo/v1/hero.webp';
+    const configured: HomepageDraftConfig = {
+      ...draft,
+      hero: {
+        ...draft.hero,
+        enabled: true,
+        slides: [
+          {
+            id: 'hero-1',
+            image: { objectKey, publicUrl: stalePublicUrl },
+            title: '轮播',
+            subtitle: '',
+            altText: '轮播图',
+            link: { type: HomepageLinkType.NONE },
+          },
+        ],
+      },
+    };
+
+    const wrapper = mount(HomepagePhonePreview, {
+      props: { draft: configured },
+    });
+
+    expect(wrapper.get('img[alt="轮播图"]').attributes('src')).toBe(
+      `/bake-mall/${objectKey}`,
+    );
+    expect(wrapper.html()).not.toContain(stalePublicUrl);
   });
 });

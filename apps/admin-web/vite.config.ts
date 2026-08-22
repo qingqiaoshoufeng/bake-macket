@@ -40,7 +40,7 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
         },
         // 公开对象存储代理：本地浏览器与花生壳指向 43174 时可直接拉到 MinIO 文件。
-        '/bake-mall/': {
+        '^/bake-mall(?:/|$)': {
           target: `http://127.0.0.1:${minioPort}`,
           changeOrigin: true,
           ws: false,

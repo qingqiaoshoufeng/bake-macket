@@ -1,9 +1,24 @@
 <view class="wechat-login-page">
-  <view class="wechat-login-card">
+  <view wx:if="{{showProfileForm}}" class="wechat-login-profile">
+    <view class="wechat-login-profile__header">
+      <text class="wechat-login-title">完善头像昵称</text>
+      <text class="wechat-login-copy">选择微信头像并确认昵称后完成登录，或稍后再设置。</text>
+    </view>
+    <profile-form
+      avatar-preview-url="{{avatarPreviewUrl}}"
+      nickname="{{nickname}}"
+      error="{{error}}"
+      loading="{{loginLoading}}"
+      bindchooseavatar="onChooseAvatar"
+      bindnicknamechange="onNicknameChange"
+      bindsave="onSave"
+      bindskip="onSkip"
+    />
+  </view>
+  <view wx:else class="wechat-login-card">
     <text class="wechat-login-title">微信登录</text>
-    <text class="wechat-login-copy"
-      >点击下方按钮后获取一次性微信登录凭证，并安全返回商城完成登录。</text
-    >
+    <text class="wechat-login-copy">登录时可以选择头像并确认昵称；也可以稍后在个人中心继续设置。</text>
+    <view wx:if="{{error}}" class="wechat-login-error">{{error}}</view>
     <button
       class="wechat-login-button"
       type="primary"

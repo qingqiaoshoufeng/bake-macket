@@ -7,7 +7,16 @@ defineProps<{ profile: UserProfileView | null }>();
 <template>
   <section class="profile-identity">
     <div class="profile-identity__avatar" aria-hidden="true">
-      {{ profile?.nickname?.slice(0, 1).toUpperCase() ?? '客' }}
+      <img
+        v-if="profile?.avatarUrl"
+        class="profile-identity__avatar-image"
+        :src="profile.avatarUrl"
+        alt=""
+        @error="
+          ($event.currentTarget as HTMLImageElement).style.display = 'none'
+        "
+      />
+      <span>{{ profile?.nickname?.slice(0, 1).toUpperCase() ?? '客' }}</span>
     </div>
     <div class="profile-identity__copy">
       <p>BAKE MATE</p>
@@ -36,7 +45,9 @@ defineProps<{ profile: UserProfileView | null }>();
   width: 64px;
   height: 64px;
   flex: 0 0 auto;
+  position: relative;
   place-items: center;
+  overflow: hidden;
   border: 4px solid rgb(255 255 255 / 82%);
   border-radius: 50%;
   background: var(--mall-primary);
@@ -44,6 +55,13 @@ defineProps<{ profile: UserProfileView | null }>();
   font-size: 25px;
   font-weight: 700;
   box-shadow: var(--mall-shadow-card);
+}
+.profile-identity__avatar-image {
+  position: absolute;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 .profile-identity__copy {
   min-width: 0;

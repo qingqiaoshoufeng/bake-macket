@@ -14,12 +14,15 @@ import AdminPageHeader from '../../components/layout/AdminPageHeader.vue';
 import CreateUserDialog from './components/CreateUserDialog.vue';
 import OperatorGrantDialog from './components/OperatorGrantDialog.vue';
 import OperatorRevokeDialog from './components/OperatorRevokeDialog.vue';
+import UserDetailDrawer from './components/UserDetailDrawer.vue';
 import UserTable from './components/UserTable.vue';
 import { USER_PAGINATION } from './config/defaults.js';
 import { useOperatorActions } from './hooks/useOperatorActions.js';
+import { useUserDetail } from './hooks/useUserDetail.js';
 import { useUsers } from './hooks/useUsers.js';
 
 const users = useUsers();
+const userDetail = useUserDetail();
 const operatorActions = useOperatorActions(() =>
   users.refresh({ reportError: false }),
 );
@@ -90,7 +93,7 @@ async function revokeOperator(): Promise<void> {
       <AdminPageHeader
         eyebrow="CUSTOMER DIRECTORY"
         title="用户管理"
-        description="查看微信绑定、身份手机号与独立管理员登录号，按权限添加用户并管理操作员角色。"
+        description="直接核对微信 OpenID / UnionID、身份手机号与独立管理员登录号，按权限添加用户并管理操作员角色。"
       >
         <template v-if="users.canCreate.value" #actions>
           <ElButton
@@ -161,6 +164,7 @@ async function revokeOperator(): Promise<void> {
         :users="users.users.value"
         :loading="users.loading.value"
         :can-manage-roles="operatorActions.canManageRoles.value"
+        @detail="userDetail.open($event.id)"
         @grant="operatorActions.openGrant"
         @revoke="operatorActions.openRevoke"
       />
@@ -179,6 +183,14 @@ async function revokeOperator(): Promise<void> {
       </template>
     </AdminDataPanel>
 
+    <UserDetailDrawer
+      :model-value="userDetail.visible.value"
+      :detail="userDetail.detail.value"
+      :loading="userDetail.loading.value"
+      :error="userDetail.error.value"
+      @close="userDetail.close"
+      @retry="userDetail.retry"
+    />
     <CreateUserDialog
       :visible="users.createDialogVisible.value"
       :form="users.createForm.value"

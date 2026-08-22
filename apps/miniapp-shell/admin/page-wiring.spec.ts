@@ -9,21 +9,33 @@ async function read(relativePath: string): Promise<string> {
 }
 
 describe('native WeChat login page wiring', () => {
-  it('registers an explicit login page that does not request a phone number', async () => {
-    const [appSource, template, controller] = await Promise.all([
+  it('registers login-time avatar and nickname completion without requesting a phone number', async () => {
+    const [appSource, template, pageConfig, controller] = await Promise.all([
       read('app.json'),
       read('pages/wechat-login/index.wxml'),
+      read('pages/wechat-login/index.json'),
       read('pages/wechat-login/index.ts'),
     ]);
     const app = JSON.parse(appSource) as { pages: string[] };
+    const config = JSON.parse(pageConfig) as {
+      usingComponents?: Record<string, string>;
+    };
 
     expect(app.pages).toContain('pages/wechat-login/index');
-    expect(template).toContain('bindtap="onWechatLogin"');
+    expect(config.usingComponents).toEqual({
+      'profile-form': '../../profile-completion/components/profile-form/index',
+    });
+    expect(template).toContain('wx:if="{{showProfileForm}}"');
+    expect(template).toContain('bindchooseavatar="onChooseAvatar"');
+    expect(template).toContain('bindnicknamechange="onNicknameChange"');
+    expect(template).toContain('bindsave="onSave"');
+    expect(template).toContain('bindskip="onSkip"');
     expect(template).not.toContain('getPhoneNumber');
-    expect(controller).toContain('login: freshWechatLogin');
+    expect(controller).toContain('createWechatLoginProfileController');
     expect(controller).toMatch(
-      /async onWechatLogin\(\)[\s\S]*controller\.handleLogin\(\)/u,
+      /authenticate[\s\S]*freshWechatLogin\(\)[\s\S]*loginWithWechat/u,
     );
+    expect(controller).toContain('requestFreshCode: freshWechatLogin');
     expect(controller).not.toMatch(/Storage|console\./u);
   });
 });
@@ -101,10 +113,16 @@ describe('Task 7 native admin page wiring', () => {
     );
   });
 
-  it('shows each user creation time', async () => {
+  it('shows each user creation time and complete WeChat identifiers', async () => {
     const userList = await read('admin/components/user-list/index.wxml');
 
     expect(userList).toContain('item.createdAt');
+    expect(userList).toContain('item.wechatOpenid');
+    expect(userList).toContain('item.wechatUnionid');
+    expect(userList).toContain('item.identityPhoneMasked');
+    expect(userList).toContain('item.identityPhoneVerified');
+    expect(userList).not.toContain('item.phoneMasked');
+    expect(userList).not.toContain('item.phoneVerified');
   });
 
   it('redirects every ordinary admin page before work when initial password change is required', async () => {

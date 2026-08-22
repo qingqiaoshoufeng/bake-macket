@@ -23,7 +23,7 @@ import { yuanTextToCents } from '../../../utils/money.js';
 import { addressesFeatureApi } from '../../addresses/api/index.js';
 import { cartFeatureApi } from '../../cart/api/index.js';
 import { profileFeatureApi } from '../../profile/api/index.js';
-import { mapProfile } from '../../profile/hooks/useProfile.js';
+import { mapProfile } from '../../profile/type/mapper.js';
 import { checkoutFeatureApi } from '../api/index.js';
 import {
   CHECKOUT_DEFAULTS,

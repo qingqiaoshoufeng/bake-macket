@@ -1,6 +1,7 @@
 import {
   AdminRole,
   ApiErrorCode,
+  type AdminUserDetailView,
   type AdminUserListQuery,
   type AdminUserPage,
   type AdminUserStatusView,
@@ -57,7 +58,8 @@ export class AdminUsersService {
         'user.nickname AS nickname',
         'user.phone AS phone',
         'user.phoneVerified AS phoneVerified',
-        '(user.wechatOpenid IS NOT NULL OR user.wechatUnionid IS NOT NULL) AS wechatBound',
+        'user.wechatOpenid AS wechatOpenid',
+        'user.wechatUnionid AS wechatUnionid',
         'user.createdAt AS createdAt',
         'operator.id AS operatorId',
         'operator.loginPhone AS operatorLoginPhone',
@@ -93,6 +95,17 @@ export class AdminUsersService {
       page: query.page,
       pageSize: query.pageSize,
     };
+  }
+
+  async getOne(userId: string): Promise<AdminUserDetailView> {
+    const [user, operator] = await Promise.all([
+      this.dataSource.getRepository(User).findOne({ where: { id: userId } }),
+      this.dataSource
+        .getRepository(AdminUser)
+        .findOne({ where: { linkedUserId: userId } }),
+    ]);
+    if (!user) throw new NotFoundException('User not found');
+    return toAdminUserDetailView(user, operator);
   }
 
   async createPlaceholder(
@@ -322,7 +335,8 @@ type AdminUserRaw = {
   nickname: string | null;
   phone: string | null;
   phoneVerified: boolean | number | string;
-  wechatBound: boolean | number | string;
+  wechatOpenid: string | null;
+  wechatUnionid: string | null;
   createdAt: Date | string;
   operatorId: string | null;
   operatorLoginPhone: string | null;
@@ -368,6 +382,8 @@ const userView = (
   identityPhoneMasked: maskAdminUserPhone(user.phone),
   identityPhoneVerified: user.phoneVerified,
   wechatBound: Boolean(user.wechatOpenid || user.wechatUnionid),
+  wechatOpenid: user.wechatOpenid ?? null,
+  wechatUnionid: user.wechatUnionid ?? null,
   loginPhoneMasked: maskAdminUserPhone(operator?.loginPhone ?? null),
   createdAt: user.createdAt.toISOString(),
   isOperator: operator !== null,
@@ -375,12 +391,50 @@ const userView = (
   mustChangePassword: operator?.mustChangePassword ?? false,
 });
 
+function toAdminUserDetailView(
+  user: User,
+  operator: AdminUser | null,
+): AdminUserDetailView {
+  const openidBound = user.wechatOpenid !== null;
+  const unionidBound = user.wechatUnionid !== null;
+  return {
+    id: user.id,
+    nickname: user.nickname,
+    avatarUrl: user.avatarUrl,
+    wechat: {
+      bound: openidBound || unionidBound,
+      openidBound,
+      unionidBound,
+      openid: user.wechatOpenid,
+      unionid: user.wechatUnionid,
+    },
+    identityPhone: {
+      masked: maskAdminUserPhone(user.phone),
+      verified: user.phoneVerified,
+    },
+    account: {
+      isActive: user.isActive,
+      mergedIntoUserId: user.mergedIntoUserId,
+    },
+    operator: {
+      isOperator: operator !== null,
+      active: operator?.isActive ?? false,
+      mustChangePassword: operator?.mustChangePassword ?? false,
+      loginPhoneMasked: maskAdminUserPhone(operator?.loginPhone ?? null),
+    },
+    createdAt: user.createdAt.toISOString(),
+    updatedAt: user.updatedAt.toISOString(),
+  };
+}
+
 const toAdminUserView = (row: AdminUserRaw): AdminUserView => ({
   id: row.userId,
   nickname: row.nickname,
   identityPhoneMasked: maskAdminUserPhone(row.phone),
   identityPhoneVerified: toBoolean(row.phoneVerified),
-  wechatBound: toBoolean(row.wechatBound),
+  wechatBound: row.wechatOpenid !== null || row.wechatUnionid !== null,
+  wechatOpenid: row.wechatOpenid,
+  wechatUnionid: row.wechatUnionid,
   loginPhoneMasked: maskAdminUserPhone(row.operatorLoginPhone ?? null),
   createdAt: new Date(row.createdAt).toISOString(),
   isOperator: row.operatorId !== null,

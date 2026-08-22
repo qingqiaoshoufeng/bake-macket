@@ -73,12 +73,6 @@ async function ensureDevelopmentEnv() {
   }
 }
 
-function currentBranch() {
-  return (
-    run('git', ['branch', '--show-current'], { capture: true }) || 'detached'
-  );
-}
-
 function composeArgs(projectName, args) {
   return [
     'compose',
@@ -297,7 +291,7 @@ export function runPlaywright(environment, spawnProcess = spawn) {
 
 async function runIsolated() {
   const developmentEnvironment = await ensureDevelopmentEnv();
-  const projectName = composeProjectName(currentBranch());
+  const projectName = composeProjectName();
   const rootPassword = developmentEnvironment.MYSQL_ROOT_PASSWORD;
   if (!rootPassword) {
     throw new Error('MYSQL_ROOT_PASSWORD is required for E2E provisioning.');

@@ -11,6 +11,7 @@ import {
 } from './bridge/miniapp.js';
 import { createStoreRouter } from './router/index.js';
 import { useAuthStore } from './stores/auth.js';
+import { useProfileRefreshStore } from './stores/profile-refresh.js';
 import {
   createWechatAuthCoordinator,
   loginFeatureApi,
@@ -21,6 +22,7 @@ const pinia = createPinia();
 app.use(pinia);
 
 const auth = useAuthStore(pinia);
+const profileRefresh = useProfileRefreshStore(pinia);
 auth.hydrate();
 
 function clearSession(): void {
@@ -40,6 +42,7 @@ function publishMiniappMessage(
   message: Parameters<typeof miniappMessageHub.publish>[0],
 ): void {
   if (message.type === 'WECHAT_CODE') receivedStartupWechatCode = true;
+  if (message.type === 'PROFILE_UPDATED') void profileRefresh.refresh();
   miniappMessageHub.publish(message);
 }
 installMiniappBridge(publishMiniappMessage, {

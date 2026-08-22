@@ -33,9 +33,7 @@ defineEmits<{
       <dt>用户 ID</dt>
       <dd class="profile__id">{{ profile?.id ?? '—' }}</dd>
     </dl>
-    <p class="profile__hint">
-      头像与昵称为微信账号绑定信息,首期暂不支持在 H5 修改。
-    </p>
+    <p class="profile__hint">头像与昵称可通过微信小程序原生资料页修改。</p>
   </section>
   <nav class="profile__links" aria-label="个人功能">
     <button

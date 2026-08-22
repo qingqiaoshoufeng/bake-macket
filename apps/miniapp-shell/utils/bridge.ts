@@ -30,6 +30,11 @@ export type WechatLoginHandoff = Readonly<{
   state: string;
 }>;
 
+export type ProfileHandoff = Readonly<{
+  outcome: 'PROFILE_SKIPPED' | 'PROFILE_UPDATED';
+  returnUrl: string;
+}>;
+
 export type PhoneAuthorizationDetail = Readonly<{
   code?: unknown;
   errMsg?: unknown;
@@ -45,6 +50,7 @@ type MemoryHandoffStore<T> = Readonly<{
 export type PhoneCredentialHandoffStore =
   MemoryHandoffStore<PhoneCredentialHandoff>;
 export type WechatLoginHandoffStore = MemoryHandoffStore<WechatLoginHandoff>;
+export type ProfileHandoffStore = MemoryHandoffStore<ProfileHandoff>;
 
 type ParsedHttpsUrl = Readonly<{
   hash: string;
@@ -59,8 +65,10 @@ type IndexPageControllerDependencies = Readonly<{
   baseUrl: string;
   consumePhoneHandoff: (expected: PhoneCredentialHandoff) => boolean;
   consumeWechatLoginHandoff: (expected: WechatLoginHandoff) => boolean;
+  consumeProfileHandoff?: (expected: ProfileHandoff) => boolean;
   peekPhoneHandoff: () => PhoneCredentialHandoff | null;
   peekWechatLoginHandoff: () => WechatLoginHandoff | null;
+  peekProfileHandoff?: () => ProfileHandoff | null;
   rebuildWebView: (url: string, deliveryId: string) => boolean;
   toast: (message: string) => void;
 }>;
@@ -75,6 +83,11 @@ type PendingDelivery =
       deliveryId: string;
       handoff: WechatLoginHandoff;
       type: 'wechat-login';
+    }>
+  | Readonly<{
+      deliveryId: string;
+      handoff: ProfileHandoff;
+      type: 'profile';
     }>;
 
 type PhoneAuthControllerDependencies = Readonly<{
@@ -254,6 +267,13 @@ function samePhoneHandoff(
   );
 }
 
+function sameProfileHandoff(
+  left: ProfileHandoff,
+  right: ProfileHandoff,
+): boolean {
+  return left.outcome === right.outcome && left.returnUrl === right.returnUrl;
+}
+
 function sameWechatLoginHandoff(
   left: WechatLoginHandoff,
   right: WechatLoginHandoff,
@@ -355,8 +375,25 @@ function resolveTrustedReturnUrl(
 
 export {
   resolveTrustedReturnUrl as resolvePhoneAuthReturnUrl,
+  resolveTrustedReturnUrl as resolveProfileCompletionReturnUrl,
   resolveTrustedReturnUrl as resolveWechatLoginReturnUrl,
 };
+
+export function buildProfileHandoffUrl(
+  returnUrl: string,
+  baseOrigin: string,
+  outcome: ProfileHandoff['outcome'],
+): string {
+  const trustedReturnUrl = validateReturnUrl(returnUrl, baseOrigin);
+  if (!trustedReturnUrl) throw new Error('return URL is not allowed');
+  if (outcome !== 'PROFILE_UPDATED' && outcome !== 'PROFILE_SKIPPED') {
+    throw new Error('profile outcome is not allowed');
+  }
+  return appendHandoffParameters(requireSecureUrl(trustedReturnUrl), [
+    [MINIAPP_SOURCE_PARAM, MINIAPP_MESSAGE_SOURCE],
+    [MINIAPP_TYPE_PARAM, outcome],
+  ]);
+}
 
 export function buildPhoneCredentialHandoffUrl(
   returnUrl: string,
@@ -382,6 +419,18 @@ export function createPhoneCredentialHandoffStore(): PhoneCredentialHandoffStore
     const returnUrl = parseNonEmptyString(handoff.returnUrl);
     return credential && returnUrl ? { credential, returnUrl } : null;
   }, samePhoneHandoff);
+}
+
+export function createProfileHandoffStore(): ProfileHandoffStore {
+  return createMemoryHandoffStore((handoff) => {
+    const returnUrl = parseNonEmptyString(handoff.returnUrl);
+    const outcome =
+      handoff.outcome === 'PROFILE_UPDATED' ||
+      handoff.outcome === 'PROFILE_SKIPPED'
+        ? handoff.outcome
+        : null;
+    return returnUrl && outcome ? { outcome, returnUrl } : null;
+  }, sameProfileHandoff);
 }
 
 export function createWechatLoginHandoffStore(): WechatLoginHandoffStore {
@@ -499,6 +548,31 @@ export function createIndexPageController(
       explicitLoginObserved = true;
       return deliverWechatLogin(loginHandoff);
     }
+    const profileHandoff = dependencies.peekProfileHandoff?.() ?? null;
+    if (profileHandoff) {
+      try {
+        const deliveryId = createDeliveryId();
+        const rebuilt = rebuild(
+          buildProfileHandoffUrl(
+            profileHandoff.returnUrl,
+            dependencies.baseOrigin,
+            profileHandoff.outcome,
+          ),
+          deliveryId,
+        );
+        if (rebuilt) {
+          pendingDelivery = {
+            deliveryId,
+            handoff: profileHandoff,
+            type: 'profile',
+          };
+        }
+        return rebuilt;
+      } catch {
+        dependencies.toast('资料更新返回地址无效');
+        return false;
+      }
+    }
     const phoneHandoff = dependencies.peekPhoneHandoff();
     if (phoneHandoff) return deliverPhone(phoneHandoff);
     return baseUrlLoaded ? false : rebuild(dependencies.baseUrl);
@@ -513,7 +587,9 @@ export function createIndexPageController(
     const consumed =
       delivery.type === 'wechat-login'
         ? dependencies.consumeWechatLoginHandoff(delivery.handoff)
-        : dependencies.consumePhoneHandoff(delivery.handoff);
+        : delivery.type === 'profile'
+          ? (dependencies.consumeProfileHandoff?.(delivery.handoff) ?? false)
+          : dependencies.consumePhoneHandoff(delivery.handoff);
     if (consumed) pendingDelivery = null;
     return consumed;
   }

@@ -24,18 +24,30 @@ function diagnostics(filePath: string, source: string): readonly string[] {
 }
 
 describe('miniapp request boundary AST scanner', () => {
-  it('allows the canonical wx.request call in utils/api-client only', () => {
+  it('allows wx.request only in the canonical defaultRequest adapter', () => {
     expect(
       diagnostics(
         apiClientPath,
-        'export function request(options: unknown) { return wx.request(options); }',
+        'function defaultRequest(options: unknown) { return wx.request(options); }',
       ),
     ).toEqual([]);
+    expect(diagnostics(apiClientPath, 'wx.request(options);')).toContain(
+      'utils/api-client.ts 只能调用 wx.request / wx.uploadFile',
+    );
   });
 
-  it('rejects alternate WeChat network APIs even inside api-client', () => {
+  it('allows wx.uploadFile only in the canonical defaultUploadFile adapter', () => {
+    expect(
+      diagnostics(
+        apiClientPath,
+        'function defaultUploadFile(options: unknown) { return wx.uploadFile(options); }',
+      ),
+    ).toEqual([]);
     expect(diagnostics(apiClientPath, 'wx.uploadFile(options);')).toContain(
-      'utils/api-client.ts 只能调用 wx.request',
+      'utils/api-client.ts 只能调用 wx.request / wx.uploadFile',
+    );
+    expect(diagnostics(apiClientPath, 'wx.downloadFile(options);')).toContain(
+      'utils/api-client.ts 只能调用 wx.request / wx.uploadFile',
     );
   });
 
@@ -70,7 +82,7 @@ describe('miniapp request boundary AST scanner', () => {
     "import { createMiniappApiClient } from '../fake/utils/api-client.js';\nexport const client = createMiniappApiClient(dependencies);",
   ])('rejects admin feature API fake or unused imports', (source) => {
     expect(diagnostics(featureApiPath, source)).toContain(
-      '原生管理 API 必须实际调用从 utils/api-client 导入的 createMiniappApiClient',
+      '原生 feature API 必须实际调用从 utils/api-client 导入的 createMiniappApiClient',
     );
   });
 

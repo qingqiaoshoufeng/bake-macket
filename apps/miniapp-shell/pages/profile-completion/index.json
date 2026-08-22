@@ -1,0 +1,6 @@
+{
+  "navigationBarTitleText": "完善头像昵称",
+  "usingComponents": {
+    "profile-form": "../../profile-completion/components/profile-form/index"
+  }
+}

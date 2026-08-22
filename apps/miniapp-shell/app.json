@@ -3,6 +3,7 @@
     "pages/index/index",
     "pages/wechat-login/index",
     "pages/phone-auth/index",
+    "pages/profile-completion/index",
     "pages/admin-home/index",
     "pages/admin-password/index",
     "pages/admin-users/index",

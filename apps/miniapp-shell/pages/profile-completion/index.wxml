@@ -1,0 +1,17 @@
+<view class="profile-completion">
+  <view class="profile-completion__header">
+    <text class="profile-completion__eyebrow">BAKE MATE</text>
+    <text class="profile-completion__title">让我们认识你</text>
+    <text class="profile-completion__description">选择头像并确认昵称，稍后也可以在个人中心再次修改。</text>
+  </view>
+  <profile-form
+    avatar-preview-url="{{avatarPreviewUrl}}"
+    nickname="{{nickname}}"
+    error="{{error}}"
+    loading="{{loading}}"
+    bindchooseavatar="onChooseAvatar"
+    bindnicknamechange="onNicknameChange"
+    bindsave="onSave"
+    bindskip="onSkip"
+  />
+</view>

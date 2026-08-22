@@ -28,6 +28,7 @@ import { AdminPermissionGuard } from '../src/auth/admin-permission.guard.js';
 import { JwtAdminGuard } from '../src/auth/admin-jwt.guard.js';
 import { type AuthenticatedAdmin } from '../src/auth/auth.types.js';
 import { AdminVerificationService } from '../src/auth/admin-verification.service.js';
+import { AdminUser } from '../src/database/entities/admin-user.entity.js';
 import { User } from '../src/database/entities/user.entity.js';
 import { AdminUsersController } from '../src/users/admin-users.controller.js';
 import { UserIdentityService } from '../src/users/user-identity.service.js';
@@ -58,7 +59,14 @@ const createUserRepository = () => {
       nickname: '已有用户',
       phone: '13900000000',
       phoneVerified: true,
+      wechatOpenid: 'openid-sensitive-7',
+      wechatUnionid: 'unionid-sensitive-7',
+      avatarUrl: 'https://cdn.example.com/avatar.webp',
+      isActive: true,
+      mergedIntoUserId: null,
+      tokenVersion: 9,
       createdAt: new Date('2026-08-04T00:00:00.000Z'),
+      updatedAt: new Date('2026-08-05T00:00:00.000Z'),
     } as User,
   ];
   const initialRecords = records.map((record) => ({ ...record }));
@@ -119,7 +127,8 @@ describe('Admin users (e2e)', () => {
           nickname: '已有用户',
           phone: '13900000000',
           phoneVerified: 1,
-          wechatBound: 1,
+          wechatOpenid: 'openid-sensitive-7',
+          wechatUnionid: 'unionid-sensitive-7',
           createdAt: new Date('2026-08-04T00:00:00.000Z'),
           operatorId: '42',
           operatorLoginPhone: '13700000000',
@@ -128,12 +137,28 @@ describe('Admin users (e2e)', () => {
         },
       ]),
     };
+    const operators = {
+      findOne: vi.fn().mockResolvedValue({
+        id: '42',
+        role: AdminRole.OPERATOR,
+        linkedUserId: '7',
+        loginPhone: '13700000000',
+        passwordHash: 'operator-password-hash',
+        isActive: true,
+        mustChangePassword: false,
+        tokenVersion: 5,
+      }),
+    };
+    function getRepository(entity: unknown) {
+      if (entity === User) {
+        return { ...users, createQueryBuilder: vi.fn(() => queryBuilder) };
+      }
+      if (entity === AdminUser) return operators;
+      return {};
+    }
+
     const dataSource = {
-      getRepository: vi.fn((entity: unknown) =>
-        entity === User
-          ? { ...users, createQueryBuilder: vi.fn(() => queryBuilder) }
-          : {},
-      ),
+      getRepository: vi.fn(getRepository),
       transaction: vi.fn(async (operation) =>
         operation({
           getRepository: (entity: unknown) => (entity === User ? users : {}),
@@ -212,6 +237,8 @@ describe('Admin users (e2e)', () => {
           identityPhoneMasked: '139****0000',
           identityPhoneVerified: true,
           wechatBound: true,
+          wechatOpenid: 'openid-sensitive-7',
+          wechatUnionid: 'unionid-sensitive-7',
           loginPhoneMasked: '137****0000',
           createdAt: '2026-08-04T00:00:00.000Z',
           isOperator: true,
@@ -223,8 +250,43 @@ describe('Admin users (e2e)', () => {
       page: 1,
       pageSize: 20,
     });
+    expect(response.headers['cache-control']).toBe('private, no-store');
     expect(JSON.stringify(response.body)).not.toMatch(
-      /wechatOpenid|wechatUnionid|passwordHash|tokenVersion|jwt|secret|13900000000/i,
+      /passwordHash|tokenVersion|jwt|session_key|13900000000|13700000000/i,
+    );
+  });
+
+  it('OPERATOR 可读取完整微信标识且响应无其他原始身份或秘密', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/api/v1/admin/users/7')
+      .set('x-test-role', AdminRole.OPERATOR)
+      .expect(200);
+
+    expect(response.body).toEqual({
+      id: '7',
+      nickname: '已有用户',
+      avatarUrl: 'https://cdn.example.com/avatar.webp',
+      wechat: {
+        bound: true,
+        openidBound: true,
+        unionidBound: true,
+        openid: 'openid-sensitive-7',
+        unionid: 'unionid-sensitive-7',
+      },
+      identityPhone: { masked: '139****0000', verified: true },
+      account: { isActive: true, mergedIntoUserId: null },
+      operator: {
+        isOperator: true,
+        active: true,
+        mustChangePassword: false,
+        loginPhoneMasked: '137****0000',
+      },
+      createdAt: '2026-08-04T00:00:00.000Z',
+      updatedAt: '2026-08-05T00:00:00.000Z',
+    });
+    expect(response.headers['cache-control']).toBe('private, no-store');
+    expect(JSON.stringify(response.body)).not.toMatch(
+      /13900000000|13700000000|passwordHash|tokenVersion|jwt|session_key/i,
     );
   });
 
@@ -239,6 +301,8 @@ describe('Admin users (e2e)', () => {
       identityPhoneMasked: '138****0000',
       identityPhoneVerified: false,
       wechatBound: false,
+      wechatOpenid: null,
+      wechatUnionid: null,
       loginPhoneMasked: null,
       isOperator: false,
       operatorActive: false,
@@ -270,9 +334,16 @@ describe('Admin users (e2e)', () => {
   });
 
   it.each([
-    ['list', AdminPermission.USER_READ],
-    ['createPlaceholder', AdminPermission.USER_CREATE],
-  ] as const)('%s 声明精确用户权限', (method, permission) => {
+    [
+      'list',
+      [AdminPermission.USER_READ, AdminPermission.USER_WECHAT_IDENTITY_READ],
+    ],
+    [
+      'getOne',
+      [AdminPermission.USER_READ, AdminPermission.USER_WECHAT_IDENTITY_READ],
+    ],
+    ['createPlaceholder', [AdminPermission.USER_CREATE]],
+  ] as const)('%s 声明精确用户权限', (method, permissions) => {
     expect(
       app
         .get(Reflector)
@@ -280,7 +351,7 @@ describe('Admin users (e2e)', () => {
           ADMIN_PERMISSIONS_KEY,
           AdminUsersController.prototype[method],
         ),
-    ).toEqual([permission]);
+    ).toEqual(permissions);
   });
 
   it.each(['grant', 'revoke'] as const)(

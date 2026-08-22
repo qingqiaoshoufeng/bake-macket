@@ -29,6 +29,8 @@ const user: AdminUserView = {
   identityPhoneMasked: '138****0000',
   identityPhoneVerified: true,
   wechatBound: true,
+  wechatOpenid: 'openid-user-1',
+  wechatUnionid: null,
   loginPhoneMasked: null,
   createdAt: '2026-08-06T08:00:00.000Z',
   isOperator: false,

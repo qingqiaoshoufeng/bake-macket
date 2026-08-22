@@ -6,22 +6,23 @@
 
 API 实际读取并在生产启动时校验：
 
-| 变量                                                      | 用途                              |
-| --------------------------------------------------------- | --------------------------------- |
-| `NODE_ENV=production`                                     | 启用生产校验                      |
-| `HOST` / `PORT`                                           | API 监听地址和端口                |
-| `DATABASE_URL`                                            | MySQL 连接串                      |
-| `JWT_USER_SECRET` / `JWT_ADMIN_SECRET`                    | 两个不同 audience 的 JWT 密钥     |
-| `JWT_EXPIRES_IN_SECONDS`                                  | JWT 生命周期                      |
-| `ADMIN_EMAIL` / `ADMIN_PASSWORD`                          | 初始管理员                        |
-| `ORDER_QUOTE_TOKEN_SECRET` / `ORDER_QUOTE_TTL_SECONDS`    | 报价令牌                          |
-| `SIMULATED_PAYMENT_ENABLED=false`                         | 生产禁用模拟支付                  |
-| `OBJECT_STORAGE_ENDPOINT`                                 | COS/S3 兼容 HTTPS endpoint        |
-| `OBJECT_STORAGE_REGION` / `OBJECT_STORAGE_BUCKET`         | 对象存储位置                      |
-| `OBJECT_STORAGE_PUBLIC_BASE_URL`                          | COS/CDN HTTPS 公开地址            |
-| `OBJECT_STORAGE_ACCESS_KEY` / `OBJECT_STORAGE_SECRET_KEY` | 服务端对象存储凭据                |
-| `OBJECT_STORAGE_FORCE_PATH_STYLE=false`                   | COS 通常关闭 path-style           |
-| `PRODUCT_MEDIA_ALLOWED_ORIGINS`                           | 允许的媒体 HTTPS origin，逗号分隔 |
+| 变量                                                      | 用途                                                  |
+| --------------------------------------------------------- | ----------------------------------------------------- |
+| `NODE_ENV=production`                                     | 启用生产校验                                          |
+| `HOST` / `PORT`                                           | API 监听地址和端口                                    |
+| `DATABASE_URL`                                            | MySQL 连接串                                          |
+| `JWT_USER_SECRET` / `JWT_ADMIN_SECRET`                    | 两个不同 audience 的 JWT 密钥                         |
+| `JWT_EXPIRES_IN_SECONDS`                                  | JWT 生命周期                                          |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD`                          | 初始管理员                                            |
+| `ORDER_QUOTE_TOKEN_SECRET` / `ORDER_QUOTE_TTL_SECONDS`    | 报价令牌                                              |
+| `SIMULATED_PAYMENT_ENABLED=false`                         | 生产禁用模拟支付                                      |
+| `OBJECT_STORAGE_ENDPOINT`                                 | API 内部读取 COS/S3 的 HTTPS endpoint                 |
+| `OBJECT_STORAGE_CLIENT_ENDPOINT`                          | 可选；浏览器/小程序可达的稳定 HTTPS 上传签名 endpoint |
+| `OBJECT_STORAGE_REGION` / `OBJECT_STORAGE_BUCKET`         | 对象存储位置                                          |
+| `OBJECT_STORAGE_PUBLIC_BASE_URL`                          | COS/CDN HTTPS 公开地址                                |
+| `OBJECT_STORAGE_ACCESS_KEY` / `OBJECT_STORAGE_SECRET_KEY` | 服务端对象存储凭据                                    |
+| `OBJECT_STORAGE_FORCE_PATH_STYLE=false`                   | COS 通常关闭 path-style                               |
+| `PRODUCT_MEDIA_ALLOWED_ORIGINS`                           | 允许的媒体 HTTPS origin，逗号分隔                     |
 
 腾讯云控制台中的 `COS_SECRET_ID`、`COS_SECRET_KEY`、bucket、region 等名称须在部署平台映射为上面的 `OBJECT_STORAGE_*`；它们不是 API 直接读取的别名。可提交模板见根目录 `.env.production.example`。
 

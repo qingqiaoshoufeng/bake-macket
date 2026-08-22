@@ -233,6 +233,9 @@ export class CloudPrinterReconciliationService {
               .getRepository(CloudPrinter)
               .findOne({ where: { id: printer.id } });
             if (!this.isSameStaleCandidate(printer, current)) return 'SKIPPED';
+            if (current.status === CloudPrinterStatus.ACTIVE) {
+              return 'SKIPPED' as const;
+            }
 
             const evidence = await this.queryRelation(printer.serialNumber);
             return this.dataSource.transaction((manager) =>
@@ -243,6 +246,8 @@ export class CloudPrinterReconciliationService {
         );
         if (outcome === null || outcome === 'SKIPPED') {
           result.skipped += 1;
+        } else if (outcome === 'SETTLED') {
+          result.processed += 1;
         } else {
           result.processed += 1;
           if (outcome === 'UNKNOWN') result.unknown += 1;
@@ -590,7 +595,7 @@ export class CloudPrinterReconciliationService {
     manager: EntityManager,
     intent: CloudPrinter,
     evidence: RelationEvidence,
-  ): Promise<RelationEvidence['kind'] | 'SKIPPED'> {
+  ): Promise<RelationEvidence['kind'] | 'SKIPPED' | 'SETTLED'> {
     const repository = manager.getRepository(CloudPrinter);
     const printer = await repository.findOne({
       where: { id: intent.id },
@@ -604,7 +609,15 @@ export class CloudPrinterReconciliationService {
       return 'SKIPPED';
     }
 
-    this.applyRelationEvidence(printer, evidence);
+    this.applyRelationEvidence(printer, evidence, intent, {
+      proactiveConvergence: true,
+    });
+    if (this.isSettledByRequery(printer, evidence, intent)) {
+      // Refresh only canonical health fields; never write a new audit row
+      // when the scheduler reconfirms the same state every minute.
+      await repository.save(printer);
+      return 'SETTLED';
+    }
     const saved = await repository.save(printer);
     await this.clearCurrentIfUnbound(manager, saved);
     await this.reconcileOriginalUnknownOperations(manager, saved, evidence);
@@ -616,6 +629,19 @@ export class CloudPrinterReconciliationService {
       { result: evidence.kind, status: saved.status },
     );
     return evidence.kind;
+  }
+
+  private isSettledByRequery(
+    printer: CloudPrinter,
+    evidence: RelationEvidence,
+    previous: CloudPrinter,
+  ): boolean {
+    if (evidence.kind !== 'BOUND') return false;
+    if (previous.status === CloudPrinterStatus.ACTIVE) return true;
+    return (
+      previous.status === CloudPrinterStatus.UNBOUND &&
+      previous.vendorRelationState === VendorRelationState.CONFIRMED_UNBOUND
+    );
   }
 
   private async supersedeUnknownRecovery(
@@ -699,7 +725,7 @@ export class CloudPrinterReconciliationService {
       );
       return { kind: 'FAILED', code: 'RECOVERY_SUPERSEDED' };
     }
-    this.applyRelationEvidence(printer, evidence);
+    this.applyRelationEvidence(printer, evidence, intent.printer);
     const saved = await repository.save(printer);
     await this.clearCurrentIfUnbound(manager, saved);
     const outcome =
@@ -783,7 +809,7 @@ export class CloudPrinterReconciliationService {
       );
     }
 
-    this.applyRelationEvidence(printer, evidence);
+    this.applyRelationEvidence(printer, evidence, intent.printer);
     const saved = await repository.save(printer);
     await this.clearCurrentIfUnbound(manager, saved);
     await this.reconcileOriginalUnknownOperations(manager, saved, evidence);
@@ -1132,6 +1158,10 @@ export class CloudPrinterReconciliationService {
   private applyRelationEvidence(
     printer: CloudPrinter,
     evidence: RelationEvidence,
+    previous: CloudPrinter,
+    options: { readonly proactiveConvergence: boolean } = {
+      proactiveConvergence: false,
+    },
   ): void {
     printer.lastStatusCheckedAt = this.now();
     printer.lastVendorErrorCode = evidence.vendorCode;
@@ -1157,13 +1187,30 @@ export class CloudPrinterReconciliationService {
     printer.lastOnlineStatus = evidence.onlineStatus;
     printer.lastVendorErrorCode = null;
     printer.unboundAt = null;
-    if (printer.bindingStage === PrinterBindingStage.COMPENSATION_DELETE) {
+    if (previous.bindingStage === PrinterBindingStage.COMPENSATION_DELETE) {
       printer.status = CloudPrinterStatus.ERROR;
-    } else {
-      clearChallenge(printer);
-      printer.status = CloudPrinterStatus.ERROR;
-      printer.bindingStage = PrinterBindingStage.RECONCILIATION;
+      return;
     }
+    if (
+      options.proactiveConvergence &&
+      previous.status === CloudPrinterStatus.ERROR &&
+      previous.bindingStage === PrinterBindingStage.RECONCILIATION
+    ) {
+      // Recovered reconciliation: vendor confirmed the device is bound and
+      // online, so converge to ACTIVE instead of looping the error state.
+      clearChallenge(printer);
+      printer.status = CloudPrinterStatus.ACTIVE;
+      printer.bindingStage = PrinterBindingStage.NONE;
+      return;
+    }
+    if (previous.status === CloudPrinterStatus.UNBOUND) {
+      // Quietly refresh health fields; never resurrect an unbound device.
+      clearChallenge(printer);
+      return;
+    }
+    clearChallenge(printer);
+    printer.status = CloudPrinterStatus.ERROR;
+    printer.bindingStage = PrinterBindingStage.RECONCILIATION;
   }
 
   private async reconcileOriginalUnknownOperations(

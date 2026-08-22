@@ -24,6 +24,8 @@ describe('users api', () => {
             identityPhoneMasked: '139****0000',
             identityPhoneVerified: false,
             wechatBound: false,
+            wechatOpenid: null,
+            wechatUnionid: null,
             loginPhoneMasked: null,
             createdAt: '2026-08-06T08:00:00.000Z',
             isOperator: false,
@@ -45,6 +47,41 @@ describe('users api', () => {
     expect(JSON.parse(fetchMock.mock.calls[1]?.[1]?.body as string)).toEqual({
       phone: '13900000000',
     });
+  });
+
+  it('loads a user detail through the global client', async () => {
+    const detail = {
+      id: 'user-1',
+      nickname: '小莓',
+      avatarUrl: null,
+      wechat: {
+        bound: true,
+        openidBound: true,
+        unionidBound: false,
+        openid: 'openid-user-1',
+        unionid: null,
+      },
+      identityPhone: { masked: '138****0000', verified: true },
+      account: { isActive: true, mergedIntoUserId: null },
+      operator: {
+        isOperator: false,
+        active: false,
+        mustChangePassword: false,
+        loginPhoneMasked: null,
+      },
+      createdAt: '2026-08-06T08:00:00.000Z',
+      updatedAt: '2026-08-07T08:00:00.000Z',
+    };
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(detail), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(usersApi.getOne('user-1')).resolves.toEqual(detail);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/v1/admin/users/user-1');
   });
 
   it('passes shared grant and revoke DTOs without transformation', async () => {

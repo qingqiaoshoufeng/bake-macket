@@ -6,6 +6,7 @@ import {
   createMiniappMessageHub,
   installMiniappBridge,
   requestMiniappPhoneCredential,
+  requestMiniappProfileCompletion,
   requestMiniappWechatLogin,
   type MiniappMessage,
 } from './miniapp.js';
@@ -255,6 +256,57 @@ describe('installMiniappBridge', () => {
       { source: 'bake-miniapp', type: 'WECHAT_CODE', code: 'code-2' },
     ]);
     teardown();
+  });
+});
+
+describe('profile completion handoff', () => {
+  it.each(['PROFILE_UPDATED', 'PROFILE_SKIPPED'] as const)(
+    'strictly parses and scrubs %s without profile payloads',
+    (type) => {
+      window.history.replaceState(
+        null,
+        '',
+        `/profile?keep=1&miniappSource=bake-miniapp&miniappType=${type}`,
+      );
+      const onMessage = vi.fn();
+
+      installMiniappBridge(onMessage);
+
+      expect(onMessage).toHaveBeenCalledWith({ source: 'bake-miniapp', type });
+      expect(window.location.search).toBe('?keep=1');
+    },
+  );
+
+  it.each([
+    'miniappSource=bake-miniapp&miniappType=PROFILE_UPDATED&wechatCode=secret',
+    'miniappSource=bake-miniapp&miniappType=PROFILE_SKIPPED&phoneCredential=secret',
+    'miniappSource=bake-miniapp&miniappType=PROFILE_UPDATED&miniappType=PROFILE_SKIPPED',
+  ])(
+    'rejects mixed or duplicate profile handoff and still scrubs it: %s',
+    (query) => {
+      window.history.replaceState(null, '', `/profile?keep=1&${query}`);
+      const onMessage = vi.fn();
+
+      installMiniappBridge(onMessage);
+
+      expect(onMessage).not.toHaveBeenCalled();
+      expect(window.location.search).toBe('?keep=1');
+    },
+  );
+
+  it('opens the native profile page with only an encoded return URL', async () => {
+    const navigateTo = vi.fn((options: NavigateOptions) => options.success());
+    setMiniProgram({ navigateTo });
+    window.history.replaceState(null, '', '/profile?tab=account');
+
+    await expect(
+      requestMiniappProfileCompletion(async () => true),
+    ).resolves.toBe(true);
+    expect(navigateTo).toHaveBeenCalledWith({
+      url: `/pages/profile-completion/index?returnUrl=${encodeURIComponent(window.location.href)}`,
+      success: expect.any(Function),
+      fail: expect.any(Function),
+    });
   });
 });
 

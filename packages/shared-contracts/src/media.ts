@@ -19,3 +19,16 @@ export type PresignUploadResponse = MediaAsset & {
   fields: Record<string, string>;
   expiresAt: string;
 };
+
+export type CustomerAvatarPresignRequest = {
+  fileName: string;
+  contentType: PresignUploadContentType;
+  sizeBytes: number;
+};
+
+export type CustomerAvatarPresignResponse = {
+  objectKey: string;
+  uploadUrl: string;
+  fields: Record<string, string>;
+  expiresAt: string;
+};

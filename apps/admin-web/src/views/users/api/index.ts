@@ -1,4 +1,5 @@
 import type {
+  AdminUserDetailView,
   AdminUserListQuery,
   AdminUserListResult,
   AdminUserStatusView,
@@ -21,6 +22,9 @@ function toSearchParams(query: AdminUserListQuery): URLSearchParams {
 export const usersApi = {
   list(query: AdminUserListQuery): Promise<AdminUserListResult> {
     return apiClient.get(`/admin/users?${toSearchParams(query).toString()}`);
+  },
+  getOne(userId: string): Promise<AdminUserDetailView> {
+    return apiClient.get(`/admin/users/${userId}`);
   },
   create(body: CreatePlaceholderUserRequest): Promise<AdminUserView> {
     return apiClient.post('/admin/users', body);

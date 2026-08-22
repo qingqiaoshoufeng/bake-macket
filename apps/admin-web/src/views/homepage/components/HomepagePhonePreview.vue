@@ -3,6 +3,7 @@ import {
   HomepageLinkType,
   type HomepageDraftConfig,
   type HomepageLink,
+  type MediaAsset,
 } from '@bake-mall/contracts';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
@@ -65,6 +66,11 @@ onMounted(() => {
 
 onBeforeUnmount(() => previewObserver?.disconnect());
 
+function previewMediaUrl(asset: MediaAsset): string {
+  const objectKey = asset.objectKey.trim();
+  return objectKey ? `/bake-mall/${objectKey}` : asset.publicUrl;
+}
+
 function linkText(link: HomepageLink): string {
   if (link.type === HomepageLinkType.NONE) return '无跳转';
   if (link.type === HomepageLinkType.PRODUCT) return `商品 #${link.targetId}`;
@@ -110,7 +116,7 @@ function linkText(link: HomepageLink): string {
             >
               <img
                 v-if="currentSlide?.image"
-                :src="currentSlide.image.publicUrl"
+                :src="previewMediaUrl(currentSlide.image)"
                 :alt="currentSlide.altText || '轮播预览'"
               />
               <div v-else class="homepage-phone-preview__placeholder">
@@ -160,7 +166,7 @@ function linkText(link: HomepageLink): string {
                 </div>
                 <img
                   v-if="draft.customerService.wechatQrCode"
-                  :src="draft.customerService.wechatQrCode.publicUrl"
+                  :src="previewMediaUrl(draft.customerService.wechatQrCode)"
                   alt="客服二维码预览"
                 />
                 <div v-else class="homepage-phone-preview__qr">二维码</div>
@@ -176,7 +182,7 @@ function linkText(link: HomepageLink): string {
                     v-for="item in draft.shortcutGrid.items"
                     :key="item.id"
                   >
-                    <img v-if="item.image" :src="item.image.publicUrl" alt="" />
+                    <img v-if="item.image" :src="previewMediaUrl(item.image)" alt="" />
                     <div v-else class="homepage-phone-preview__icon">图</div>
                     <strong>{{ item.label || '入口名称' }}</strong>
                     <span>{{ linkText(item.link) }}</span>
@@ -191,7 +197,7 @@ function linkText(link: HomepageLink): string {
               >
                 <img
                   v-if="block.image"
-                  :src="block.image.publicUrl"
+                  :src="previewMediaUrl(block.image)"
                   :alt="block.altText"
                 />
                 <div v-else class="homepage-phone-preview__placeholder">

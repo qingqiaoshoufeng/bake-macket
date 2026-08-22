@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import type { UserProfileView } from '@bake-mall/contracts';
 
-defineProps<{ profile: UserProfileView | null }>();
+defineProps<{
+  profile: UserProfileView | null;
+  openingProfileEditor?: boolean;
+}>();
+
+defineEmits<{ editProfile: [] }>();
 </script>
 
 <template>
@@ -21,7 +26,16 @@ defineProps<{ profile: UserProfileView | null }>();
       <dt>用户 ID</dt>
       <dd class="profile-account__id">{{ profile?.id ?? '—' }}</dd>
     </dl>
-    <p>头像与昵称为微信账号绑定信息，首期暂不支持在 H5 修改。</p>
+    <div class="profile-account__profile-action">
+      <p>头像与昵称可通过小程序原生资料页修改。</p>
+      <button
+        type="button"
+        :disabled="openingProfileEditor"
+        @click="$emit('editProfile')"
+      >
+        {{ openingProfileEditor ? '正在打开…' : '修改头像昵称' }}
+      </button>
+    </div>
   </section>
 </template>
 
@@ -58,10 +72,29 @@ defineProps<{ profile: UserProfileView | null }>();
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
 }
-.profile-account p {
-  margin: var(--mall-space-3) 0 0;
+.profile-account__profile-action {
+  display: flex;
+  margin-top: var(--mall-space-3);
   padding-top: var(--mall-space-3);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mall-space-3);
   border-top: 1px dashed var(--mall-border);
+}
+.profile-account__profile-action button {
+  min-height: 40px;
+  flex: 0 0 auto;
+  padding: 0 var(--mall-space-3);
+  border: 0;
+  border-radius: var(--mall-radius-control);
+  background: var(--mall-primary);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+}
+.profile-account p {
+  margin: 0;
   color: var(--mall-text-muted);
   font-size: 12px;
   line-height: 1.6;

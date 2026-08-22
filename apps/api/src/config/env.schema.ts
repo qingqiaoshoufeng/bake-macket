@@ -58,6 +58,8 @@ export interface AppEnv {
 
   /** S3-compatible MinIO (development) or COS (production) credentials. */
   OBJECT_STORAGE_ENDPOINT: string;
+  /** Optional browser/miniapp-reachable endpoint used only when signing uploads. */
+  OBJECT_STORAGE_CLIENT_ENDPOINT?: string;
   OBJECT_STORAGE_REGION: string;
   OBJECT_STORAGE_BUCKET: string;
   OBJECT_STORAGE_PUBLIC_BASE_URL: string;
@@ -175,6 +177,9 @@ export const envSchema = Joi.object<AppEnv, true>({
   OBJECT_STORAGE_ENDPOINT: Joi.string()
     .uri({ scheme: ['http', 'https'] })
     .default('http://127.0.0.1:9000'),
+  OBJECT_STORAGE_CLIENT_ENDPOINT: Joi.string()
+    .uri({ scheme: ['http', 'https'] })
+    .optional(),
   OBJECT_STORAGE_REGION: Joi.string().default('us-east-1'),
   OBJECT_STORAGE_BUCKET: Joi.string().default('bake-mall'),
   OBJECT_STORAGE_PUBLIC_BASE_URL: Joi.string()

@@ -1,10 +1,11 @@
-import type { OrderContactPhoneView } from './customer.js';
+import type { CustomerProfileView } from './customer.js';
 import { AdminPermission, AdminRole } from './enums.js';
 
 export const OPERATOR_PERMISSIONS = Object.freeze([
   AdminPermission.ORDER_READ,
   AdminPermission.ORDER_STATUS_UPDATE,
   AdminPermission.USER_READ,
+  AdminPermission.USER_WECHAT_IDENTITY_READ,
   AdminPermission.USER_CREATE,
   AdminPermission.PRINT_DEVICE_MANAGE,
   AdminPermission.PRINT_EXECUTE,
@@ -107,5 +108,6 @@ export type UserProfileView = {
   avatarUrl?: string;
   phone?: string;
   phoneVerified: boolean;
-  orderContactPhone: OrderContactPhoneView;
+  profileCompleted?: boolean;
+  orderContactPhone: import('./customer.js').OrderContactPhoneView;
 };
